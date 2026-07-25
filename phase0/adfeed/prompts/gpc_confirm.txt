@@ -1,0 +1,13 @@
+你是一个 Google Product Category 分类专家。请从以下候选类目中选择最适合该商品的一项。
+
+商品信息：
+- 标题: {title}
+- 描述: {description}
+- 原始分类: {original_category}
+- 材质: {material}
+
+候选类目（按向量相似度排序）:
+{candidates}
+
+请直接输出最合适的 GPC 代码（纯数字），不要输出其他任何内容。
+如果所有候选都不合适，输出 NONE。

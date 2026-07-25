@@ -1,0 +1,72 @@
+"""AdFeed AI — Phase 0: 跨境广告数据洗白验证脚本"""
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from pathlib import Path
+
+# ============================================
+# 路径配置
+# ============================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+OUTPUT_DIR = BASE_DIR / "output"
+PROMPTS_DIR = BASE_DIR / "adfeed" / "prompts"
+
+TAXONOMY_FILE = DATA_DIR / "taxonomy-with-ids.en-US.txt"
+COMPLIANCE_RULES_FILE = DATA_DIR / "compliance_rules.json"
+
+# ============================================
+# API 配置 — 通义千问 (DashScope)
+# ============================================
+import os
+
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen-plus")
+LLM_TEMPERATURE = 0.3
+LLM_MAX_TOKENS = 600
+LLM_MAX_RETRIES = 2
+LLM_RETRY_DELAY_SECONDS = [1, 3]
+
+# ============================================
+# GPC 匹配配置
+# ============================================
+GPC_TOPK = 5
+GPC_CONFIDENCE_THRESHOLD = 0.65
+
+# ============================================
+# 标题优化配置
+# ============================================
+TITLE_MAX_LENGTH = 150
+DEFAULT_COUNTRY = "US"
+
+# ============================================
+# Mock 数据配置
+# ============================================
+MOCK_SKU_COUNT = 20
+MOCK_OUTPUT_FILE = OUTPUT_DIR / "mock_products.xlsx"
+
+# ============================================
+# 输出配置
+# ============================================
+FEED_OUTPUT_XML = OUTPUT_DIR / "feed_us.xml"
+COMPARISON_REPORT = OUTPUT_DIR / "comparison_report.xlsx"
+SUMMARY_JSON = OUTPUT_DIR / "summary.json"
+
+
+def ensure_dirs():
+    """创建必要的输出目录"""
+    for d in [DATA_DIR, OUTPUT_DIR]:
+        d.mkdir(parents=True, exist_ok=True)
+
+
+def validate():
+    """启动前校验配置完整性"""
+    errors = []
+    if not DASHSCOPE_API_KEY or DASHSCOPE_API_KEY == "sk-your-api-key-here":
+        errors.append("请先在 .env 文件中设置有效的 DASHSCOPE_API_KEY")
+    if not TAXONOMY_FILE.exists():
+        errors.append(f"GPC taxonomy 文件未找到: {TAXONOMY_FILE}，请先运行下载脚本")
+    if errors:
+        raise RuntimeError("\n".join(errors))

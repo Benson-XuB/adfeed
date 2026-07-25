@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #fafaf9;
+  --bg-card: #ffffff;
+  --bg-muted: #f5f5f4;
+  --border: #e7e5e4;
+  --text: #1c1917;
+  --text-muted: #78716c;
+  --accent: #0ea5e9;
+  --accent-fg: #ffffff;
+  --success: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09;
+    --bg-card: #1c1917;
+    --bg-muted: #292524;
+    --border: #44403c;
+    --text: #fafaf9;
+    --text-muted: #a8a29e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Brutalist Swiss Utility Classes ── */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem; font-weight: 600; letter-spacing: 0.02em;
+  border: 2px solid var(--text);
+  background: var(--text); color: var(--bg);
+  cursor: pointer; transition: all 0.15s;
+  text-decoration: none;
+}
+.btn:hover { opacity: 0.85; }
+.btn:active { transform: scale(0.98); }
+.btn-outline { background: transparent; color: var(--text); }
+.btn-outline:hover { background: var(--text); color: var(--bg); }
+.btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+.tag {
+  display: inline-block;
+  padding: 0.125rem 0.5rem; border-radius: 0; font-size: 0.75rem;
+  font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  border: 1px solid var(--border);
+}
+.tag-success { border-color: var(--success); color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.tag-warn { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.tag-danger { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  padding: 1.5rem;
+}
+
+.input {
+  width: 100%; padding: 0.625rem 0.75rem; font-size: 0.9375rem;
+  background: var(--bg); border: 2px solid var(--border); color: var(--text);
+  font-family: var(--font-sans); outline: none;
+}
+.input:focus { border-color: var(--text); }
+
+.progress-bar {
+  height: 4px; background: var(--bg-muted); border-radius: 0;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 0.5s ease both; }
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }

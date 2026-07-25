@@ -1,0 +1,47 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Node
+node_modules/
+.next/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local databases (SQLite)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Output / uploads (generated runtime files)
+output/*
+!output/.gitkeep
+mock_excels/
+web/data/
+uploads/
+feeds/
+backend/
+frontend/
+
+# Sample data (binary Excel)
+*_realistic.xlsx
+
+# Terminals (Cursor IDE)
+terminals/
