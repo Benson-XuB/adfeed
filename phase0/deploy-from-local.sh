@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ──────────────────────────────────────────────────────────────
+#  AdFeed AI — 本地构建 + rsync 推送到服务器（解决服务器内存不足无法构建）
+#  ──────────────────────────────────────────────────────────────
+#
+#  配置（修改下面这行）：
+SERVER="deltfu.com"          # 你的服务器地址
+SSH_USER="admin"             # SSH 用户名
+REMOTE_DIR="/opt/adfeed"     # 服务器上项目目录
+#
+#  用法（在本机 Mac 上执行）：
+#    ./deploy-from-local.sh                        # 完整部署
+#    ./deploy-from-local.sh --no-build             # 跳过本地构建（.next 已存在）
+#    ./deploy-from-local.sh --backend-only         # 只更新后端 Python 代码
+#  ──────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NO_BUILD=false
+BACKEND_ONLY=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --no-build) NO_BUILD=true ;;
+        --backend-only) BACKEND_ONLY=true ;;
+    esac
+done
+
+echo "┌────────────────────────────────────────┐"
+echo "│  AdFeed AI — Local Build & Deploy     │"
+echo "│  Target: ${SSH_USER}@${SERVER}:${REMOTE_DIR}  │"
+echo "└────────────────────────────────────────┘"
+
+# ── Step 1: 本地构建 Next.js ──
+if [ "$BACKEND_ONLY" = false ] && [ "$NO_BUILD" = false ]; then
+    echo ""
+    echo "━━━ [1/5] Building Next.js locally (your Mac has enough RAM) ━━━"
+    cd "$SCRIPT_DIR/web"
+    npm run build
+    echo "  → .next is ready"
+fi
+
+# ── Step 2: 服务器上备份旧 .next 并删除 ──
+echo ""
+echo "━━━ [2/5] Preparing server ━━━"
+ssh "${SSH_USER}@${SERVER}" <<'ENDSSH'
+    sudo systemctl stop adfeed-web 2>/dev/null || true
+    # 清理旧构建（释放 inode / 空闲空间）
+    if [ -d /opt/adfeed/phase0/web/.next ]; then
+        rm -f /opt/adfeed/phase0/web/.next.old
+        cp -a /opt/adfeed/phase0/web/.next /opt/adfeed/phase0/web/.next.old 2>/dev/null || true
+        rm -rf /opt/adfeed/phase0/web/.next
+    fi
+    # 释放 swap 碎片
+    sudo swapoff /swapfile 2>/dev/null && sudo swapon /swapfile 2>/dev/null || true
+    echo "prep done"
+ENDSSH
+
+# ── Step 3: 服务器 git pull ──
+echo ""
+echo "━━━ [3/5] Pulling latest code on server ━━━"
+ssh "${SSH_USER}@${SERVER}" "cd ${REMOTE_DIR} && sudo git fetch origin && sudo git reset --hard origin/main"
+
+# ── Step 4: rsync 本地构建产物到服务器 ──
+if [ "$BACKEND_ONLY" = false ]; then
+    echo ""
+    echo "━━━ [4/5] rsync .next to server ━━━"
+    rsync -avz --delete "$SCRIPT_DIR/web/.next/" "${SSH_USER}@${SERVER}:${REMOTE_DIR}/phase0/web/.next/"
+    echo "  → .next synced"
+fi
+
+# ── Step 5: 重启服务 ──
+echo ""
+echo "━━━ [5/5] Restarting services ━━━"
+ssh "${SSH_USER}@${SERVER}" <<ENDSSH
+    # 确保 .next 权限正确
+    if [ -d ${REMOTE_DIR}/phase0/web/.next ]; then
+        sudo chown -R adfeed:adfeed ${REMOTE_DIR}/phase0/web/.next
+    fi
+    # 删除可能的旧 webapp.db
+    rm -f ${REMOTE_DIR}/phase0/data/webapp.db
+    # 重启
+    sudo systemctl restart adfeed-api
+    sudo systemctl restart adfeed-web
+    sleep 2
+    sudo systemctl status adfeed-api --no-pager -l | head -5
+    echo "---"
+    sudo systemctl status adfeed-web --no-pager -l | head -5
+ENDSSH
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Deploy complete!"
+echo "  Frontend: https://${SERVER}"
+echo "  API docs: https://${SERVER}/docs"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

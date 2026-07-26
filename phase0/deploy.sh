@@ -2,12 +2,13 @@
 set -euo pipefail
 
 # ──────────────────────────────────────
-#  AdFeed AI — 生产环境一键部署 / 重启
+#  AdFeed AI — 生产环境 Git Pull + 重启（后端）
 #  ──────────────────────────────────────
+#  注意：前端 .next 必须通过 deploy-from-local.sh 从 Mac 推送。
+#  此脚本仅处理后端代码拉取 + 重启。
+#
 #  在服务器上执行：
-#    ./deploy.sh              # 拉取最新代码 + 重启全部服务
-#    ./deploy.sh backend      # 只重启 FastAPI
-#    ./deploy.sh frontend     # 只重启 Next.js
+#    ./deploy.sh              # 拉取最新代码 + 重启后端
 #    ./deploy.sh pull-only    # 只拉代码不重启
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -28,16 +29,7 @@ install_python_deps() {
     pip install -r requirements.txt --quiet
 }
 
-# ── Step 3: 构建前端 ──
-build_frontend() {
-    echo ""
-    echo "━━━ Building Next.js frontend ━━━"
-    cd "$SCRIPT_DIR/web"
-    npm install --silent
-    npm run build
-}
-
-# ── Step 4: 重启后端（FastAPI） ──
+# ── Step 3: 重启后端（FastAPI） ──
 restart_backend() {
     echo ""
     echo "━━━ Restarting FastAPI backend ━━━"
@@ -120,36 +112,28 @@ reload_nginx() {
 # ══════════════════════════════════════
 
 case "$TARGET" in
-    all)
+    all|backend)
         pull
         install_python_deps
-        build_frontend
         restart_backend
-        restart_frontend
-        reload_nginx
         ;;
     pull-only)
         pull
         ;;
-    backend)
-        pull
-        install_python_deps
-        restart_backend
-        ;;
-    frontend)
-        pull
-        build_frontend
-        restart_frontend
-        ;;
     *)
-        echo "用法: $0 [all|backend|frontend|pull-only]"
+        echo "用法: $0 [all|pull-only]"
+        echo ""
+        echo "前端 .next 构建占用内存大，请在 Mac 本地运行："
+        echo "  ./deploy-from-local.sh"
         exit 1
         ;;
 esac
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Deploy complete ($TARGET)"
-echo "  Backend:  https://deltfu.com/docs"
-echo "  Frontend: https://deltfu.com"
+echo "  Backend deploy complete"
+echo "  API docs: https://deltfu.com/docs"
+echo ""
+echo "  前端如需更新，Mac 本地执行："
+echo "    ./deploy-from-local.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
