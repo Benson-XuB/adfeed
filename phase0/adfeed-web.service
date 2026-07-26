@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/adfeed-ai/phase0/web
+WorkingDirectory=/opt/adfeed/phase0/web
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=3

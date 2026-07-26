@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/adfeed-ai/phase0
-ExecStart=/usr/bin/python3 server.py --port 8000
+WorkingDirectory=/opt/adfeed/phase0
+ExecStart=/opt/adfeed/.venv/bin/python3 server.py --port 8000
 Restart=always
 RestartSec=3
 StandardOutput=append:/var/log/adfeed-api.log
