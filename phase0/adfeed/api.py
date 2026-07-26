@@ -23,7 +23,7 @@ from .config import DATA_DIR, OUTPUT_DIR
 
 # ── App ──
 
-app = FastAPI(title="AdFeed AI", version="0.3.0")
+app = FastAPI(title="AdFeed AI", version="0.3.0", request_max_size=50 * 1024 * 1024)
 
 app.add_middleware(
     CORSMiddleware,
