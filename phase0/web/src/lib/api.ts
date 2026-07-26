@@ -121,6 +121,7 @@ export interface JobSummary {
 }
 
 export interface JobDetail extends JobSummary {
+  preview_rows: Record<string, string>[];
   result_csv: string | null;
   error_msg: string | null;
   updated_at: string;

@@ -55,8 +55,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     filename      TEXT NOT NULL,
     file_hash     TEXT,
     country_mask  TEXT NOT NULL DEFAULT '["US"]',
-    status        TEXT DEFAULT 'uploaded',
+    status        TEXT DEFAULT 'analyzing',
     total_rows    INTEGER DEFAULT 0,
+    preview_json  TEXT,
     done_rows     INTEGER DEFAULT 0,
     ok_rows       INTEGER DEFAULT 0,
     fail_rows     INTEGER DEFAULT 0,
@@ -106,8 +107,9 @@ class Job:
     filename: str
     file_hash: Optional[str] = None
     country_mask: str = '["US"]'
-    status: str = "uploaded"
+    status: str = "analyzing"
     total_rows: int = 0
+    preview_json: Optional[str] = None
     done_rows: int = 0
     ok_rows: int = 0
     fail_rows: int = 0
@@ -249,7 +251,7 @@ def list_jobs(user_id: str, limit: int = 20) -> list[Job]:
 
 
 def update_job(job_id: str, **kwargs):
-    allowed = {"status", "total_rows", "done_rows", "ok_rows", "fail_rows",
+    allowed = {"status", "total_rows", "preview_json", "done_rows", "ok_rows", "fail_rows",
                "truncated", "result_csv", "error_msg"}
     sets = []
     vals = []
@@ -274,6 +276,7 @@ def _row_to_job(r) -> Job:
         id=r["id"], user_id=r["user_id"], filename=r["filename"],
         file_hash=r["file_hash"], country_mask=r["country_mask"],
         status=r["status"], total_rows=r["total_rows"],
+        preview_json=r["preview_json"],
         done_rows=r["done_rows"], ok_rows=r["ok_rows"],
         fail_rows=r["fail_rows"], truncated=bool(r["truncated"]),
         result_csv=r["result_csv"],

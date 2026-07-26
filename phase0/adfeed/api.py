@@ -153,6 +153,7 @@ ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv", ".txt"}
 async def upload_file(
     file: UploadFile = File(...),
     countries: str = Form('["US"]'),
+    background_tasks: BackgroundTasks = None,
     user: User = Depends(current_user),
 ):
     # 校验扩展名
@@ -179,29 +180,30 @@ async def upload_file(
     except json.JSONDecodeError:
         raise HTTPException(400, "countries 格式错误，应为 JSON 数组，如 [\"US\",\"DE\"]")
 
-    # 轻量预览：不解析全部行，只抓前 10 行 + 总行数
-    total_rows, preview_rows = _fast_preview(str(file_path))
-
-    # 创建任务
+    # 创建任务，状态为 analyzing
     job = create_job(user.id, file.filename, json.dumps(countries_parsed), file_hash)
 
-    update_job(job.id, total_rows=total_rows)
-
-    # 配额信息：告诉前端是否需要截断
-    will_truncate = user.quota_remaining < total_rows
-    processable = min(total_rows, user.quota_remaining)
+    # 后台异步分析文件（不阻塞上传响应）
+    background_tasks.add_task(_analyze_upload, job.id, str(file_path))
 
     return {
         "job_id": job.id,
         "filename": file.filename,
-        "total_rows": total_rows,
-        "preview_rows": preview_rows[:10],
         "countries": countries_parsed,
         "quota_remaining": user.quota_remaining,
         "quota_total": user.quota_total,
-        "will_truncate": will_truncate,
-        "processable_rows": processable,
+        "status": "analyzing",
     }
+
+
+def _analyze_upload(job_id: str, file_path: str):
+    """后台分析上传文件：统计行数 + 抓取预览（不阻塞上传响应）"""
+    try:
+        total_rows, preview_rows = _fast_preview(file_path)
+        update_job(job_id, status="uploaded", total_rows=total_rows,
+                   preview_json=json.dumps(preview_rows[:10], ensure_ascii=False))
+    except Exception as e:
+        update_job(job_id, status="failed", error_msg=f"文件分析失败: {e}")
 
 
 def _fast_preview(file_path: str) -> tuple[int, list[dict]]:
@@ -361,9 +363,18 @@ async def get_job_detail(job_id: str, user: User = Depends(current_user)):
     job = get_job(job_id)
     if not job or job.user_id != user.id:
         raise HTTPException(404, "任务不存在")
+
+    preview_rows = []
+    if job.preview_json:
+        try:
+            preview_rows = json.loads(job.preview_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     return {
         "id": job.id, "filename": job.filename, "status": job.status,
-        "total_rows": job.total_rows, "done_rows": job.done_rows,
+        "total_rows": job.total_rows, "preview_rows": preview_rows,
+        "done_rows": job.done_rows,
         "ok_rows": job.ok_rows, "fail_rows": job.fail_rows,
         "progress_pct": job.progress_pct,
         "truncated": job.truncated,

@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { uploadFile, UploadPreview } from "@/lib/api";
+import { uploadFile, UploadPreview, getJob, JobDetail } from "@/lib/api";
 import { processJob } from "@/lib/api";
 
 const COUNTRIES = [
@@ -22,13 +22,40 @@ export default function UploadPage() {
   const [selectedCountries, setSelectedCountries] = useState<string[]>(["US"]);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
+  const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const toggleCountry = (code: string) => {
     setSelectedCountries((prev) =>
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
     );
+  };
+
+  const pollUntilAnalyzed = async (jobId: string) => {
+    if (!token) return;
+    setAnalyzing(true);
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        const j = await getJob(jobId, token);
+        if (j.status === "uploaded") {
+          setJobDetail(j);
+          setAnalyzing(false);
+          return;
+        }
+        if (j.status === "failed") {
+          setError(j.error_msg || "File analysis failed");
+          setAnalyzing(false);
+          return;
+        }
+      } catch {
+        // continue polling
+      }
+    }
+    setError("File analysis timed out. Please try again.");
+    setAnalyzing(false);
   };
 
   const handleUpload = async () => {
@@ -38,10 +65,13 @@ export default function UploadPage() {
     try {
       const result = await uploadFile(file, selectedCountries, token);
       setPreview(result);
+      setUploading(false);
+      // 开始轮询，等后台分析完成
+      pollUntilAnalyzed(result.job_id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Upload failed");
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   const handleProcess = async () => {
@@ -55,6 +85,12 @@ export default function UploadPage() {
       setProcessing(false);
     }
   };
+
+  // 从 jobDetail 拿到实际的总行数和预览数据
+  const totalRows = jobDetail?.total_rows ?? 0;
+  const previewRows = jobDetail?.preview_rows ?? [];
+  const willTruncate = preview && totalRows > 0 && (preview.quota_remaining < totalRows);
+  const processableRows = Math.min(totalRows, preview?.quota_remaining ?? 0);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -168,21 +204,29 @@ export default function UploadPage() {
 
       {error && <div className="mt-4 p-3 border border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>}
 
-      {/* Preview */}
-      {preview && (
+      {/* Analyzing spinner */}
+      {analyzing && (
+        <div className="mt-6 flex items-center gap-3 text-stone-500">
+          <div className="w-5 h-5 border-2 border-stone-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm">Analyzing file...</span>
+        </div>
+      )}
+
+      {/* Preview (shown after analysis complete) */}
+      {preview && jobDetail && jobDetail.status === "uploaded" && (
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="font-bold">{preview.filename}</div>
               <div className="text-xs text-stone-400">
-                {preview.total_rows} rows detected · {preview.countries.join(", ")}
+                {totalRows} rows detected · {preview.countries.join(", ")}
               </div>
-              {preview.will_truncate && (
+              {willTruncate && (
                 <div className="mt-2 p-3 border border-amber-200 bg-amber-50 text-amber-800 text-sm rounded">
                   <strong>Quota limit</strong> — Your plan has{" "}
                   <strong>{preview.quota_remaining} of {preview.quota_total}</strong> rows remaining
-                  this month. Only the <strong>first {preview.processable_rows}</strong> of{" "}
-                  {preview.total_rows} rows will be processed.{" "}
+                  this month. Only the <strong>first {processableRows}</strong> of{" "}
+                  {totalRows} rows will be processed.{" "}
                   <Link href="/upgrade" className="underline font-bold text-amber-900">
                     Upgrade →
                   </Link> to process all.
@@ -190,22 +234,22 @@ export default function UploadPage() {
               )}
             </div>
             <div className="flex gap-2">
-              <button onClick={() => { setFile(null); setPreview(null); }} className="btn btn-outline btn-sm">
+              <button onClick={() => { setFile(null); setPreview(null); setJobDetail(null); }} className="btn btn-outline btn-sm">
                 Cancel
               </button>
               <button onClick={handleProcess} disabled={processing} className="btn btn-sm">
-                {processing ? "Starting..." : preview.will_truncate ? `Process first ${preview.processable_rows} →` : "Process all →"}
+                {processing ? "Starting..." : willTruncate ? `Process first ${processableRows} →` : "Process all →"}
               </button>
             </div>
           </div>
 
           {/* Preview table */}
-          {preview.preview_rows.length > 0 && (
+          {previewRows.length > 0 && (
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-stone-100 bg-stone-50">
-                    {Object.keys(preview.preview_rows[0] || {}).slice(0, 6).map((col) => (
+                    {Object.keys(previewRows[0] || {}).slice(0, 6).map((col) => (
                       <th key={col} className="px-4 py-2 text-left font-bold text-stone-400 tracking-wider uppercase">
                         {col}
                       </th>
@@ -213,7 +257,7 @@ export default function UploadPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.preview_rows.map((row, i) => (
+                  {previewRows.map((row, i) => (
                     <tr key={i} className="border-b border-stone-50">
                       {Object.values(row).slice(0, 6).map((val, j) => (
                         <td key={j} className="px-4 py-2 text-stone-600 max-w-[200px] truncate">
@@ -224,9 +268,9 @@ export default function UploadPage() {
                   ))}
                 </tbody>
               </table>
-              {preview.total_rows > 10 && (
+              {totalRows > 10 && (
                 <div className="px-4 py-2 text-xs text-stone-400">
-                  Showing 10 of {preview.total_rows} rows
+                  Showing 10 of {totalRows} rows
                 </div>
               )}
             </div>
