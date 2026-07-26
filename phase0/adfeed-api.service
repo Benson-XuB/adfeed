@@ -9,6 +9,7 @@ WorkingDirectory=/opt/adfeed/phase0
 ExecStart=/opt/adfeed/.venv/bin/python3 server.py --port 8000
 Restart=always
 RestartSec=3
+TimeoutStopSec=300
 StandardOutput=append:/var/log/adfeed-api.log
 StandardError=append:/var/log/adfeed-api.log
 

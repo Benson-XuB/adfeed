@@ -26,7 +26,7 @@ from .config import DATA_DIR, OUTPUT_DIR
 
 # ── App ──
 
-app = FastAPI(title="AdFeed AI", version="0.3.0", request_max_size=50 * 1024 * 1024)
+app = FastAPI(title="AdFeed AI", version="0.3.0", request_max_size=200 * 1024 * 1024)
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,7 +188,7 @@ async def upload_file(
     t1 = time.time()
     bytes_total = 0
     with open(file_path, "wb") as f:
-        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+        while chunk := await file.read(4 * 1024 * 1024):  # 4MB chunks
             f.write(chunk)
             h.update(chunk)
             bytes_total += len(chunk)

@@ -104,6 +104,8 @@ export async function uploadFile(
     xhr.open("POST", `${API_BASE}/api/upload`);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.withCredentials = true;
+    // 大文件上传超时：10 分钟
+    xhr.timeout = 10 * 60 * 1000;
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {
@@ -125,6 +127,7 @@ export async function uploadFile(
     });
 
     xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+    xhr.addEventListener("timeout", () => reject(new Error("Upload timed out — file too large or network too slow. Please try again.")));
     xhr.send(fd);
   });
 }
