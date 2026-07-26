@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -153,7 +153,6 @@ ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv", ".txt"}
 async def upload_file(
     file: UploadFile = File(...),
     countries: str = Form('["US"]'),
-    background_tasks: BackgroundTasks = None,
     user: User = Depends(current_user),
 ):
     # 校验扩展名
@@ -183,8 +182,9 @@ async def upload_file(
     # 创建任务，状态为 analyzing
     job = create_job(user.id, file.filename, json.dumps(countries_parsed), file_hash)
 
-    # 后台异步分析文件（不阻塞上传响应）
-    background_tasks.add_task(_analyze_upload, job.id, str(file_path))
+    # 后台线程分析文件（不阻塞上传响应）
+    import threading
+    threading.Thread(target=_analyze_upload, args=(job.id, str(file_path)), daemon=True).start()
 
     return {
         "job_id": job.id,
@@ -318,7 +318,6 @@ async def _process_job(job_id: str, user_id: str, file_path: str, countries: lis
 @app.post("/api/jobs/{job_id}/process")
 async def start_process(
     job_id: str,
-    background_tasks: BackgroundTasks,
     user: User = Depends(current_user),
 ):
     job = get_job(job_id)
@@ -342,7 +341,8 @@ async def start_process(
     if not file_path:
         raise HTTPException(404, "上传文件未找到")
 
-    background_tasks.add_task(_process_job, job_id, user.id, file_path, countries)
+    import threading
+    threading.Thread(target=_process_job, args=(job_id, user.id, file_path, countries), daemon=True).start()
     return {"job_id": job_id, "status": "processing"}
 
 
