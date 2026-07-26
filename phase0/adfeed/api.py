@@ -282,7 +282,12 @@ async def _process_job(job_id: str, user_id: str, file_path: str, countries: lis
         # 调用 pipeline（配额不足时自动截断）
         from .pipeline import run as pipeline_run
         processable = min(user.quota_remaining, job.total_rows)
-        result = pipeline_run(excel_path=file_path, countries=countries, max_rows=processable)
+
+        def progress_callback(done: int, total: int):
+            update_job(job_id, done_rows=done, total_rows=total)
+
+        result = pipeline_run(excel_path=file_path, countries=countries,
+                              max_rows=processable, progress_callback=progress_callback)
 
         ok_count = result.get("ai_full_clean", 0) + result.get("partial_reclean", 0)
         total_skus = result.get("total_sku", 0)
