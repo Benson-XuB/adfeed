@@ -1,5 +1,5 @@
 """FastAPI 路由 — 上传、处理、导出、账户"""
-import os, json, uuid, tempfile, asyncio
+import os, json, uuid, tempfile, asyncio, time, logging
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -9,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("adfeed-api")
 
 from .db import (
     User, Job, get_user, list_jobs, get_job, create_job, update_job,
@@ -39,6 +42,20 @@ app.add_middleware(
 )
 
 security = HTTPBearer(auto_error=False)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    elapsed_ms = int((time.time() - start) * 1000)
+    logger.info(f"{request.method} {request.url.path} → {response.status_code} ({elapsed_ms}ms)")
+    return response
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
 
 
 # ── Models ──
@@ -168,11 +185,16 @@ async def upload_file(
 
     import hashlib
     h = hashlib.md5()
+    t1 = time.time()
+    bytes_total = 0
     with open(file_path, "wb") as f:
         while chunk := await file.read(1024 * 1024):  # 1MB chunks
             f.write(chunk)
             h.update(chunk)
+            bytes_total += len(chunk)
+    t2 = time.time()
     file_hash = h.hexdigest()
+    logger.info(f"upload_file write_disk: {bytes_total/1024/1024:.1f} MB in {(t2-t1)*1000:.0f}ms ({bytes_total/(t2-t1)/1024/1024:.1f} MB/s)")
 
     # 校验 country_mask 格式
     try:
@@ -200,9 +222,12 @@ async def upload_file(
 def _analyze_upload(job_id: str, file_path: str):
     """后台分析上传文件：统计行数 + 抓取预览（不阻塞上传响应）"""
     try:
+        t0 = time.time()
+        logger.info(f"_analyze_upload start: job={job_id[:8]}")
         total_rows, preview_rows = _fast_preview(file_path)
         update_job(job_id, status="uploaded", total_rows=total_rows,
                    preview_json=json.dumps(preview_rows[:10], ensure_ascii=False))
+        logger.info(f"_analyze_upload done: {total_rows} rows in {(time.time()-t0)*1000:.0f}ms")
     except Exception as e:
         update_job(job_id, status="failed", error_msg=f"文件分析失败: {e}")
 
@@ -210,11 +235,16 @@ def _analyze_upload(job_id: str, file_path: str):
 def _fast_preview(file_path: str) -> tuple[int, list[dict]]:
     """轻量预览：用 openpyxl read_only 只读前 10 行 + 统计总行数。
     201MB Excel 也能秒级完成。"""
+    t0 = time.time()
     ext = Path(file_path).suffix.lower()
     try:
         if ext in (".xlsx",):
             import openpyxl
+            logger.info(f"_fast_preview opening xlsx: {file_path}")
+            t1 = time.time()
             wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            t2 = time.time()
+            logger.info(f"_fast_preview xlsx open: {(t2-t1)*1000:.0f}ms")
             ws = wb.active
             header = None
             preview = []
@@ -229,6 +259,7 @@ def _fast_preview(file_path: str) -> tuple[int, list[dict]]:
                         preview.append({header[i]: vals[i] for i in range(min(len(vals), len(header)))})
                 total += 1
             wb.close()
+            logger.info(f"_fast_preview xlsx done: {total-1} rows in {(time.time()-t0)*1000:.0f}ms total")
             return total - 1, preview[1:] if len(preview) > 1 else []
         elif ext in (".xls",):
             return _fast_preview_xls_or_csv(file_path, engine="xls")
@@ -270,10 +301,14 @@ def _fast_preview_xls_or_csv(file_path: str, engine: str = "csv") -> tuple[int, 
 
 async def _process_job(job_id: str, user_id: str, file_path: str, countries: list[str]):
     """后台处理任务"""
+    t0 = time.time()
+    logger.info(f"_process_job start: job={job_id[:8]}, file={os.path.basename(file_path)}")
     try:
         update_job(job_id, status="processing")
         user = get_user(user_id)
         job = get_job(job_id)
+        file_size_mb = os.path.getsize(file_path) / 1024 / 1024 if os.path.exists(file_path) else 0
+        logger.info(f"_process_job file_size={file_size_mb:.1f}MB job.total_rows={job.total_rows}")
 
         # 配额为 0 时直接拒绝
         if user.quota_remaining <= 0:
@@ -287,8 +322,10 @@ async def _process_job(job_id: str, user_id: str, file_path: str, countries: lis
         def progress_callback(done: int, total: int):
             update_job(job_id, done_rows=done, total_rows=total)
 
+        t_pipeline = time.time()
         result = pipeline_run(excel_path=file_path, countries=countries,
                               max_rows=processable, progress_callback=progress_callback)
+        logger.info(f"_process_job pipeline done in {(time.time()-t_pipeline)*1000:.0f}ms")
 
         ok_count = result.get("ai_full_clean", 0) + result.get("partial_reclean", 0)
         total_skus = result.get("total_sku", 0)
