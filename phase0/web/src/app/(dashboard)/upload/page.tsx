@@ -21,6 +21,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [selectedCountries, setSelectedCountries] = useState<string[]>(["US"]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
   const [jobDetail, setJobDetail] = useState<JobDetail | null>(null);
   const [error, setError] = useState("");
@@ -62,8 +63,9 @@ export default function UploadPage() {
     if (!file || !token) return;
     setUploading(true);
     setError("");
+    setUploadProgress(0);
     try {
-      const result = await uploadFile(file, selectedCountries, token);
+      const result = await uploadFile(file, selectedCountries, token, setUploadProgress);
       setPreview(result);
       setUploading(false);
       // 开始轮询，等后台分析完成
@@ -189,13 +191,29 @@ export default function UploadPage() {
       {/* Actions */}
       {file && !preview && (
         <div className="mt-4">
-          <button
-            onClick={handleUpload}
-            disabled={uploading || selectedCountries.length === 0}
-            className="btn w-full justify-center py-3 text-base"
-          >
-            {uploading ? "Analyzing..." : `Upload & preview`}
-          </button>
+          {uploading && uploadProgress > 0 ? (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs text-stone-500">
+                <span>Uploading {file.name}</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-stone-800 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-stone-400">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
+            </div>
+          ) : (
+            <button
+              onClick={handleUpload}
+              disabled={uploading || selectedCountries.length === 0}
+              className="btn w-full justify-center py-3 text-base"
+            >
+              {uploading ? "Uploading..." : `Upload & preview`}
+            </button>
+          )}
           {selectedCountries.length === 0 && (
             <p className="text-xs text-red-500 mt-2">Select at least one target country.</p>
           )}

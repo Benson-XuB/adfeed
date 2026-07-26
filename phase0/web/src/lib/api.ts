@@ -88,21 +88,45 @@ export interface UploadPreview {
   processable_rows: number;
 }
 
-export async function uploadFile(file: File, countries: string[], token: string): Promise<UploadPreview> {
+export async function uploadFile(
+  file: File,
+  countries: string[],
+  token: string,
+  onProgress?: (pct: number) => void
+): Promise<UploadPreview> {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("countries", JSON.stringify(countries));
-  const res = await fetch(`${API_BASE}/api/upload`, {
-    method: "POST",
-    body: fd,
-    headers: { Authorization: `Bearer ${token}` },
-    credentials: "include",
+
+  // 用 XMLHttpRequest 替代 fetch 以获得上传进度
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/api/upload`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data);
+        } else {
+          reject(new Error(data.detail || `HTTP ${xhr.status}`));
+        }
+      } catch {
+        reject(new Error("Invalid response"));
+      }
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+    xhr.send(fd);
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
-    throw new Error(err.detail);
-  }
-  return res.json();
 }
 
 // ── Jobs ──
