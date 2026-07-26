@@ -1,0 +1,16 @@
+[Unit]
+Description=AdFeed AI — Next.js Frontend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/adfeed-ai/phase0/web
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/adfeed-web.log
+StandardError=append:/var/log/adfeed-web.log
+
+[Install]
+WantedBy=multi-user.target
