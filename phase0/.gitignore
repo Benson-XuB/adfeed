@@ -22,3 +22,6 @@ data/*.faiss
 
 # OS
 .DS_Store
+phase0/data/chroma_gpc/
+phase0/data/webapp.db*
+phase0/data/product_memory.db*
