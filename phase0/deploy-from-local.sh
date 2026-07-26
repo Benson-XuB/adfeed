@@ -70,9 +70,31 @@ if [ "$BACKEND_ONLY" = false ]; then
     echo "  → .next synced"
 fi
 
-# ── Step 5: 重启服务 ──
+# ── Step 5: 部署 Nginx 上传优化配置 ──
 echo ""
-echo "━━━ [5/5] Restarting services ━━━"
+echo "━━━ [5/6] Deploying Nginx config ━━━"
+ssh "${SSH_USER}@${SERVER}" <<'ENDSSH'
+    # 检查是否已有 proxy_request_buffering 配置
+    if ! grep -q 'proxy_request_buffering off' /etc/nginx/sites-enabled/deltfu.com 2>/dev/null; then
+        sudo sed -i '/proxy_pass http:\/\/127.0.0.1:8000/a \        proxy_request_buffering off;' /etc/nginx/sites-enabled/deltfu.com
+        echo "  → added proxy_request_buffering off"
+    else
+        echo "  → proxy_request_buffering already configured"
+    fi
+    # 确保 client_max_body_size 200M
+    if ! grep -q 'client_max_body_size 200M' /etc/nginx/sites-enabled/deltfu.com 2>/dev/null; then
+        sudo sed -i '/server {/a \    client_max_body_size 200M;' /etc/nginx/sites-enabled/deltfu.com
+        echo "  → added client_max_body_size 200M"
+    else
+        echo "  → client_max_body_size already configured"
+    fi
+    sudo nginx -t && sudo systemctl reload nginx
+    echo "  → nginx reloaded"
+ENDSSH
+
+# ── Step 6: 重启服务 ──
+echo ""
+echo "━━━ [6/6] Restarting services ━━━"
 ssh "${SSH_USER}@${SERVER}" <<ENDSSH
     # 确保 .next 权限正确
     if [ -d ${REMOTE_DIR}/phase0/web/.next ]; then
@@ -80,6 +102,8 @@ ssh "${SSH_USER}@${SERVER}" <<ENDSSH
     fi
     # 删除可能的旧 webapp.db
     rm -f ${REMOTE_DIR}/phase0/data/webapp.db
+    # daemon-reload（service 文件可能有更新）
+    sudo systemctl daemon-reload
     # 重启
     sudo systemctl restart adfeed-api
     sudo systemctl restart adfeed-web
