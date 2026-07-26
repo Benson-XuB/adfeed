@@ -52,7 +52,7 @@ from .cultural_context import season_for_date, resolve_category, get_search_pref
 
 
 def run(excel_path: str = None, countries: list[str] = None,
-        force: bool = False, use_mock: bool = False) -> dict:
+        force: bool = False, use_mock: bool = False, max_rows: int = None) -> dict:
     """完整清洗流程入口 v2.1 — 多国原生语种版本
 
     Args:
@@ -60,6 +60,7 @@ def run(excel_path: str = None, countries: list[str] = None,
         countries: 目标国家列表，默认 ["US"]
         force: 跳过去重强制执行
         use_mock: 使用模拟数据
+        max_rows: 最多处理行数（配额截断），None = 全部
     """
     if countries is None:
         countries = [DEFAULT_COUNTRY]
@@ -85,7 +86,11 @@ def run(excel_path: str = None, countries: list[str] = None,
                 "previous_at": dedup_result["previous_at"],
             }
         df = pd.read_excel(excel_path)
-        print(f"  Loaded: {excel_path} ({len(df)} SKU)")
+        if max_rows and len(df) > max_rows:
+            df = df.head(max_rows)
+            print(f"  Loaded: {excel_path} ({len(df)} SKU) — quota limit applied")
+        else:
+            print(f"  Loaded: {excel_path} ({len(df)} SKU)")
         file_md5 = dedup_result["md5"]
     else:
         if excel_path and not use_mock:

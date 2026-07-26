@@ -82,6 +82,10 @@ export interface UploadPreview {
   total_rows: number;
   preview_rows: Record<string, string>[];
   countries: string[];
+  quota_remaining: number;
+  quota_total: number;
+  will_truncate: boolean;
+  processable_rows: number;
 }
 
 export async function uploadFile(file: File, countries: string[], token: string): Promise<UploadPreview> {
@@ -112,10 +116,12 @@ export interface JobSummary {
   ok_rows: number;
   fail_rows: number;
   progress_pct: number;
+  truncated: boolean;
   created_at: string;
 }
 
 export interface JobDetail extends JobSummary {
+  result_csv: string | null;
   error_msg: string | null;
   updated_at: string;
 }
@@ -130,6 +136,17 @@ export async function getJob(id: string, token: string): Promise<JobDetail> {
 
 export async function processJob(id: string, token: string): Promise<void> {
   await api(`/api/jobs/${id}/process`, { method: "POST", token });
+}
+
+export interface JobResults {
+  rows: Record<string, string>[];
+  source: string;
+  total?: number;
+  message?: string;
+}
+
+export async function getJobResults(id: string, token: string): Promise<JobResults> {
+  return api(`/api/jobs/${id}/results`, { token });
 }
 
 // ── Feeds ──

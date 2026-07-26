@@ -517,6 +517,25 @@ def get_stats() -> dict:
     }
 
 
+def get_recent(limit: int = 20) -> list[dict]:
+    """获取最近处理的商品结果（用于 Web 页面结果展示）"""
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT * FROM product_memory ORDER BY updated_at DESC LIMIT ?",
+        (limit,)
+    ).fetchall()
+    cols = [d[0] for d in conn.execute("PRAGMA table_info(product_memory)").fetchall()]
+    conn.close()
+    results = []
+    for row in rows:
+        item = dict(zip(cols, row))
+        item["optimized_titles"] = _safe_json_loads(item.get("optimized_titles"))
+        item["ai_tags_by_lang"] = _safe_json_loads(item.get("ai_tags_by_lang"))
+        item["description_snippets"] = _safe_json_loads(item.get("description_snippets"))
+        results.append(item)
+    return results
+
+
 def batch_process(products: list[dict]) -> dict:
     result = {"new_products": [], "partial_reclean": [], "price_updates": [], "skipped": [], "stats": {"total": len(products)}}
     for p in products:

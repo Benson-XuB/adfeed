@@ -160,13 +160,18 @@ async def upload_file(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(400, f"不支持的文件类型: {ext}。支持: {', '.join(ALLOWED_EXTENSIONS)}")
 
-    # 保存文件
+    # 流式保存文件（不一次性加载 200MB 到内存）
     file_id = str(uuid.uuid4())
     safe_name = f"{file_id}{ext}"
     file_path = UPLOAD_DIR / safe_name
 
-    content = await file.read()
-    file_path.write_bytes(content)
+    import hashlib
+    h = hashlib.md5()
+    with open(file_path, "wb") as f:
+        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            f.write(chunk)
+            h.update(chunk)
+    file_hash = h.hexdigest()
 
     # 校验 country_mask 格式
     try:
@@ -174,30 +179,17 @@ async def upload_file(
     except json.JSONDecodeError:
         raise HTTPException(400, "countries 格式错误，应为 JSON 数组，如 [\"US\",\"DE\"]")
 
-    # 计算 file hash
-    import hashlib
-    file_hash = hashlib.md5(content).hexdigest()
+    # 轻量预览：不解析全部行，只抓前 10 行 + 总行数
+    total_rows, preview_rows = _fast_preview(str(file_path))
 
     # 创建任务
     job = create_job(user.id, file.filename, json.dumps(countries_parsed), file_hash)
 
-    # 尝试用 _ingest_universal 解析文件，返回预览
-    import importlib.util, importlib
-    # 动态导入 _ingest_universal.py（不在 adfeed 包内）
-    ingest_path = Path(__file__).resolve().parent.parent / "_ingest_universal.py"
-    mod_name = f"_ingest_universal_{file_id[:8]}"
-    spec = importlib.util.spec_from_file_location(mod_name, ingest_path)
-    ingest_mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(ingest_mod)
-    raw_rows = ingest_mod.read_any(str(file_path))
-    total_rows = len(raw_rows) - 1 if raw_rows else 0
-    preview_rows = []
-    for r in raw_rows[1:11]:
-        preview_rows.append({
-            col: r.get(col, "") for col in (raw_rows[0] if raw_rows else {})
-        })
-
     update_job(job.id, total_rows=total_rows)
+
+    # 配额信息：告诉前端是否需要截断
+    will_truncate = user.quota_remaining < total_rows
+    processable = min(total_rows, user.quota_remaining)
 
     return {
         "job_id": job.id,
@@ -205,7 +197,70 @@ async def upload_file(
         "total_rows": total_rows,
         "preview_rows": preview_rows[:10],
         "countries": countries_parsed,
+        "quota_remaining": user.quota_remaining,
+        "quota_total": user.quota_total,
+        "will_truncate": will_truncate,
+        "processable_rows": processable,
     }
+
+
+def _fast_preview(file_path: str) -> tuple[int, list[dict]]:
+    """轻量预览：用 openpyxl read_only 只读前 10 行 + 统计总行数。
+    201MB Excel 也能秒级完成。"""
+    ext = Path(file_path).suffix.lower()
+    try:
+        if ext in (".xlsx",):
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            ws = wb.active
+            header = None
+            preview = []
+            total = 0
+            for row in ws.iter_rows(values_only=True):
+                vals = [str(c) if c is not None else "" for c in row]
+                if header is None:
+                    header = [chr(65 + i) for i in range(len(vals))]
+                    preview.append({header[i]: vals[i] for i in range(len(vals))})
+                else:
+                    if total < 10:
+                        preview.append({header[i]: vals[i] for i in range(min(len(vals), len(header)))})
+                total += 1
+            wb.close()
+            return total - 1, preview[1:] if len(preview) > 1 else []
+        elif ext in (".xls",):
+            return _fast_preview_xls_or_csv(file_path, engine="xls")
+        else:
+            return _fast_preview_xls_or_csv(file_path, engine="csv")
+    except Exception:
+        return 0, []
+
+
+def _fast_preview_xls_or_csv(file_path: str, engine: str = "csv") -> tuple[int, list[dict]]:
+    if engine == "xls":
+        import xlrd
+        wb = xlrd.open_workbook(file_path)
+        ws = wb.sheet_by_index(0)
+        header = {chr(65 + ci): str(ws.cell_value(0, ci)).strip() for ci in range(ws.ncols)}
+        preview = []
+        for ri in range(1, min(ws.nrows, 11)):
+            preview.append({chr(65 + ci): str(ws.cell_value(ri, ci)).strip() for ci in range(ws.ncols)})
+        return ws.nrows - 1, preview
+    else:
+        import csv
+        # 先数行数（只扫描不解析）
+        with open(file_path, encoding="utf-8", errors="replace") as f:
+            total = sum(1 for _ in f) - 1  # minus header
+        # 再读前 10 行
+        with open(file_path, encoding="utf-8", errors="replace") as f:
+            reader = csv.reader(f)
+            header_row = next(reader, [])
+            header = {chr(65 + i): header_row[i] for i in range(len(header_row))}
+            preview = []
+            for i, row in enumerate(reader):
+                if i >= 10:
+                    break
+                preview.append({chr(65 + j): row[j] for j in range(min(len(row), len(header)))})
+        return total, preview
 
 
 # ═══════════════ Processing ═══════════════
@@ -215,28 +270,39 @@ async def _process_job(job_id: str, user_id: str, file_path: str, countries: lis
     try:
         update_job(job_id, status="processing")
         user = get_user(user_id)
-
-        # 检查配额
         job = get_job(job_id)
-        if user.quota_remaining < job.total_rows:
-            update_job(job_id, status="failed", error_msg=f"配额不足 (剩余 {user.quota_remaining}, 需要 {job.total_rows})")
+
+        # 配额为 0 时直接拒绝
+        if user.quota_remaining <= 0:
+            update_job(job_id, status="failed", error_msg="Monthly quota exhausted. Please upgrade to continue.")
             return
 
-        # 调用 pipeline
+        # 调用 pipeline（配额不足时自动截断）
         from .pipeline import run as pipeline_run
-        result = pipeline_run(excel_path=file_path, countries=countries)
+        processable = min(user.quota_remaining, job.total_rows)
+        result = pipeline_run(excel_path=file_path, countries=countries, max_rows=processable)
 
-        ok_count = result.get("optimized", 0)
-        fail_count = result.get("total_skus", 0) - ok_count
+        ok_count = result.get("ai_full_clean", 0) + result.get("partial_reclean", 0)
+        total_skus = result.get("total_sku", 0)
+        done = ok_count + result.get("skipped_old", 0) + result.get("price_updated", 0)
+        fail_count = total_skus - done
+
+        # 复制 comparison report 到 job 专属文件，供结果页展示
+        from shutil import copyfile
+        from .config import COMPARISON_REPORT
+        job_report = OUTPUT_DIR / f"job_{job_id[:8]}_report.xlsx"
+        if COMPARISON_REPORT.exists():
+            copyfile(str(COMPARISON_REPORT), str(job_report))
 
         increment_quota(user_id, ok_count)
         update_job(
             job_id,
             status="completed",
-            done_rows=result.get("total_skus", 0),
+            done_rows=done,
             ok_rows=ok_count,
             fail_rows=max(0, fail_count),
-            result_csv=str(OUTPUT_DIR / "summary.json"),
+            result_csv=str(job_report),
+            truncated=job.total_rows > processable,
         )
     except Exception as e:
         update_job(job_id, status="failed", error_msg=str(e))
@@ -300,9 +366,47 @@ async def get_job_detail(job_id: str, user: User = Depends(current_user)):
         "total_rows": job.total_rows, "done_rows": job.done_rows,
         "ok_rows": job.ok_rows, "fail_rows": job.fail_rows,
         "progress_pct": job.progress_pct,
+        "truncated": job.truncated,
+        "result_csv": job.result_csv,
         "error_msg": job.error_msg,
         "created_at": job.created_at, "updated_at": job.updated_at,
     }
+
+
+@app.get("/api/jobs/{job_id}/results")
+async def get_job_results(job_id: str, user: User = Depends(current_user)):
+    """返回 job 的处理结果预览（前 20 条）"""
+    import openpyxl
+    job = get_job(job_id)
+    if not job or job.user_id != user.id:
+        raise HTTPException(404, "任务不存在")
+    if job.status != "completed":
+        return {"rows": [], "message": "任务尚未完成"}
+
+    report_path = Path(job.result_csv) if job.result_csv else None
+    if not report_path or not report_path.exists():
+        # 回退：尝试从 product_memory 获取最新结果
+        from .product_memory import get_recent as get_recent_products
+        rows = get_recent_products(limit=20)
+        return {"rows": rows, "source": "product_memory"}
+
+    try:
+        wb = openpyxl.load_workbook(str(report_path), read_only=True, data_only=True)
+        ws = wb.active
+        rows = []
+        headers = []
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            vals = [str(c) if c is not None else "" for c in row]
+            if i == 0:
+                headers = vals
+            else:
+                rows.append({headers[j]: vals[j] for j in range(min(len(vals), len(headers)))})
+                if len(rows) >= 20:
+                    break
+        wb.close()
+        return {"rows": rows, "source": "report", "total": len(rows)}
+    except Exception:
+        return {"rows": [], "error": "无法读取结果文件"}
 
 
 # ═══════════════ Feed Export ═══════════════

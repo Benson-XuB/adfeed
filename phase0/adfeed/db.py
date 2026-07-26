@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     done_rows     INTEGER DEFAULT 0,
     ok_rows       INTEGER DEFAULT 0,
     fail_rows     INTEGER DEFAULT 0,
+    truncated     INTEGER DEFAULT 0,
     result_csv    TEXT,
     error_msg     TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -110,6 +111,7 @@ class Job:
     done_rows: int = 0
     ok_rows: int = 0
     fail_rows: int = 0
+    truncated: bool = False
     result_csv: Optional[str] = None
     error_msg: Optional[str] = None
     created_at: str = ""
@@ -248,13 +250,16 @@ def list_jobs(user_id: str, limit: int = 20) -> list[Job]:
 
 def update_job(job_id: str, **kwargs):
     allowed = {"status", "total_rows", "done_rows", "ok_rows", "fail_rows",
-               "result_csv", "error_msg"}
+               "truncated", "result_csv", "error_msg"}
     sets = []
     vals = []
     for k, v in kwargs.items():
         if k in allowed:
             sets.append(f"{k} = ?")
-            vals.append(v)
+            if k == "truncated":
+                vals.append(1 if v else 0)
+            else:
+                vals.append(v)
     if not sets:
         return
     sets.append("updated_at = datetime('now')")
@@ -270,7 +275,8 @@ def _row_to_job(r) -> Job:
         file_hash=r["file_hash"], country_mask=r["country_mask"],
         status=r["status"], total_rows=r["total_rows"],
         done_rows=r["done_rows"], ok_rows=r["ok_rows"],
-        fail_rows=r["fail_rows"], result_csv=r["result_csv"],
+        fail_rows=r["fail_rows"], truncated=bool(r["truncated"]),
+        result_csv=r["result_csv"],
         error_msg=r["error_msg"],
         created_at=r["created_at"], updated_at=r["updated_at"],
     )

@@ -65,9 +65,20 @@ export default function UploadPage() {
   return (
     <div>
       <h1 className="text-2xl font-black tracking-tight mb-2">Upload</h1>
-      <p className="text-sm text-stone-500 mb-8">
+      <p className="text-sm text-stone-500 mb-4">
         Drop an Excel, CSV, or text file from any 1688 supplier, ERP, or marketplace.
       </p>
+
+      {/* Quota indicator */}
+      {user && user.quota_remaining > 0 && (
+        <div className="flex items-center gap-2 mb-6 text-xs text-stone-400">
+          <span>Quota: {user.quota_used}/{user.quota_total} rows used</span>
+          <span className="w-24 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+            <span className="block h-full bg-amber-400 rounded-full"
+              style={{ width: `${Math.min(100, (user.quota_used / user.quota_total) * 100)}%` }} />
+          </span>
+        </div>
+      )}
 
       {/* Quota exhausted warning */}
       {user && user.quota_remaining <= 0 && (
@@ -166,13 +177,24 @@ export default function UploadPage() {
               <div className="text-xs text-stone-400">
                 {preview.total_rows} rows detected · {preview.countries.join(", ")}
               </div>
+              {preview.will_truncate && (
+                <div className="mt-2 p-3 border border-amber-200 bg-amber-50 text-amber-800 text-sm rounded">
+                  <strong>Quota limit</strong> — Your plan has{" "}
+                  <strong>{preview.quota_remaining} of {preview.quota_total}</strong> rows remaining
+                  this month. Only the <strong>first {preview.processable_rows}</strong> of{" "}
+                  {preview.total_rows} rows will be processed.{" "}
+                  <Link href="/upgrade" className="underline font-bold text-amber-900">
+                    Upgrade →
+                  </Link> to process all.
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => { setFile(null); setPreview(null); }} className="btn btn-outline btn-sm">
                 Cancel
               </button>
               <button onClick={handleProcess} disabled={processing} className="btn btn-sm">
-                {processing ? "Starting..." : "Process all →"}
+                {processing ? "Starting..." : preview.will_truncate ? `Process first ${preview.processable_rows} →` : "Process all →"}
               </button>
             </div>
           </div>
