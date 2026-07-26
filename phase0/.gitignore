@@ -22,6 +22,9 @@ data/*.faiss
 
 # OS
 .DS_Store
-phase0/data/chroma_gpc/
-phase0/data/webapp.db*
-phase0/data/product_memory.db*
+
+# Runtime databases
+data/chroma_gpc/
+data/webapp.db*
+data/product_memory.db*
+data/dedup_lock.db*
