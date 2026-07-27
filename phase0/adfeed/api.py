@@ -16,6 +16,7 @@ logger = logging.getLogger("adfeed-api")
 from .db import (
     User, Job, get_user, list_jobs, get_job, create_job, update_job,
     get_user_by_email, increment_quota,
+    get_shopify_connection, delete_shopify_connection,
 )
 from .auth import (
     create_jwt, decode_jwt, google_login, send_magic_link_email,
@@ -555,6 +556,158 @@ async def activate_subscription(
         "plan": plan_name,
         "quota_total": quota,
     }
+
+
+# ═══════════════ Shopify Integration ═══════════════
+
+from .shopify_client import (
+    get_shopify_auth_url, fetch_shopify_products, connect_shopify_store,
+)
+
+
+class ShopifyConnectBody(BaseModel):
+    shop_domain: str
+    code: str
+
+
+class ShopifyProcessBody(BaseModel):
+    product_ids: list[str]
+    countries: list[str] = ["US"]
+
+
+@app.get("/api/shopify/status")
+async def shopify_status(user: User = Depends(current_user)):
+    """查询用户是否已连接 Shopify"""
+    conn = get_shopify_connection(user.id)
+    if conn:
+        return {
+            "connected": True,
+            "shop_domain": conn.shop_domain,
+            "shop_name": conn.shop_name,
+            "connected_at": conn.created_at,
+        }
+    return {"connected": False}
+
+
+@app.get("/api/shopify/auth-url")
+async def shopify_auth_url(shop: str = ""):
+    """获取 Shopify OAuth 授权 URL"""
+    if not shop:
+        raise HTTPException(400, "请提供 Shopify 店铺域名，如 mystore")
+    url = get_shopify_auth_url(shop)
+    return {"url": url}
+
+
+@app.get("/api/shopify/callback")
+async def shopify_callback(shop: str = "", code: str = ""):
+    """Shopify OAuth 回调 — 换 token 并存储"""
+    if not shop or not code:
+        raise HTTPException(400, "缺少 shop 或 code 参数")
+
+    # 这里需要从 cookie 或 session 获取用户
+    # 简化处理：要求前端在 callback 页面手动调用 /api/shopify/connect
+    return {"shop": shop, "code": code, "message": "请使用前端完成连接"}
+
+
+@app.post("/api/shopify/connect")
+async def shopify_connect(body: ShopifyConnectBody, user: User = Depends(current_user)):
+    """连接 Shopify 店铺（前端拿到 code 后调用）"""
+    result = await connect_shopify_store(user.id, body.shop_domain, body.code)
+    if not result:
+        raise HTTPException(400, "Shopify 授权失败，请检查店铺域名和授权码")
+    return result
+
+
+@app.post("/api/shopify/disconnect")
+async def shopify_disconnect(user: User = Depends(current_user)):
+    """断开 Shopify 连接"""
+    deleted = delete_shopify_connection(user.id)
+    return {"ok": deleted}
+
+
+@app.get("/api/shopify/products")
+async def shopify_products(
+    page_info: str = "",
+    limit: int = 50,
+    user: User = Depends(current_user),
+):
+    """拉取 Shopify 产品列表"""
+    conn = get_shopify_connection(user.id)
+    if not conn:
+        raise HTTPException(400, "请先连接 Shopify 店铺")
+
+    result = await fetch_shopify_products(
+        shop_domain=conn.shop_domain,
+        access_token=conn.access_token,
+        limit=limit,
+        page_info=page_info or None,
+    )
+    return result
+
+
+@app.post("/api/shopify/process")
+async def shopify_process(body: ShopifyProcessBody, user: User = Depends(current_user)):
+    """选择 Shopify 产品 + 国家 → 启动 AI pipeline"""
+    conn = get_shopify_connection(user.id)
+    if not conn:
+        raise HTTPException(400, "请先连接 Shopify 店铺")
+
+    if not body.product_ids:
+        raise HTTPException(400, "请至少选择一个产品")
+
+    # 拉取选中产品的完整数据
+    all_products = await fetch_shopify_products(
+        shop_domain=conn.shop_domain,
+        access_token=conn.access_token,
+        limit=250,
+    )
+
+    # 过滤出用户选中的产品
+    selected = [p for p in all_products["products"] if p["shopify_id"] in body.product_ids]
+    if not selected:
+        raise HTTPException(404, "未找到选中的产品")
+
+    # 创建 job
+    job = create_job(
+        user.id,
+        f"shopify_{conn.shop_name}_{len(selected)}_products",
+        json.dumps(body.countries),
+        f"shopify_{conn.shop_domain}",
+    )
+
+    # 后台线程处理
+    import threading
+    threading.Thread(
+        target=_process_shopify_job,
+        args=(job.id, user.id, selected, body.countries),
+        daemon=True,
+    ).start()
+
+    return {"job_id": job.id, "status": "processing", "product_count": len(selected)}
+
+
+def _process_shopify_job(job_id: str, user_id: str, products: list, countries: list):
+    """后台处理 Shopify 产品 job"""
+    from .pipeline import run as pipeline_run
+    try:
+        logger.info(f"Shopify job start: {job_id[:8]} ({len(products)} products, {countries})")
+        update_job(job_id, status="processing")
+
+        def progress_cb(done, total):
+            update_job(job_id, done_rows=done, total_rows=total)
+
+        result = pipeline_run(
+            products_data=products,
+            countries=countries,
+            progress_callback=progress_cb,
+        )
+
+        update_job(job_id, status="completed", total_rows=result.get("total_sku", 0),
+                   ok_rows=result.get("ai_full_clean", 0) + result.get("partial_reclean", 0))
+        logger.info(f"Shopify job done: {job_id[:8]} — {result.get('total_sku', 0)} SKU")
+    except Exception as e:
+        logger.error(f"Shopify job failed: {job_id[:8]} — {e}")
+        update_job(job_id, status="failed", error_msg=str(e))
 
 
 # ═══════════════ Health ═══════════════

@@ -68,9 +68,21 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS shopify_connections (
+    id            TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL REFERENCES users(id),
+    shop_domain   TEXT UNIQUE NOT NULL,
+    shop_name     TEXT,
+    access_token  TEXT NOT NULL,
+    scope         TEXT DEFAULT 'read_products',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_magic_links_token ON magic_links(token);
 CREATE INDEX IF NOT EXISTS idx_users_google ON users(google_id);
+CREATE INDEX IF NOT EXISTS idx_shopify_user ON shopify_connections(user_id);
 """
 
 
@@ -286,3 +298,49 @@ def _row_to_job(r) -> Job:
 
 
 init_db()
+
+
+# ── Shopify Connection CRUD ──
+
+@dataclass
+class ShopifyConnection:
+    id: str
+    user_id: str
+    shop_domain: str
+    shop_name: Optional[str] = None
+    access_token: str = ""
+    scope: str = "read_products"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+def create_shopify_connection(user_id: str, shop_domain: str, shop_name: str, access_token: str) -> ShopifyConnection:
+    cid = str(uuid.uuid4())
+    with _conn() as c:
+        # 同一用户只保留一个连接（覆盖旧的）
+        c.execute("DELETE FROM shopify_connections WHERE user_id = ?", (user_id,))
+        c.execute(
+            "INSERT INTO shopify_connections (id, user_id, shop_domain, shop_name, access_token) VALUES (?,?,?,?,?)",
+            (cid, user_id, shop_domain, shop_name, access_token),
+        )
+        c.commit()
+    return get_shopify_connection(user_id)
+
+
+def get_shopify_connection(user_id: str) -> Optional[ShopifyConnection]:
+    with _conn() as c:
+        row = c.execute("SELECT * FROM shopify_connections WHERE user_id = ?", (user_id,)).fetchone()
+    if not row:
+        return None
+    return ShopifyConnection(
+        id=row["id"], user_id=row["user_id"], shop_domain=row["shop_domain"],
+        shop_name=row["shop_name"], access_token=row["access_token"],
+        scope=row["scope"], created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+def delete_shopify_connection(user_id: str) -> bool:
+    with _conn() as c:
+        cur = c.execute("DELETE FROM shopify_connections WHERE user_id = ?", (user_id,))
+        c.commit()
+        return cur.rowcount > 0

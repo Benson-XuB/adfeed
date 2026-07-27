@@ -226,3 +226,74 @@ export async function activateSubscription(
     }),
   });
 }
+
+// ── Shopify ──
+
+export interface ShopifyStatus {
+  connected: boolean;
+  shop_domain?: string;
+  shop_name?: string;
+  connected_at?: string;
+}
+
+export interface ShopifyProduct {
+  SKU: string;
+  标题: string;
+  描述: string;
+  价格: number;
+  图片链接: string;
+  分类: string;
+  品牌: string;
+  库存: number;
+  shopify_id: string;
+  shopify_handle: string;
+  shopify_status: string;
+  variant_count: number;
+  image_count: number;
+  price_range: string;
+}
+
+export interface ShopifyProductsResponse {
+  products: ShopifyProduct[];
+  next_page_info: string | null;
+  total_count: number;
+}
+
+export async function getShopifyStatus(token: string): Promise<ShopifyStatus> {
+  return api<ShopifyStatus>("/api/shopify/status", { token });
+}
+
+export async function getShopifyAuthUrl(shop: string, token: string): Promise<{ url: string }> {
+  return api<{ url: string }>(`/api/shopify/auth-url?shop=${encodeURIComponent(shop)}`, { token });
+}
+
+export async function connectShopify(shopDomain: string, code: string, token: string): Promise<{ ok: boolean; shop_domain: string; shop_name: string }> {
+  return api("/api/shopify/connect", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ shop_domain: shopDomain, code }),
+  });
+}
+
+export async function disconnectShopify(token: string): Promise<void> {
+  await api("/api/shopify/disconnect", { method: "POST", token });
+}
+
+export async function getShopifyProducts(token: string, pageInfo?: string, limit?: number): Promise<ShopifyProductsResponse> {
+  const params = new URLSearchParams();
+  if (pageInfo) params.set("page_info", pageInfo);
+  if (limit) params.set("limit", String(limit));
+  return api<ShopifyProductsResponse>(`/api/shopify/products?${params}`, { token });
+}
+
+export async function processShopifyProducts(
+  productIds: string[],
+  countries: string[],
+  token: string
+): Promise<{ job_id: string; status: string; product_count: number }> {
+  return api("/api/shopify/process", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ product_ids: productIds, countries }),
+  });
+}

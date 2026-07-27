@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth";
-import { listJobs, JobSummary } from "@/lib/api";
+import { listJobs, JobSummary, getShopifyStatus, ShopifyStatus } from "@/lib/api";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
@@ -9,17 +9,22 @@ export default function DashboardPage() {
   const { user, token } = useAuth();
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!token) return;
     try {
-      const j = await listJobs(token);
+      const [j, s] = await Promise.all([
+        listJobs(token),
+        getShopifyStatus(token).catch(() => ({ connected: false })),
+      ]);
       setJobs(j);
+      setShopify(s);
     } catch { /* ignore */ }
     setLoading(false);
   }, [token]);
 
-  useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const statusTag = (s: string) => {
     if (s === "completed") return <span className="tag tag-success">Done</span>;
@@ -37,17 +42,25 @@ export default function DashboardPage() {
             {user?.quota_remaining} of {user?.quota_total} SKUs remaining this month
           </p>
         </div>
-        <Link href="/upload" className="btn btn-sm">
-          ↑ New upload
-        </Link>
+        <div className="flex items-center gap-2">
+          {shopify?.connected && (
+            <Link href="/shopify" className="btn btn-sm bg-green-50 text-green-700 border-green-200 hover:bg-green-100">
+              ⬡ {shopify.shop_name}
+            </Link>
+          )}
+          <Link href="/upload" className="btn btn-sm">
+            ↑ Upload file
+          </Link>
+        </div>
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
         {[
           ["Total jobs", String(jobs.length)],
           ["Completed", String(jobs.filter((j) => j.status === "completed").length)],
           ["SKUs processed", String(jobs.reduce((sum, j) => sum + j.ok_rows, 0))],
+          ["Shopify", shopify?.connected ? shopify.shop_name || "Connected" : "Not connected"],
         ].map(([label, value]) => (
           <div key={label} className="card">
             <div className="text-xs text-stone-400 tracking-widest uppercase mb-1">{label}</div>

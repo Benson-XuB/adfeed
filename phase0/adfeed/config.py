@@ -42,6 +42,15 @@ TITLE_MAX_LENGTH = 150
 DEFAULT_COUNTRY = "US"
 
 # ============================================
+# Shopify 配置
+# ============================================
+SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "")
+SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "")
+SHOPIFY_REDIRECT_URI = os.getenv("SHOPIFY_REDIRECT_URI", "https://deltfu.com/api/shopify/callback")
+SHOPIFY_SCOPES = "read_products"
+SHOPIFY_API_VERSION = "2024-07"
+
+# ============================================
 # Mock 数据配置
 # ============================================
 MOCK_SKU_COUNT = 20

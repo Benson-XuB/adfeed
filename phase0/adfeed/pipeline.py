@@ -60,7 +60,8 @@ from .cultural_context import season_for_date, resolve_category, get_search_pref
 
 def run(excel_path: str = None, countries: list[str] = None,
         force: bool = False, use_mock: bool = False, max_rows: int = None,
-        max_workers: int = None, progress_callback=None) -> dict:
+        max_workers: int = None, progress_callback=None,
+        products_data: list[dict] = None) -> dict:
     """完整清洗流程入口 v2.2 — 并行多国原生语种版本
 
     Args:
@@ -71,6 +72,7 @@ def run(excel_path: str = None, countries: list[str] = None,
         max_rows: 最多处理行数（配额截断），None = 全部
         max_workers: 并行线程数，默认 8
         progress_callback: 进度回调 (done_rows, total_rows) -> None
+        products_data: 直接传入产品数据列表（如来自 Shopify），优先于 excel_path
     """
     if countries is None:
         countries = [DEFAULT_COUNTRY]
@@ -85,7 +87,12 @@ def run(excel_path: str = None, countries: list[str] = None,
 
     # ── Step 1: 加载数据 ──
     print("\n[1/6] Loading product data...")
-    if excel_path and Path(excel_path).exists() and not use_mock:
+    if products_data:
+        # 从外部数据源（如 Shopify）直接传入产品数据
+        df = pd.DataFrame(products_data)
+        file_md5 = "shopify_import"
+        print(f"  Loaded from products_data: {len(df)} SKU")
+    elif excel_path and Path(excel_path).exists() and not use_mock:
         dedup_result = check_dedup(excel_path, force=force)
         if dedup_result["is_duplicate"]:
             print(f"  DUPLICATE FILE! MD5: {dedup_result['md5'][:12]}...")
