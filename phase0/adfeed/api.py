@@ -23,6 +23,8 @@ from .auth import (
     verify_magic_link_and_login, get_google_auth_url,
 )
 from .config import DATA_DIR, OUTPUT_DIR
+from .shopify_auth import require_store
+from .store_db import Store as StoreModel
 
 
 # ── App ──
@@ -57,6 +59,77 @@ async def log_requests(request: Request, call_next):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
+
+
+# ═══════════════ Shopify App APIs (session required) ═══════════════
+
+@app.get("/api/app/billing/status")
+async def app_billing_status(store: StoreModel = Depends(require_store)):
+    """Return plan + quota for the authenticated shop."""
+    return {
+        "store_id": store.id,
+        "shop_domain": store.shopify_domain,
+        "shop_name": store.shop_name,
+        "plan": store.plan,
+        "billing_status": store.billing_status,
+        "quota_total": store.quota_total,
+        "quota_used": store.quota_used,
+        "quota_remaining": store.quota_remaining,
+        "subscription_id": store.subscription_id,
+    }
+
+
+@app.get("/api/app/products")
+async def app_list_products(store: StoreModel = Depends(require_store)):
+    """List products for the shop (live Shopify pull when token present)."""
+    from . import store_db
+    from .shopify_client import fetch_shopify_products
+
+    products = []
+    source = "cache"
+
+    if store.access_token:
+        try:
+            data = await fetch_shopify_products(
+                shop_domain=store.shopify_domain,
+                access_token=store.access_token,
+                limit=250,
+            )
+            products = [
+                {
+                    "id": str(p.get("shopify_id") or p.get("SKU") or ""),
+                    "title": p.get("标题") or p.get("title") or "",
+                    "image_url": p.get("图片链接") or p.get("image_url") or "",
+                    "price": p.get("价格") or p.get("price") or 0,
+                    "status": "active",
+                }
+                for p in data.get("products", [])
+            ]
+            source = "shopify"
+        except Exception as e:
+            logger.warning(f"Shopify product pull failed: {e}")
+
+    if not products:
+        cached = store_db.get_store_products(store.id)
+        products = [
+            {
+                "id": p.shopify_product_id or p.id,
+                "title": p.title,
+                "image_url": p.image_url or "",
+                "price": 0,
+                "status": p.status,
+            }
+            for p in cached
+        ]
+        source = "cache"
+
+    return {
+        "store_id": store.id,
+        "shop_domain": store.shopify_domain,
+        "source": source,
+        "products": products,
+        "count": len(products),
+    }
 
 
 # ── Models ──
@@ -708,6 +781,148 @@ def _process_shopify_job(job_id: str, user_id: str, products: list, countries: l
     except Exception as e:
         logger.error(f"Shopify job failed: {job_id[:8]} — {e}")
         update_job(job_id, status="failed", error_msg=str(e))
+
+
+# ═══════════════ Shopify Feed API (Plugin) ═══════════════
+
+class ShopifyFeedRequest(BaseModel):
+    product_ids: list[str]
+    countries: list[str] = ["US"]
+    shop_domain: str
+
+
+@app.post("/api/shopify/feed")
+async def shopify_generate_feed(body: ShopifyFeedRequest):
+    """LEGACY — unauthenticated generate disabled. Use /api/app/generate with session."""
+    raise HTTPException(
+        410,
+        "This endpoint is retired. Use authenticated /api/app/generate with a Shopify session token.",
+    )
+
+
+def _xml_to_csv(xml_path: Path, csv_path: Path):
+    """将 Feed XML 转为 TSV（Google 标准 Tab-delimited 格式）"""
+    import re
+    content = xml_path.read_text(encoding="utf-8")
+    items = re.findall(r'<item>(.*?)</item>', content, re.DOTALL)
+    if not items:
+        return
+
+    # 提取所有 g: 命名空间字段
+    fields = set()
+    rows = []
+    for item in items:
+        row = {}
+        # 普通字段
+        for tag in ["id", "title", "description", "link", "image_link",
+                    "price", "availability", "condition", "brand",
+                    "gtin", "mpn", "identifier_exists"]:
+            m = re.search(f'<g:{tag}>(.*?)</g:{tag}>', item)
+            if m:
+                row[tag] = m.group(1)
+                fields.add(tag)
+        # 可能重复的字段
+        for tag in ["additional_image_link", "product_highlight"]:
+            vals = re.findall(f'<g:{tag}>(.*?)</g:{tag}>', item)
+            if vals:
+                row[tag] = ",".join(vals)
+                fields.add(tag)
+        # 变体字段
+        for tag in ["item_group_id", "color", "size", "size_system",
+                    "gender", "age_group", "product_type"]:
+            m = re.search(f'<g:{tag}>(.*?)</g:{tag}>', item)
+            if m:
+                row[tag] = m.group(1)
+                fields.add(tag)
+        # custom labels
+        for i in range(5):
+            tag = f"custom_label_{i}"
+            m = re.search(f'<g:{tag}>(.*?)</g:{tag}>', item)
+            if m:
+                row[tag] = m.group(1)
+                fields.add(tag)
+        rows.append(row)
+
+    # 写 TSV
+    import csv
+    ordered_fields = sorted(fields)
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=ordered_fields, delimiter="\t",
+                                extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+    logger.info(f"CSV generated: {csv_path} ({len(rows)} rows)")
+
+
+@app.get("/api/shopify/feed/status")
+async def shopify_feed_status(shop_domain: str = ""):
+    """查询店铺 Feed 状态（URL、商品数、更新时间）"""
+    from . import store_db
+
+    if not shop_domain:
+        raise HTTPException(400, "请提供 shop_domain")
+
+    shop_domain = shop_domain.replace(".myshopify.com", "").strip() + ".myshopify.com"
+    store = store_db.get_store_by_domain(shop_domain)
+    if not store:
+        return {"feeds": []}
+
+    feed_files = store_db.list_store_feeds(store.id)
+    feeds = []
+    for ff in feed_files:
+        feeds.append({
+            "country": ff.country,
+            "url": ff.feed_url,
+            "csv_url": ff.feed_url.replace(".xml", ".csv"),
+            "item_count": ff.item_count,
+            "updated_at": ff.generated_at,
+        })
+
+    return {"feeds": feeds, "store_id": store.id}
+
+
+# 静态文件服务：Feed XML/CSV 下载（带 Cache-Control 和 CORS 头）
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from .config import FEEDS_DIR
+
+FEEDS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/feeds/{store_id}/{filename}")
+async def serve_feed_file(store_id: str, filename: str):
+    """提供 Feed 文件下载，带正确的缓存和 CORS 头
+
+    GMC 定期抓取此 URL，缓存 1 小时确保价格/库存及时更新。
+    """
+    file_path = FEEDS_DIR / store_id / filename
+    if not file_path.exists():
+        raise HTTPException(404, f"Feed 文件不存在: {filename}")
+
+    # 确定内容类型
+    if filename.endswith(".xml"):
+        media_type = "application/xml"
+    elif filename.endswith(".csv"):
+        media_type = "text/csv"
+    else:
+        media_type = "application/octet-stream"
+
+    response = FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=filename,
+    )
+    # GMC 建议短缓存（1小时），确保价格/库存及时更新
+    response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+# 保留 StaticFiles 作为回退（处理其他路径）
+app.mount("/feeds-static", StaticFiles(directory=str(FEEDS_DIR)), name="feeds")
 
 
 # ═══════════════ Health ═══════════════
