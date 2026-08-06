@@ -200,20 +200,96 @@ class AppGenerateBody(BaseModel):
     remove_watermarks: bool = False
 
 
+@app.post("/api/app/bootstrap")
+async def app_bootstrap(
+    request: Request,
+    store: StoreModel = Depends(require_store),
+):
+    """Exchange session JWT → offline Admin token and persist on stores."""
+    from . import store_db
+    from .store_sync import ensure_store_access_token
+
+    auth = request.headers.get("Authorization", "")
+    session_token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if not session_token:
+        raise HTTPException(401, "Missing session token")
+
+    updated = await ensure_store_access_token(store, session_token)
+    has_token = bool(updated.access_token)
+    return {
+        "ok": has_token,
+        "store_id": updated.id,
+        "shop_domain": updated.shopify_domain,
+        "shop_name": updated.shop_name,
+        "has_access_token": has_token,
+        "plan": updated.plan,
+        "quota_remaining": updated.quota_remaining,
+        "message": (
+            "Offline token ready"
+            if has_token
+            else "Token exchange failed — check SHOPIFY_CLIENT_ID/SECRET and app install"
+        ),
+    }
+
+
+@app.get("/api/app/connection")
+async def app_connection(store: StoreModel = Depends(require_store)):
+    return {
+        "store_id": store.id,
+        "shop_domain": store.shopify_domain,
+        "shop_name": store.shop_name,
+        "has_access_token": bool(store.access_token),
+        "site_url": store.site_url,
+        "status": store.status,
+        "plan": store.plan,
+        "quota_remaining": store.quota_remaining,
+    }
+
+
 @app.post("/api/app/generate")
-async def app_generate(body: AppGenerateBody, store: StoreModel = Depends(require_store)):
+async def app_generate(
+    request: Request,
+    body: AppGenerateBody,
+    store: StoreModel = Depends(require_store),
+):
     """Start layered optimize + feed generate job (SKU×platform×language quota)."""
     from . import store_db
     from .quota import estimate_cost, assert_quota_available
+    from .store_sync import ensure_store_access_token, sync_products_for_generate, normalize_shopify_product_id
 
     platforms = [p.lower() for p in (body.platforms or ["google"])] or ["google"]
     languages = [l.upper() for l in (body.languages or ["US"])] or ["US"]
-    product_ids = body.product_ids or []
+    product_ids = [normalize_shopify_product_id(x) for x in (body.product_ids or [])]
+    product_ids = [p for p in product_ids if p]
     if not product_ids:
         raise HTTPException(400, "product_ids required")
 
-    cost = estimate_cost(len(product_ids), platforms, languages)
-    # Refresh store for latest quota
+    # Ensure offline token before sync
+    auth = request.headers.get("Authorization", "")
+    session_token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if session_token and not store.access_token:
+        store = await ensure_store_access_token(store, session_token)
+
+    if not store.access_token:
+        raise HTTPException(
+            409,
+            "店铺尚未获得 Admin API token。请先调用 /api/app/bootstrap（打开 App 会自动调用）。",
+        )
+
+    # Sync selected Shopify products (+ variants) into store_db
+    try:
+        internal_ids = await sync_products_for_generate(store, product_ids)
+    except Exception as e:
+        logger.exception("product sync failed")
+        raise HTTPException(502, f"产品同步失败: {e}") from e
+
+    if not internal_ids:
+        raise HTTPException(
+            404,
+            "未能同步任何产品到本地库。请确认商品 ID 正确且 App 有 read_products 权限。",
+        )
+
+    cost = estimate_cost(len(internal_ids), platforms, languages)
     store = store_db.get_store(store.id) or store
     assert_quota_available(store, cost)
 
@@ -221,12 +297,14 @@ async def app_generate(body: AppGenerateBody, store: StoreModel = Depends(requir
         store_id=store.id,
         platforms=platforms,
         languages=languages,
-        product_ids=product_ids,
+        product_ids=internal_ids,
         total_units=cost,
     )
     store_db.update_store_job(job.id, status="processing")
 
     import threading
+    store_id = store.id
+    remove_wm = body.remove_watermarks
 
     def _run():
         from .pipeline import optimize_layered, generate_feed_for_store
@@ -235,18 +313,19 @@ async def app_generate(body: AppGenerateBody, store: StoreModel = Depends(requir
                 store_db.update_store_job(job.id, done_units=done, total_units=total)
 
             opt = optimize_layered(
-                store_id=store.id,
-                product_ids=product_ids,
+                store_id=store_id,
+                product_ids=internal_ids,
                 platforms=platforms,
                 languages=languages,
-                remove_watermarks=body.remove_watermarks,
+                remove_watermarks=remove_wm,
                 job_id=job.id,
                 progress_callback=progress,
             )
             feeds = generate_feed_for_store(
-                store_id=store.id,
+                store_id=store_id,
                 countries=languages,
                 platforms=platforms,
+                product_ids=internal_ids,
             )
             result = {
                 "optimize": {
@@ -255,6 +334,7 @@ async def app_generate(body: AppGenerateBody, store: StoreModel = Depends(requir
                     "assets_written": opt.get("assets_written", 0),
                 },
                 "feeds": feeds.get("feed_urls", []),
+                "synced_products": len(internal_ids),
             }
             store_db.update_store_job(
                 job.id,
@@ -275,7 +355,8 @@ async def app_generate(body: AppGenerateBody, store: StoreModel = Depends(requir
         "estimate": cost,
         "platforms": platforms,
         "languages": languages,
-        "product_count": len(product_ids),
+        "product_count": len(internal_ids),
+        "synced_products": len(internal_ids),
     }
 
 
@@ -911,6 +992,27 @@ async def shopify_connect(body: ShopifyConnectBody, user: User = Depends(current
     result = await connect_shopify_store(user.id, body.shop_domain, body.code)
     if not result:
         raise HTTPException(400, "Shopify 授权失败，请检查店铺域名和授权码")
+
+    # Also mirror into stores (App single source of truth)
+    from . import store_db
+    from .db import get_shopify_connection
+    conn = get_shopify_connection(user.id)
+    if conn:
+        existing = store_db.get_store_by_domain(conn.shop_domain)
+        if existing:
+            store_db.update_store(
+                existing.id,
+                access_token=conn.access_token,
+                shop_name=conn.shop_name,
+                status="active",
+            )
+        else:
+            store_db.create_store(
+                user_id=user.id,
+                shopify_domain=conn.shop_domain,
+                shop_name=conn.shop_name,
+                access_token=conn.access_token,
+            )
     return result
 
 

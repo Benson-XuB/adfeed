@@ -94,20 +94,25 @@ def test_generate_rejects_over_quota(monkeypatch, tmp_path):
         "test-client-secret",
         algorithm="HS256",
     )
-    # Ensure store with tiny quota
+    # Ensure store with tiny quota + access token
     client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
     store = store_db.get_store_by_domain("quota.myshopify.com")
-    store_db.update_store(store.id, quota_total=2, quota_used=0)
+    store_db.update_store(store.id, quota_total=2, quota_used=0, access_token="shpat_test")
 
-    res = client.post(
-        "/api/app/generate",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "product_ids": ["1", "2", "3"],
-            "platforms": ["google", "meta"],
-            "languages": ["US", "DE"],
-        },
-    )
+    from unittest.mock import AsyncMock, patch
+    with patch(
+        "adfeed.store_sync.sync_products_for_generate",
+        new=AsyncMock(return_value=["p1", "p2", "p3"]),
+    ):
+        res = client.post(
+            "/api/app/generate",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "product_ids": ["1", "2", "3"],
+                "platforms": ["google", "meta"],
+                "languages": ["US", "DE"],
+            },
+        )
     assert res.status_code == 402
     detail = res.json()["detail"]
     assert detail["estimate"] == 12

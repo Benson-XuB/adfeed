@@ -6,6 +6,7 @@ import {
   getFeedStatus,
   pollJob,
   estimateQuota,
+  bootstrapStore,
 } from "../../../../shared/models/products";
 
 /** @typedef {import('../../../../shared/models/products').Product} Product */
@@ -43,6 +44,16 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       try {
+        // Exchange session → offline Admin token before anything else
+        try {
+          const boot = await bootstrapStore();
+          if (!boot.has_access_token) {
+            setMessage("店铺连接未完成: " + (boot.message || "token exchange failed"));
+          }
+        } catch (e) {
+          setMessage("店铺连接失败: " + (e.message || e));
+        }
+
         const [all, status] = await Promise.all([
           fetchAllProducts(),
           fetchBillingStatus().catch(() => null),

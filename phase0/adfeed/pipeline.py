@@ -1063,7 +1063,8 @@ def _build_color_image_map(colors: list[str], all_images: list[str]) -> dict[str
 
 def generate_feed_for_store(store_id: str, countries: list[str] = None,
                             skip_out_of_stock: bool = False,
-                            platforms: list[str] = None) -> dict:
+                            platforms: list[str] = None,
+                            product_ids: list[str] = None) -> dict:
     """段3: Feed XML 生成 — 只读 feed_enabled=1 且 ai_status=ready 的产品
 
     不调用任何 AI，纯静态数据拼装，毫秒级完成。
@@ -1105,6 +1106,9 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
 
     # 读取已处理的产品（feed_enabled=1, ai_status=ready）
     products = store_db.get_feed_products(store_id)
+    if product_ids:
+        allow = set(product_ids)
+        products = [p for p in products if p.id in allow]
     if not products:
         print(f"[FeedGen] No feed-enabled products for store {store_id}")
         return {"feed_urls": [], "total_items": 0, "message": "No feed-enabled products"}

@@ -2,7 +2,7 @@
 
 client_id = "ac2bf432a87c7e12cb7c439556fe762b"
 name = "AdFeed AI"
-application_url = "https://shopify.dev/apps/default-app-home"
+application_url = "https://deltfu.com"
 embedded = true
 
 [build]
@@ -12,6 +12,22 @@ automatically_update_urls_on_dev = true
 [webhooks]
 api_version = "2026-10"
 
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "https://deltfu.com/api/webhooks/shopify/app_uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "https://deltfu.com/api/webhooks/shopify/products_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "products/delete" ]
+  uri = "https://deltfu.com/api/webhooks/shopify/products_delete"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "https://deltfu.com/api/webhooks/shopify/app_subscriptions_update"
+
 [access.admin]
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
@@ -20,4 +36,4 @@ embedded_app_direct_api_access = true
 scopes = "read_products"
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+redirect_urls = [ "https://deltfu.com/api/shopify/callback" ]

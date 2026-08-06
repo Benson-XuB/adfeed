@@ -4,7 +4,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import jwt
 import pytest
@@ -40,6 +40,7 @@ def client_env(monkeypatch, tmp_path):
         user_id=user.id,
         shopify_domain="e2e.myshopify.com",
         quota_total=100,
+        access_token="shpat_test",
     )
     pids = []
     for i in range(3):
@@ -110,12 +111,16 @@ def test_generate_writes_four_feeds_and_debits(client_env):
          patch("adfeed.pipeline.optimize_multi_country", return_value=fake_multi), \
          patch("adfeed.pipeline.infer_product_attributes", return_value={}), \
          patch("adfeed.pipeline.generate_feed_xml", return_value="<rss><channel><item></item></channel></rss>"), \
-         patch("adfeed.multi_platform_feeds.generate_meta_feed", return_value="<rss><channel><item></item></channel></rss>"):
+         patch("adfeed.multi_platform_feeds.generate_meta_feed", return_value="<rss><channel><item></item></channel></rss>"), \
+         patch(
+             "adfeed.store_sync.sync_products_for_generate",
+             new=AsyncMock(return_value=pids),
+         ):
         res = client.post(
             "/api/app/generate",
             headers={"Authorization": f"Bearer {token}"},
             json={
-                "product_ids": pids,
+                "product_ids": ["1000", "1001", "1002"],
                 "platforms": ["google", "meta"],
                 "languages": ["US", "DE"],
                 "remove_watermarks": False,

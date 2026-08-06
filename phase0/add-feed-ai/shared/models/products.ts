@@ -217,6 +217,32 @@ export async function fetchAppProducts(): Promise<{
   return resp.json();
 }
 
+export async function bootstrapStore(): Promise<{
+  ok: boolean;
+  has_access_token: boolean;
+  store_id: string;
+  shop_domain: string;
+  message?: string;
+}> {
+  const resp = await backendFetch("/api/app/bootstrap", { method: "POST", body: "{}" });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || `Bootstrap failed (${resp.status})`);
+  }
+  return resp.json();
+}
+
+export async function fetchConnection(): Promise<{
+  has_access_token: boolean;
+  shop_domain: string;
+  shop_name?: string;
+  quota_remaining?: number;
+}> {
+  const resp = await backendFetch("/api/app/connection");
+  if (!resp.ok) throw new Error("Connection status failed");
+  return resp.json();
+}
+
 export async function estimateQuota(
   productIds: string[],
   platforms: string[],
