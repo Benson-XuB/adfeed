@@ -24,6 +24,7 @@ export interface Product {
 
 export interface FeedInfo {
   country: string;
+  platform?: string;
   url: string;
   csv_url: string;
   item_count: number;
@@ -216,34 +217,81 @@ export async function fetchAppProducts(): Promise<{
   return resp.json();
 }
 
-export async function generateFeed(
+export async function estimateQuota(
   productIds: string[],
-  countries: string[],
-  shopDomain: string,
-): Promise<{ feed_url: string; csv_url: string; item_count: number }> {
-  // Authenticated generate lands in Task 8 (/api/app/generate). Until then
-  // the legacy path returns 410 with a clear migration message.
-  const resp = await backendFetch("/api/shopify/feed", {
+  platforms: string[],
+  languages: string[],
+): Promise<{ estimate: number; quota_remaining: number; affordable: boolean }> {
+  const resp = await backendFetch("/api/app/quota/estimate", {
     method: "POST",
     body: JSON.stringify({
       product_ids: productIds,
-      countries,
-      shop_domain: shopDomain,
+      platforms,
+      languages,
+      remove_watermarks: false,
+    }),
+  });
+  if (!resp.ok) {
+    return {
+      estimate: productIds.length * platforms.length * languages.length,
+      quota_remaining: 0,
+      affordable: false,
+    };
+  }
+  return resp.json();
+}
+
+export async function generateFeed(
+  productIds: string[],
+  platforms: string[],
+  languages: string[],
+  removeWatermarks = false,
+): Promise<{ job_id: string; status: string; estimate: number }> {
+  const resp = await backendFetch("/api/app/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      product_ids: productIds,
+      platforms,
+      languages,
+      remove_watermarks: removeWatermarks,
     }),
   });
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || "Feed 生成失败");
+    const detail = err.detail;
+    if (detail && typeof detail === "object" && detail.message) {
+      throw new Error(detail.message);
+    }
+    throw new Error(typeof detail === "string" ? detail : "Feed 生成失败");
   }
 
   return resp.json();
 }
 
-export async function getFeedStatus(shopDomain: string): Promise<FeedInfo[]> {
-  const resp = await fetch(
-    `${BACKEND_URL}/api/shopify/feed/status?shop_domain=${encodeURIComponent(shopDomain)}`,
-  );
+export async function pollJob(
+  jobId: string,
+  opts: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<{
+  status: string;
+  error_msg?: string;
+  result?: { feeds?: Array<{ platform?: string; country?: string; language?: string; url: string; items?: number }> };
+}> {
+  const intervalMs = opts.intervalMs ?? 1500;
+  const timeoutMs = opts.timeoutMs ?? 10 * 60 * 1000;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const resp = await backendFetch(`/api/app/jobs/${jobId}`);
+    if (!resp.ok) throw new Error("Job status failed");
+    const data = await resp.json();
+    if (data.status === "completed" || data.status === "failed") return data;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("Job timed out");
+}
+
+export async function getFeedStatus(_shopDomain?: string): Promise<FeedInfo[]> {
+  const resp = await backendFetch("/api/app/feeds");
   if (!resp.ok) return [];
   const data = await resp.json();
   return data.feeds || [];
