@@ -22,6 +22,7 @@ from .auth import (
     create_jwt, decode_jwt, google_login, send_magic_link_email,
     verify_magic_link_and_login, get_google_auth_url,
 )
+from . import config
 from .config import DATA_DIR, OUTPUT_DIR
 from .shopify_auth import require_store
 from .store_db import Store as StoreModel
@@ -79,6 +80,66 @@ async def app_billing_status(store: StoreModel = Depends(require_store)):
     }
 
 
+class BillingSubscribeBody(BaseModel):
+    plan: str = "starter"
+    return_url: Optional[str] = None
+    test: bool = True
+
+
+@app.post("/api/app/billing/subscribe")
+async def app_billing_subscribe(
+    body: BillingSubscribeBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Create Shopify recurring subscription; return confirmation URL."""
+    from .shopify_billing import create_app_subscription
+
+    return_url = body.return_url or os.getenv(
+        "ADFEED_BILLING_RETURN_URL",
+        "https://deltfu.com/api/app/billing/return",
+    )
+    try:
+        result = await create_app_subscription(
+            store=store,
+            plan=body.plan,
+            return_url=return_url,
+            test=body.test,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        logger.error(f"Billing subscribe failed: {e}")
+        raise HTTPException(502, f"Shopify billing error: {e}") from e
+    return result
+
+
+@app.post("/api/webhooks/shopify/app_subscriptions_update")
+async def webhook_app_subscriptions_update(request: Request):
+    """APP_SUBSCRIPTIONS_UPDATE — sync plan + quota_total."""
+    from .shopify_webhooks import verify_shopify_hmac
+    from .shopify_billing import apply_subscription_webhook
+
+    raw = await request.body()
+    if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
+        # Allow unsigned in tests when secret empty / ADFEED_WEBHOOK_SKIP_HMAC
+        if os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
+            if config.SHOPIFY_CLIENT_SECRET:
+                raise HTTPException(401, "Invalid webhook HMAC")
+
+    try:
+        payload = json.loads(raw.decode("utf-8") or "{}")
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, "Invalid JSON") from e
+
+    # Prefer shop domain from header when present
+    shop_header = request.headers.get("X-Shopify-Shop-Domain", "")
+    if shop_header and "shop_domain" not in payload:
+        payload["shop_domain"] = shop_header
+
+    store = apply_subscription_webhook(payload)
+    return {"ok": True, "store_id": store.id if store else None}
+
+
 @app.get("/api/app/products")
 async def app_list_products(store: StoreModel = Depends(require_store)):
     """List products for the shop (live Shopify pull when token present)."""
@@ -129,6 +190,155 @@ async def app_list_products(store: StoreModel = Depends(require_store)):
         "source": source,
         "products": products,
         "count": len(products),
+    }
+
+
+class AppGenerateBody(BaseModel):
+    product_ids: list[str]
+    platforms: list[str] = ["google"]
+    languages: list[str] = ["US"]
+    remove_watermarks: bool = False
+
+
+@app.post("/api/app/generate")
+async def app_generate(body: AppGenerateBody, store: StoreModel = Depends(require_store)):
+    """Start layered optimize + feed generate job (SKU×platform×language quota)."""
+    from . import store_db
+    from .quota import estimate_cost, assert_quota_available
+
+    platforms = [p.lower() for p in (body.platforms or ["google"])] or ["google"]
+    languages = [l.upper() for l in (body.languages or ["US"])] or ["US"]
+    product_ids = body.product_ids or []
+    if not product_ids:
+        raise HTTPException(400, "product_ids required")
+
+    cost = estimate_cost(len(product_ids), platforms, languages)
+    # Refresh store for latest quota
+    store = store_db.get_store(store.id) or store
+    assert_quota_available(store, cost)
+
+    job = store_db.create_store_job(
+        store_id=store.id,
+        platforms=platforms,
+        languages=languages,
+        product_ids=product_ids,
+        total_units=cost,
+    )
+    store_db.update_store_job(job.id, status="processing")
+
+    import threading
+
+    def _run():
+        from .pipeline import optimize_layered, generate_feed_for_store
+        try:
+            def progress(done, total):
+                store_db.update_store_job(job.id, done_units=done, total_units=total)
+
+            opt = optimize_layered(
+                store_id=store.id,
+                product_ids=product_ids,
+                platforms=platforms,
+                languages=languages,
+                remove_watermarks=body.remove_watermarks,
+                job_id=job.id,
+                progress_callback=progress,
+            )
+            feeds = generate_feed_for_store(
+                store_id=store.id,
+                countries=languages,
+                platforms=platforms,
+            )
+            result = {
+                "optimize": {
+                    "ok_units": opt.get("ok_units", 0),
+                    "fail_units": opt.get("fail_units", 0),
+                    "assets_written": opt.get("assets_written", 0),
+                },
+                "feeds": feeds.get("feed_urls", []),
+            }
+            store_db.update_store_job(
+                job.id,
+                status="completed",
+                ok_units=opt.get("ok_units", 0),
+                fail_units=opt.get("fail_units", 0),
+                done_units=opt.get("ok_units", 0) + opt.get("fail_units", 0),
+                result_json=json.dumps(result, ensure_ascii=False),
+            )
+        except Exception as e:
+            logger.exception("app generate failed")
+            store_db.update_store_job(job.id, status="failed", error_msg=str(e))
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {
+        "job_id": job.id,
+        "status": "processing",
+        "estimate": cost,
+        "platforms": platforms,
+        "languages": languages,
+        "product_count": len(product_ids),
+    }
+
+
+@app.get("/api/app/jobs/{job_id}")
+async def app_job_status(job_id: str, store: StoreModel = Depends(require_store)):
+    from . import store_db
+    job = store_db.get_store_job(job_id)
+    if not job or job.store_id != store.id:
+        raise HTTPException(404, "Job not found")
+    result = None
+    if job.result_json:
+        try:
+            result = json.loads(job.result_json)
+        except json.JSONDecodeError:
+            result = None
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "total_units": job.total_units,
+        "done_units": job.done_units,
+        "ok_units": job.ok_units,
+        "fail_units": job.fail_units,
+        "error_msg": job.error_msg,
+        "result": result,
+        "platforms": json.loads(job.platforms) if job.platforms else [],
+        "languages": json.loads(job.languages) if job.languages else [],
+    }
+
+
+@app.get("/api/app/feeds")
+async def app_list_feeds(store: StoreModel = Depends(require_store)):
+    from . import store_db
+    feeds = store_db.list_store_feeds(store.id)
+    return {
+        "feeds": [
+            {
+                "platform": f.platform,
+                "country": f.country,
+                "language": f.country,
+                "url": f.feed_url,
+                "csv_url": f.feed_url.replace(".xml", ".csv"),
+                "item_count": f.item_count,
+                "updated_at": f.generated_at,
+            }
+            for f in feeds
+        ],
+        "store_id": store.id,
+    }
+
+
+@app.post("/api/app/quota/estimate")
+async def app_quota_estimate(body: AppGenerateBody, store: StoreModel = Depends(require_store)):
+    from .quota import estimate_cost
+    platforms = body.platforms or ["google"]
+    languages = body.languages or ["US"]
+    cost = estimate_cost(len(body.product_ids or []), platforms, languages)
+    return {
+        "estimate": cost,
+        "quota_remaining": store.quota_remaining,
+        "affordable": cost <= store.quota_remaining,
+        "platforms": platforms,
+        "languages": languages,
+        "sku_count": len(body.product_ids or []),
     }
 
 
@@ -196,8 +406,18 @@ async def google_callback(body: GoogleCallbackRequest):
     return resp
 
 
+def _require_web_saas():
+    """Web SaaS paths retired unless ADFEED_WEB_SAAS_ENABLED=true."""
+    if not getattr(config, "WEB_SAAS_ENABLED", False):
+        raise HTTPException(
+            410,
+            "Web SaaS auth/upload is retired. Install the Shopify App instead.",
+        )
+
+
 @app.post("/api/auth/magic-link")
 async def request_magic_link(body: MagicLinkRequest):
+    _require_web_saas()
     from .db import create_magic_link
     token = create_magic_link(body.email)
     await send_magic_link_email(body.email, token)
@@ -206,6 +426,7 @@ async def request_magic_link(body: MagicLinkRequest):
 
 @app.get("/api/auth/magic-link/verify")
 async def verify_magic_link(token: str):
+    _require_web_saas()
     result = verify_magic_link_and_login(token)
     if not result:
         raise HTTPException(400, "链接无效或已过期")
@@ -247,6 +468,7 @@ async def upload_file(
     countries: str = Form('["US"]'),
     user: User = Depends(current_user),
 ):
+    _require_web_saas()
     # 校验扩展名
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -604,6 +826,7 @@ async def activate_subscription(
     
     body: {"paypal_subscription_id": "I-XXXX", "paypal_plan_id": "P-XXXX"}
     """
+    _require_web_saas()
     sub_id = body.get("paypal_subscription_id", "")
     plan_id = body.get("paypal_plan_id", "")
 
@@ -891,34 +1114,106 @@ from .config import FEEDS_DIR
 FEEDS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@app.get("/feeds/{store_id}/{filename}")
-async def serve_feed_file(store_id: str, filename: str):
-    """提供 Feed 文件下载，带正确的缓存和 CORS 头
-
-    GMC 定期抓取此 URL，缓存 1 小时确保价格/库存及时更新。
-    """
-    file_path = FEEDS_DIR / store_id / filename
-    if not file_path.exists():
+def _feed_file_response(file_path: Path, filename: str):
+    if not file_path.exists() or not file_path.is_file():
         raise HTTPException(404, f"Feed 文件不存在: {filename}")
-
-    # 确定内容类型
     if filename.endswith(".xml"):
         media_type = "application/xml"
     elif filename.endswith(".csv"):
         media_type = "text/csv"
     else:
         media_type = "application/octet-stream"
-
     response = FileResponse(
         path=str(file_path),
         media_type=media_type,
         filename=filename,
     )
-    # GMC 建议短缓存（1小时），确保价格/库存及时更新
     response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@app.get("/feeds/{store_id}/{platform}/{filename}")
+async def serve_platform_feed_file(store_id: str, platform: str, filename: str):
+    """Public durable feed: /feeds/{store}/{platform}/{lang}.xml|csv"""
+    if ".." in store_id or ".." in platform or ".." in filename:
+        raise HTTPException(400, "Invalid path")
+    return _feed_file_response(FEEDS_DIR / store_id / platform / filename, filename)
+
+
+@app.get("/feeds/{store_id}/{filename}")
+async def serve_feed_file(store_id: str, filename: str):
+    """Legacy flat path + GMC polling fallback."""
+    if ".." in store_id or ".." in filename:
+        raise HTTPException(400, "Invalid path")
+    return _feed_file_response(FEEDS_DIR / store_id / filename, filename)
+
+
+# ── Shopify catalog / uninstall / GDPR webhooks ──
+
+@app.post("/api/webhooks/shopify/products_update")
+async def webhook_products_update(request: Request):
+    from .shopify_webhooks import verify_shopify_hmac, handle_products_update
+    raw = await request.body()
+    if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
+        if config.SHOPIFY_CLIENT_SECRET and os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
+            raise HTTPException(401, "Invalid webhook HMAC")
+    payload = json.loads(raw.decode("utf-8") or "{}")
+    shop = request.headers.get("X-Shopify-Shop-Domain", "")
+    return handle_products_update(shop, payload)
+
+
+@app.post("/api/webhooks/shopify/products_delete")
+async def webhook_products_delete(request: Request):
+    from .shopify_webhooks import verify_shopify_hmac, handle_products_delete
+    raw = await request.body()
+    if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
+        if config.SHOPIFY_CLIENT_SECRET and os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
+            raise HTTPException(401, "Invalid webhook HMAC")
+    payload = json.loads(raw.decode("utf-8") or "{}")
+    shop = request.headers.get("X-Shopify-Shop-Domain", "")
+    return handle_products_delete(shop, payload)
+
+
+@app.post("/api/webhooks/shopify/app_uninstalled")
+async def webhook_app_uninstalled(request: Request):
+    from .shopify_webhooks import verify_shopify_hmac, handle_app_uninstalled
+    raw = await request.body()
+    if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
+        if config.SHOPIFY_CLIENT_SECRET and os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
+            raise HTTPException(401, "Invalid webhook HMAC")
+    shop = request.headers.get("X-Shopify-Shop-Domain", "")
+    return handle_app_uninstalled(shop)
+
+
+async def _webhook_gdpr(request: Request):
+    from .shopify_webhooks import verify_shopify_hmac, handle_gdpr_stub
+    raw = await request.body()
+    if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
+        if config.SHOPIFY_CLIENT_SECRET and os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
+            raise HTTPException(401, "Invalid webhook HMAC")
+    topic = request.headers.get("X-Shopify-Topic", "gdpr")
+    try:
+        payload = json.loads(raw.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    return handle_gdpr_stub(topic, payload)
+
+
+@app.post("/api/webhooks/shopify/customers_data_request")
+async def webhook_customers_data_request(request: Request):
+    return await _webhook_gdpr(request)
+
+
+@app.post("/api/webhooks/shopify/customers_redact")
+async def webhook_customers_redact(request: Request):
+    return await _webhook_gdpr(request)
+
+
+@app.post("/api/webhooks/shopify/shop_redact")
+async def webhook_shop_redact(request: Request):
+    return await _webhook_gdpr(request)
 
 
 # 保留 StaticFiles 作为回退（处理其他路径）

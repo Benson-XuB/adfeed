@@ -42,6 +42,22 @@ TITLE_MAX_LENGTH = 150
 DEFAULT_COUNTRY = "US"
 
 # ============================================
+# 图片 AI 处理配置
+# ============================================
+IMAGE_AI_ENABLED = os.getenv("IMAGE_AI_ENABLED", "false").lower() in ("true", "1", "yes")
+IMAGE_AI_REMOVE_WATERMARK = True    # 去水印（中英文）
+IMAGE_AI_WHITE_BACKGROUND = False   # 换白底（耗时较长，可选）
+IMAGE_AI_CDN_BASE_URL = os.getenv("IMAGE_AI_CDN_BASE_URL", "")  # Cloudflare R2 URL
+
+# Cloudflare R2 配置
+R2_ENABLED = os.getenv("R2_ENABLED", "false").lower() in ("true", "1", "yes")
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "adfeed-images")
+R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "")  # 自定义域名或 R2 公开 URL
+
+# ============================================
 # Shopify 配置
 # ============================================
 SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "")
@@ -62,6 +78,9 @@ MOCK_OUTPUT_FILE = OUTPUT_DIR / "mock_products.xlsx"
 FEED_OUTPUT_XML = OUTPUT_DIR / "feed_us.xml"
 COMPARISON_REPORT = OUTPUT_DIR / "comparison_report.xlsx"
 SUMMARY_JSON = OUTPUT_DIR / "summary.json"
+FEEDS_DIR = BASE_DIR / "feeds"  # 多店铺 Feed 持久化目录
+PUBLIC_BASE_URL = os.getenv("ADFEED_PUBLIC_URL", "https://deltfu.com").rstrip("/")
+WEB_SAAS_ENABLED = os.getenv("ADFEED_WEB_SAAS_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
 def ensure_dirs():

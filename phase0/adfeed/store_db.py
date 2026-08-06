@@ -415,6 +415,18 @@ def get_store(store_id: str) -> Optional[Store]:
     return _row_to_store(row)
 
 
+def get_store_by_subscription_id(subscription_id: str) -> Optional[Store]:
+    """Lookup store by Shopify AppSubscription GID."""
+    if not subscription_id:
+        return None
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM stores WHERE subscription_id = ?",
+            (subscription_id,),
+        ).fetchone()
+    return _row_to_store(row) if row else None
+
+
 def get_store_by_domain(shopify_domain: str) -> Optional[Store]:
     """通过 Shopify domain 获取店铺"""
     with _conn() as c:
@@ -513,6 +525,28 @@ def get_store_products(store_id: str, status: str = "active") -> list[Product]:
             (store_id, status),
         ).fetchall()
     return [Product(**{k: r[k] for k in Product.__dataclass_fields__}) for r in rows]
+
+
+def update_product(product_id: str, **kwargs) -> bool:
+    """Update product fields (catalog sync / soft-delete)."""
+    allowed = {
+        "title", "handle", "vendor", "product_type", "brand", "material",
+        "gender", "age_group", "image_url", "additional_images", "description",
+        "status", "feed_enabled", "ai_status", "shopify_product_id",
+    }
+    sets, vals = [], []
+    for k, v in kwargs.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            vals.append(v)
+    if not sets:
+        return False
+    sets.append("updated_at = datetime('now')")
+    vals.append(product_id)
+    with _conn() as c:
+        c.execute(f"UPDATE products SET {', '.join(sets)} WHERE id = ?", vals)
+        c.commit()
+    return True
 
 
 def update_product_gpc(product_id: str, gpc_code: str, gpc_path: str,
@@ -648,25 +682,45 @@ def get_store_feed_configs(store_id: str) -> list[FeedConfig]:
 # Feed File 记录
 # ─────────────────────────────────────────────
 
+def _row_to_feed_file(row) -> FeedFile:
+    keys = row.keys() if hasattr(row, "keys") else []
+    return FeedFile(
+        id=row["id"], store_id=row["store_id"], country=row["country"],
+        file_path=row["file_path"], feed_url=row["feed_url"],
+        item_count=row["item_count"], file_size=row["file_size"],
+        generated_at=row["generated_at"], status=row["status"],
+        platform=row["platform"] if "platform" in keys and row["platform"] else "google",
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
 def save_feed_file(store_id: str, country: str, file_path: str,
-                   feed_url: str, item_count: int = 0) -> FeedFile:
-    """保存 Feed 文件记录"""
+                   feed_url: str, item_count: int = 0,
+                   platform: str = "google") -> FeedFile:
+    """保存 Feed 文件记录（按 store × platform × country 覆盖最新）"""
     fid = str(uuid.uuid4())
     file_size = Path(file_path).stat().st_size if Path(file_path).exists() else 0
     now = datetime.now(timezone.utc).isoformat()
+    plat = (platform or "google").lower()
+    cu = country.upper()
 
     with _conn() as c:
+        # Soft-retire previous active row for same key
+        c.execute(
+            """UPDATE feed_files SET status='replaced', updated_at=datetime('now')
+               WHERE store_id=? AND country=? AND IFNULL(platform,'google')=? AND status='active'""",
+            (store_id, cu, plat),
+        )
         c.execute(
             """INSERT INTO feed_files
-               (id, store_id, country, file_path, feed_url, item_count, file_size, generated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (fid, store_id, country, file_path, feed_url, item_count, file_size, now),
+               (id, store_id, country, platform, file_path, feed_url, item_count, file_size, generated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (fid, store_id, cu, plat, file_path, feed_url, item_count, file_size, now),
         )
-        # 更新 feed_configs 的 last_synced_at
         c.execute(
             """UPDATE feed_configs SET last_synced_at = ?, updated_at = datetime('now')
                WHERE store_id = ? AND country = ?""",
-            (now, store_id, country),
+            (now, store_id, cu),
         )
         c.commit()
     return get_feed_file(fid)
@@ -678,57 +732,41 @@ def get_feed_file(file_id: str) -> Optional[FeedFile]:
         row = c.execute("SELECT * FROM feed_files WHERE id = ?", (file_id,)).fetchone()
     if not row:
         return None
-    return FeedFile(
-        id=row["id"], store_id=row["store_id"], country=row["country"],
-        file_path=row["file_path"], feed_url=row["feed_url"],
-        item_count=row["item_count"], file_size=row["file_size"],
-        generated_at=row["generated_at"], status=row["status"],
-        created_at=row["created_at"], updated_at=row["updated_at"],
-    )
+    return _row_to_feed_file(row)
 
 
-def get_store_feed(store_id: str, country: str) -> Optional[FeedFile]:
-    """获取店铺某国最新的 Feed 文件"""
+def get_store_feed(store_id: str, country: str, platform: str = "google") -> Optional[FeedFile]:
+    """获取店铺某国某平台最新的 Feed 文件"""
     with _conn() as c:
         row = c.execute(
             """SELECT * FROM feed_files
-               WHERE store_id = ? AND country = ? AND status = 'active'
+               WHERE store_id = ? AND country = ? AND IFNULL(platform,'google') = ?
+                 AND status = 'active'
                ORDER BY generated_at DESC LIMIT 1""",
-            (store_id, country),
+            (store_id, country.upper(), (platform or "google").lower()),
         ).fetchone()
     if not row:
         return None
-    return FeedFile(
-        id=row["id"], store_id=row["store_id"], country=row["country"],
-        file_path=row["file_path"], feed_url=row["feed_url"],
-        item_count=row["item_count"], file_size=row["file_size"],
-        generated_at=row["generated_at"], status=row["status"],
-        created_at=row["created_at"], updated_at=row["updated_at"],
-    )
+    return _row_to_feed_file(row)
 
 
 def list_store_feeds(store_id: str) -> list[FeedFile]:
-    """列出店铺所有国家的最新 Feed"""
+    """列出店铺所有 platform×country 最新 Feed"""
     with _conn() as c:
         rows = c.execute(
             """SELECT * FROM feed_files
                WHERE store_id = ? AND status = 'active'
-               ORDER BY country, generated_at DESC""",
+               ORDER BY platform, country, generated_at DESC""",
             (store_id,),
         ).fetchall()
-    # 每个国家只取最新的
-    seen_countries = set()
+    seen = set()
     feeds = []
     for r in rows:
-        if r["country"] not in seen_countries:
-            seen_countries.add(r["country"])
-            feeds.append(FeedFile(
-                id=r["id"], store_id=r["store_id"], country=r["country"],
-                file_path=r["file_path"], feed_url=r["feed_url"],
-                item_count=r["item_count"], file_size=r["file_size"],
-                generated_at=r["generated_at"], status=r["status"],
-                created_at=r["created_at"], updated_at=r["updated_at"],
-            ))
+        plat = r["platform"] if "platform" in r.keys() and r["platform"] else "google"
+        key = (plat, r["country"])
+        if key not in seen:
+            seen.add(key)
+            feeds.append(_row_to_feed_file(r))
     return feeds
 
 
