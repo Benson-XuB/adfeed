@@ -923,10 +923,3 @@ async def serve_feed_file(store_id: str, filename: str):
 
 # 保留 StaticFiles 作为回退（处理其他路径）
 app.mount("/feeds-static", StaticFiles(directory=str(FEEDS_DIR)), name="feeds")
-
-
-# ═══════════════ Health ═══════════════
-
-@app.get("/api/health")
-async def health():
-    return {"status": "ok", "version": "0.3.0"}
