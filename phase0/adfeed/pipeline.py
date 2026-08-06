@@ -1,8 +1,8 @@
-"""AdFeed AI — 核心流水线编排器 v2.2（并行多国原生语种版本）
+"""AdFeed AI — 核心流水线编排器 v3.0（脏词过滤 + 属性标准化 + 并行多国原生语种）
 
 每条新品对目标国家逐一调用各自语种的 AI 生成原生标题。
-集成：产品记忆库增量同步 + MD5 去重 + GPC 匹配 + 多国语标题生成 + 合规检查 + 多国 Feed XML 输出。
-v2.2: ThreadPoolExecutor 并行处理行级 AI 调用，200 条从 10 分钟降到 ~25 秒。
+集成：脏词清洗 + 属性标准化 + 产品记忆库增量同步 + MD5 去重 + GPC 匹配 + 多国语标题生成 + 合规检查 + 多国 Feed XML 输出。
+v3.0: 集成 dirty_word_filter + attribute_normalizer，全面消灭中文泄漏和脏词污染。
 """
 
 import json
@@ -22,29 +22,15 @@ from .mock_data import generate as generate_mock, save as save_mock
 # 并行度：LLM API 是 I/O-bound，8-12 个 worker 通常足够
 DEFAULT_MAX_WORKERS = int(os.environ.get("ADFEED_PARALLEL_WORKERS", "8"))
 
-# ── GPC 匹配引擎（ChromaDB 优先，关键词回退） ──
-_gpc_match_fn = None
-_gpc_load_fn = None
+# ── GPC 匹配引擎（方案C：关键词 + LLM 兜底） ──
+from .gpc_matcher import match as gpc_match, load_taxonomy as load_gpc_taxonomy
+print("[Pipeline] GPC engine: keyword + LLM fallback (Plan C)")
 
-try:
-    from .gpc_vector_engine import match as _vmatch, load_taxonomy as _vload
-    _vload()
-    _gpc_match_fn = _vmatch
-    _gpc_load_fn = _vload
-    gpc_source = "chromadb_vector"
-    print("[Pipeline] ChromaDB vector GPC engine loaded")
-except Exception as e:
-    from .gpc_matcher import match as _kmatch, load_taxonomy as _kload
-    _gpc_match_fn = _kmatch
-    _gpc_load_fn = _kload
-    gpc_source = f"keyword (chromadb not available)"
-    print(f"[Pipeline] GPC fallback: {gpc_source}")
-
-gpc_match = _gpc_match_fn
-load_gpc_taxonomy = _gpc_load_fn
-
-from .title_optimizer import optimize_multi_country
+from .title_optimizer import optimize_multi_country, rewrite_for_platform
 from .compliance_engine import check_and_clean, infer_product_attributes, scan_image_watermarks, infer_energy_efficiency_class
+from .dirty_word_filter import clean_dirty_words
+from .attribute_normalizer import normalize_all_attributes
+from .variant_expander import expand_variants
 from .feed_generator import generate as generate_feed_xml, generate_comparison_report
 from .product_memory import (
     classify_row, save_new_product, update_price_inventory,
@@ -61,7 +47,7 @@ from .cultural_context import season_for_date, resolve_category, get_search_pref
 def run(excel_path: str = None, countries: list[str] = None,
         force: bool = False, use_mock: bool = False, max_rows: int = None,
         max_workers: int = None, progress_callback=None,
-        products_data: list[dict] = None) -> dict:
+        products_data: list[dict] = None, feed_dir: str = None) -> dict:
     """完整清洗流程入口 v2.2 — 并行多国原生语种版本
 
     Args:
@@ -73,6 +59,7 @@ def run(excel_path: str = None, countries: list[str] = None,
         max_workers: 并行线程数，默认 8
         progress_callback: 进度回调 (done_rows, total_rows) -> None
         products_data: 直接传入产品数据列表（如来自 Shopify），优先于 excel_path
+        feed_dir: 自定义 Feed 输出目录（如 feeds/{store_id}），None 则用默认路径
     """
     if countries is None:
         countries = [DEFAULT_COUNTRY]
@@ -121,7 +108,7 @@ def run(excel_path: str = None, countries: list[str] = None,
     print(f"  Total: {total} SKU, targeting {len(countries)} countries")
 
     # ── Step 2: 初始化 GPC ──
-    print(f"\n[2/6] Init GPC engine ({gpc_source})...")
+    print(f"\n[2/6] Init GPC engine (keyword + LLM fallback)...")
     load_gpc_taxonomy()
     print(f"  GPC engine ready")
 
@@ -165,6 +152,7 @@ def run(excel_path: str = None, countries: list[str] = None,
         size = row.get("尺码", row.get("size", ""))
         image_url = row.get("图片链接", "")
         additional_images_raw = row.get("附加图片", row.get("additional_images", ""))
+        spec_raw = row.get("规格", row.get("specification", row.get("specs", "")))
         price_raw = row.get("价格", 0)
         try:
             price_cny = float(price_raw) if price_raw else 0.0
@@ -177,6 +165,13 @@ def run(excel_path: str = None, countries: list[str] = None,
             inventory = 1
 
         print(f"  [{i}/{total}] {sku}: {title[:30]}...", end=" ")
+
+        # ── v3.0: 脏词预清洗（在 AI 调用前切除 1688/速卖通污染词）──
+        dirty_result = clean_dirty_words(title, desc)
+        if dirty_result["dirty_count"] > 0:
+            title = dirty_result["clean_title"] or title
+            desc = dirty_result["clean_description"] or desc
+            print(f"[🧹{dirty_result['dirty_count']}w]", end=" ")
 
         # 行级去重
         row_dedup = check_row_dedup(sku, title, price_cny)
@@ -193,6 +188,13 @@ def run(excel_path: str = None, countries: list[str] = None,
                 "ai_tags_by_lang": existing.get("ai_tags_by_lang", {}),
                 "description_snippets": existing.get("description_snippets", {}),
                 "action": "dedup_skip",
+                "price_usd": existing.get("price_usd", 0),
+                "inventory": inventory, "image_url": image_url,
+                "color": color, "material": material, "category": category,
+                "brand": brand, "additional_images": additional_images_raw,
+                "gender": existing.get("gender", "unisex"),
+                "age_group": existing.get("age_group", "adult"),
+                "size": size, "spec": spec_raw,
             }
 
         # 产品记忆库增量检查
@@ -216,6 +218,13 @@ def run(excel_path: str = None, countries: list[str] = None,
                 "ai_tags_by_lang": existing.get("ai_tags_by_lang", {}),
                 "description_snippets": existing.get("description_snippets", {}),
                 "action": "skip",
+                "price_usd": existing.get("price_usd", 0),
+                "inventory": inventory, "image_url": image_url,
+                "color": color, "material": material, "category": category,
+                "brand": brand, "additional_images": additional_images_raw,
+                "gender": existing.get("gender", "unisex"),
+                "age_group": existing.get("age_group", "adult"),
+                "size": size, "spec": spec_raw,
             }
 
         if classification["action"] == "price_inventory_update":
@@ -233,6 +242,12 @@ def run(excel_path: str = None, countries: list[str] = None,
                 "description_snippets": existing.get("description_snippets", {}),
                 "action": "price_update",
                 "price_usd": classification["price_usd"],
+                "inventory": inventory, "image_url": image_url,
+                "color": color, "material": material, "category": category,
+                "brand": brand, "additional_images": additional_images_raw,
+                "gender": existing.get("gender", "unisex"),
+                "age_group": existing.get("age_group", "adult"),
+                "size": size, "spec": spec_raw,
             }
 
         # ── 需要 AI 清洗 ──
@@ -350,8 +365,12 @@ def run(excel_path: str = None, countries: list[str] = None,
             "item_group_id": attr["item_group_id"],
             "size": size, "gender": attr["gender"],
             "age_group": attr["age_group"],
+            "color": color, "material": material, "category": category,
             "identifier_exists": "no", "gtin": "", "mpn": "",
+            "image_url": image_url,
+            "inventory": inventory,
             "additional_images": additional_images_raw,
+            "spec": spec_raw,
             "watermark_clean": watermark_report["clean"],
             "brand": brand,
         }
@@ -376,48 +395,122 @@ def run(excel_path: str = None, countries: list[str] = None,
     # 按原始顺序排序（保证输出稳定）
     results.sort(key=lambda r: r.get("sku", ""))
 
-    # ── Step 4: 生成输出文件（每个国家独立 Feed） ──
-    print(f"\n[4/6] Generating feed XMLs...")
+    # ── Step 4: 变体展开 + 生成输出文件（每个国家独立 Feed） ──
+    print(f"\n[4/6] Expanding variants & generating feed XMLs...")
 
+    # Step 4a: 变体展开 — 每个产品结果展开为 variant 级别行
+    all_variant_rows = []  # (variant_row_dict, result_dict) 对
+    total_variants = 0
+    for r in results:
+        # 构建产品级行数据（含 AI 优化结果）
+        product_row = {
+            "SKU": r["sku"],
+            "标题": r["original_title"],
+            "描述": r.get("description_snippets", {}).get("US", ""),
+            "价格": r.get("price_usd", 0),
+            "库存": r.get("inventory", 1),
+            "图片链接": r.get("image_url", ""),
+            "颜色": r.get("color", ""),
+            "尺码": r.get("size", ""),
+            "材质": r.get("material", ""),
+            "分类": r.get("category", ""),
+            "品牌": r.get("brand", ""),
+            "规格": r.get("spec", ""),  # 1688 格式规格字段（变体展开用）
+            "item_group_id": r.get("item_group_id", ""),
+            "gender": r.get("gender", "unisex"),
+            "age_group": r.get("age_group", "adult"),
+            "附加图片": r.get("additional_images", ""),
+        }
+        # 传递 AI 优化结果（所有 variant 共享）
+        for country in countries:
+            cu = country.upper()
+            product_row[f"_opt_title_{cu}"] = r.get("optimized_titles", {}).get(cu, r["original_title"])
+            product_row[f"_desc_{cu}"] = r.get("description_snippets", {}).get(cu, "")
+            product_row[f"_tags_{cu}"] = r.get("ai_tags_by_lang", {}).get(cu, [])
+
+        variants = expand_variants(product_row)
+        for v in variants:
+            v["_result_ref"] = r  # 保留对原始结果的引用
+        all_variant_rows.extend(variants)
+        total_variants += len(variants)
+
+    print(f"  Variants: {len(results)} products → {total_variants} variant rows")
+
+    # Step 4b: 为每个国家生成 Feed XML
     for country in countries:
-        # 为每个国家构建独立的 DataFrame
+        country_upper = country.upper()
         rows_for_country = []
-        for r in results:
-            country_upper = country.upper()
-            opt_title = r.get("optimized_titles", {}).get(country_upper, r.get("original_title", ""))
-            desc_snippet = r.get("description_snippets", {}).get(country_upper, r.get("description", ""))
-            ai_tags = r.get("ai_tags_by_lang", {}).get(country_upper, [])
+        for v in all_variant_rows:
+            r = v["_result_ref"]
+            opt_title = v.get(f"_opt_title_{country_upper}", v.get("标题", ""))
+            desc_snippet = v.get(f"_desc_{country_upper}", "")
+            ai_tags = v.get(f"_tags_{country_upper}", [])
+
+            # ── v3.0: 属性标准化（颜色/尺码/材质翻译为 GMC 标准值）──
+            raw_attrs = {
+                "color": v.get("颜色", v.get("color", "")),
+                "size": v.get("尺码", v.get("size", "")),
+                "material": v.get("材质", ""),
+                "gender": v.get("gender", ""),
+                "age_group": v.get("age_group", ""),
+                "title": v.get("标题", ""),
+                "category": v.get("分类", ""),
+            }
+            normalized_attrs = normalize_all_attributes(raw_attrs, country=country_upper)
+
+            # 变体级 SKU / link / item_group_id
+            variant_sku = v.get("variant_id", v.get("SKU", r["sku"]))
+            item_group_id = v.get("item_group_id", r.get("item_group_id", r["sku"]))
+            variant_link = v.get("链接", "")
+            if not variant_link:
+                variant_link = f"/products/{variant_sku}"
 
             rows_for_country.append({
-                "SKU": r["sku"],
+                "SKU": variant_sku,
                 "优化后标题": opt_title,
-                "标题": r["original_title"],
+                "标题": v.get("标题", r["original_title"]),
                 "描述": desc_snippet,
                 "GPC代码": r.get("gpc_code", ""),
                 "GPC路径": r.get("gpc_path", ""),
-                "材质": "",
-                "颜色": "",
-                "尺码": r.get("size", ""),
-                "brand": r.get("brand", ""),
-                "item_group_id": r.get("item_group_id", ""),
-                "gender": r.get("gender", "unisex"),
-                "age_group": r.get("age_group", "adult"),
+                "材质": normalized_attrs.get("material", ""),
+                "颜色": normalized_attrs.get("color", ""),
+                "尺码": normalized_attrs.get("size", ""),
+                "品牌": v.get("品牌", r.get("brand", "")),
+                "item_group_id": item_group_id,
+                "gender": normalized_attrs.get("gender", "unisex"),
+                "age_group": normalized_attrs.get("age_group", "adult"),
                 "identifier_exists": "no",
                 "gtin": "",
+                # v3.0: 价格/库存/图片必须透传给 feed_generator
+                "价格": v.get("价格", r.get("price_usd", 0)),
+                "库存": v.get("库存", r.get("inventory", 1)),
+                "图片链接": v.get("图片链接", r.get("image_url", "")),
+                "附加图片": v.get("附加图片", r.get("additional_images", "")),
+                "链接": variant_link,
                 "匹配置信度": r.get("gpc_confidence", 0),
                 "合规状态": str(r.get("compliance", {}).get(country_upper, {}).get("status", "pass")),
                 "违规详情": str(r.get("compliance", {}).get(country_upper, {}).get("count", 0)),
                 "ai_tags": ", ".join(ai_tags) if ai_tags else "",
                 "description_snippet": desc_snippet,
                 "水印检测": "OK" if r.get("watermark_clean", True) else "有水印",
+                # v3.0: custom_label 注入 AI 标签
+                "custom_label_0": ai_tags[0] if len(ai_tags) > 0 else "",
+                "custom_label_1": ai_tags[1] if len(ai_tags) > 1 else "",
+                "custom_label_2": "",  # 价格区间标签（在 feed_generator 中填充）
+                "custom_label_3": "",  # 季节性标签（在 feed_generator 中填充）
+                "custom_label_4": "",  # 利润率标签（在 feed_generator 中填充）
             })
 
         country_df = pd.DataFrame(rows_for_country)
-        feed_path = Path(str(FEED_OUTPUT_XML).replace("feed_us", f"feed_{country.lower()}"))
+        if feed_dir:
+            # 店铺模式：输出到自定义目录
+            feed_path = Path(feed_dir) / f"{country.lower()}.xml"
+        else:
+            feed_path = Path(str(FEED_OUTPUT_XML).replace("feed_us", f"feed_{country.lower()}"))
         xml = generate_feed_xml(country_df, country)
         feed_path.parent.mkdir(parents=True, exist_ok=True)
         feed_path.write_text(xml, encoding="utf-8")
-        print(f"  [{country}] Feed XML: {feed_path.name} ({len(country_df)} SKU, {len(xml.encode('utf-8')):,} bytes)")
+        print(f"  [{country}] Feed XML: {feed_path} ({len(country_df)} variants, {len(xml.encode('utf-8')):,} bytes)")
 
     # 对比报告（用 US 作为默认展示）
     report_df = pd.DataFrame([
@@ -442,7 +535,7 @@ def run(excel_path: str = None, countries: list[str] = None,
 
     # ── Step 5: 记录去重 ──
     print(f"\n[5/6] Recording dedup...")
-    if file_md5 and file_md5 != "mock_data":
+    if file_md5 and file_md5 not in ("mock_data", "shopify_import") and excel_path:
         record_dedup(excel_path, f"task_{int(time.time())}", total)
 
     # ── Step 6: 摘要 ──
@@ -488,6 +581,891 @@ def run(excel_path: str = None, countries: list[str] = None,
     print(f"  Output: {FEED_OUTPUT_XML}")
     print(f"  Report: {COMPARISON_REPORT}")
     print(f"  Memory: {memory_stats['total_products']} products stored")
+    print(f"{'=' * 60}\n")
+
+    return summary
+
+
+# ─────────────────────────────────────────────────
+# 三段式流水线：段2 — AI 异步清洗
+# ─────────────────────────────────────────────────
+
+def optimize_for_store(store_id: str, product_ids: list[str] = None,
+                       countries: list[str] = None, max_workers: int = None) -> dict:
+    """段2: AI 异步清洗 — 读取 raw 产品 → GPC匹配 + 标题优化 → 回写 DB
+
+    Args:
+        store_id: 店铺 ID
+        product_ids: 指定产品 ID 列表，None 则处理所有 raw 产品
+        countries: 目标国家，默认 ["US"]
+        max_workers: 并行线程数
+
+    Returns:
+        {"processed": N, "success": N, "failed": N}
+    """
+    from . import store_db
+    from .cultural_context import season_for_date, resolve_category, get_search_prefix
+    from .compliance_engine import check_and_clean, infer_product_attributes, infer_energy_efficiency_class
+
+    if countries is None:
+        countries = [DEFAULT_COUNTRY]
+
+    store = store_db.get_store(store_id)
+    if not store:
+        raise ValueError(f"Store not found: {store_id}")
+
+    # 加载 GPC
+    load_gpc_taxonomy()
+
+    # 获取待处理产品
+    if product_ids:
+        products = [store_db.get_product(pid) for pid in product_ids]
+        products = [p for p in products if p is not None]
+    else:
+        # 获取所有 raw 状态的产品
+        products = store_db.get_store_products_by_status(store_id, ai_status="raw")
+
+    if not products:
+        return {"processed": 0, "success": 0, "failed": 0, "message": "No raw products to process"}
+
+    # 标记为 processing
+    store_db.batch_set_ai_status([p.id for p in products], "processing")
+
+    print(f"\n[Optimize] Processing {len(products)} products for store {store_id}...")
+
+    workers = max_workers or DEFAULT_MAX_WORKERS
+    success_count = 0
+    fail_count = 0
+
+    def _process_one(product):
+        """处理单个产品的 AI 清洗（完整 pipeline：脏词→GPC→标题→属性→回写）"""
+        raw_title = product.title or ""
+        raw_desc = product.description or ""
+        category = product.product_type or ""
+        material = product.material or ""
+        brand = product.brand or store.default_brand or ""
+        color = ""
+        size = ""
+
+        # ── 1. 脏词预清洗（1688 污染词必须在 AI 调用前切除）──
+        dirty_result = clean_dirty_words(raw_title, raw_desc)
+        if dirty_result["dirty_count"] > 0:
+            title = dirty_result["clean_title"] or raw_title
+            desc = dirty_result["clean_description"] or raw_desc
+            print(f"  [{product.id[:12]}] 🧹{dirty_result['dirty_count']} dirty words cleaned")
+        else:
+            title = raw_title
+            desc = raw_desc
+
+        # ── 2. GPC 品类匹配 ──
+        gpc = gpc_match(title=title, category=category, material=material)
+
+        # ── 3. 标题优化（多语种）──
+        try:
+            multi = optimize_multi_country(
+                original_title=title, countries=countries,
+                description=desc,
+                original_category=category,
+                material=material,
+                gpc_path=gpc["gpc_path"],
+                target_season=season_for_date(),
+            )
+            optimized_title = multi["optimized_titles"].get(countries[0], title)
+            cleaned_title = json.dumps(multi["optimized_titles"], ensure_ascii=False)
+            cleaned_desc = json.dumps(multi["description_snippets"], ensure_ascii=False)
+        except Exception as e:
+            print(f"  [WARN] AI title optimization failed for {product.id[:12]}: {e}")
+            optimized_title = title
+            cleaned_title = None
+            cleaned_desc = None
+
+        # ── 4. 属性推断（gender/age_group，从标题+品类+GPC推断）──
+        attr = infer_product_attributes(
+            category_key=resolve_category(category, gpc.get("gpc_path", "")),
+            gpc_path=gpc.get("gpc_path", ""),
+            original_title=title,
+            color=color, material=material,
+            search_prefix=get_search_prefix("US", category, gpc.get("gpc_path", "")),
+            size=size,
+        )
+
+        # ── 5. 回写 DB（含 gender/age_group）──
+        store_db.update_product_ai_result(
+            product_id=product.id,
+            optimized_title=optimized_title,
+            gpc_code=gpc["gpc_code"],
+            gpc_path=gpc["gpc_path"],
+            gpc_confidence=gpc["confidence"],
+            gpc_source=gpc["source"],
+            cleaned_title=cleaned_title,
+            cleaned_description=cleaned_desc,
+            gender=attr.get("gender"),
+            age_group=attr.get("age_group"),
+        )
+        return True
+
+    # 并行处理
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_process_one, p): p for p in products}
+        for future in as_completed(futures):
+            try:
+                future.result()
+                success_count += 1
+            except Exception as e:
+                product = futures[future]
+                print(f"  [ERROR] {product.id[:12]}: {e}")
+                fail_count += 1
+                # 标记为 error
+                store_db.batch_set_ai_status([product.id], "error")
+
+    print(f"[Optimize] Done: {success_count} success, {fail_count} failed")
+    return {
+        "processed": len(products),
+        "success": success_count,
+        "failed": fail_count,
+    }
+
+
+def optimize_layered(
+    store_id: str,
+    product_ids: list[str],
+    platforms: list[str] = None,
+    languages: list[str] = None,
+    remove_watermarks: bool = False,
+    job_id: str = None,
+    progress_callback=None,
+) -> dict:
+    """Approach-3: shared GPC/attrs → per-language skeleton → per-platform rewrite.
+
+    Writes `product_assets` rows and returns debit units for successful combos.
+    Watermark processing runs only when remove_watermarks=True.
+    """
+    from . import store_db
+    from . import quota as quota_mod
+    from .cultural_context import season_for_date, resolve_category, get_search_prefix
+
+    platforms = [p.lower() for p in (platforms or ["google"])]
+    languages = [l.upper() for l in (languages or ["US"])]
+    valid = {"google", "meta", "tiktok"}
+    platforms = [p for p in platforms if p in valid] or ["google"]
+
+    store = store_db.get_store(store_id)
+    if not store:
+        raise ValueError(f"Store not found: {store_id}")
+
+    load_gpc_taxonomy()
+
+    products = []
+    for pid in product_ids or []:
+        p = store_db.get_product(pid)
+        if p is None:
+            # Resolve by shopify_product_id within store
+            for cand in store_db.get_store_products(store_id):
+                if cand.shopify_product_id == pid or cand.id == pid:
+                    p = cand
+                    break
+        if p:
+            products.append(p)
+
+    ok_units = 0
+    fail_units = 0
+    debit_units = []  # (sku, platform, language)
+    assets_written = 0
+    done = 0
+    total = len(products) * len(platforms) * len(languages)
+
+    for product in products:
+        try:
+            raw_title = product.title or ""
+            raw_desc = product.description or ""
+            dirty = clean_dirty_words(raw_title, raw_desc)
+            title = dirty["clean_title"] or raw_title
+            desc = dirty["clean_description"] or raw_desc
+            category = product.product_type or ""
+            material = product.material or ""
+
+            # ── Layer 1: shared once ──
+            gpc = gpc_match(title=title, category=category, material=material)
+            attr = infer_product_attributes(
+                category_key=resolve_category(category, gpc.get("gpc_path", "")),
+                gpc_path=gpc.get("gpc_path", ""),
+                original_title=title,
+                color="", material=material,
+                search_prefix=get_search_prefix("US", category, gpc.get("gpc_path", "")),
+                size="",
+            )
+            store_db.update_product_ai_result(
+                product_id=product.id,
+                optimized_title=title,
+                gpc_code=gpc.get("gpc_code"),
+                gpc_path=gpc.get("gpc_path"),
+                gpc_confidence=gpc.get("confidence", 0),
+                gpc_source=gpc.get("source"),
+                gender=attr.get("gender"),
+                age_group=attr.get("age_group"),
+            )
+            store_db.update_product(product.id, feed_enabled=1, ai_status="ready")
+
+            # Optional watermark path
+            if remove_watermarks and product.image_url:
+                try:
+                    from .image_processor import process_and_upload_image
+                    process_and_upload_image(
+                        product.image_url,
+                        store_id=store_id,
+                        product_id=product.id,
+                        remove_wm=True,
+                        white_bg=False,
+                    )
+                except Exception as e:
+                    print(f"  [WARN] watermark skip {product.id[:12]}: {e}")
+
+            # ── Layer 2: per language skeleton ──
+            try:
+                multi = optimize_multi_country(
+                    original_title=title,
+                    countries=languages,
+                    description=desc,
+                    original_category=category,
+                    material=material,
+                    gpc_path=gpc.get("gpc_path", ""),
+                    target_season=season_for_date(),
+                )
+            except Exception as e:
+                print(f"  [WARN] language pass failed {product.id[:12]}: {e}")
+                multi = {
+                    "optimized_titles": {lang: title for lang in languages},
+                    "description_snippets": {lang: desc for lang in languages},
+                    "ai_tags_by_lang": {lang: [] for lang in languages},
+                }
+
+            # ── Layer 3: per platform × language ──
+            sku = product.shopify_product_id or product.id
+            for lang in languages:
+                skel_title = multi["optimized_titles"].get(lang, title)
+                skel_desc = multi["description_snippets"].get(lang, desc)
+                tags = multi.get("ai_tags_by_lang", {}).get(lang, [])
+                for plat in platforms:
+                    try:
+                        rewritten = rewrite_for_platform(
+                            title=skel_title,
+                            description=skel_desc,
+                            platform=plat,
+                            language=lang,
+                            tags=tags,
+                        )
+                        store_db.upsert_product_asset(
+                            store_id=store_id,
+                            product_id=product.id,
+                            platform=plat,
+                            language=lang,
+                            title=rewritten["title"],
+                            description=rewritten["description"],
+                            tags=rewritten.get("tags") or [],
+                        )
+                        quota_mod.debit_quota(
+                            store_id, plat, lang, job_id=job_id, sku=str(sku),
+                        )
+                        debit_units.append((str(sku), plat, lang))
+                        ok_units += 1
+                        assets_written += 1
+                    except Exception as e:
+                        print(f"  [ERROR] asset {plat}/{lang}: {e}")
+                        fail_units += 1
+                    done += 1
+                    if progress_callback:
+                        progress_callback(done, total)
+        except Exception as e:
+            print(f"  [ERROR] product {product.id[:12]}: {e}")
+            fail_units += len(platforms) * len(languages)
+            done += len(platforms) * len(languages)
+            if progress_callback:
+                progress_callback(done, total)
+
+    return {
+        "processed": len(products),
+        "ok_units": ok_units,
+        "fail_units": fail_units,
+        "assets_written": assets_written,
+        "debit_units": debit_units,
+        "platforms": platforms,
+        "languages": languages,
+    }
+
+
+# ─────────────────────────────────────────────────
+# 材质推断 — 基于 GPC 品类 + 产品标题关键词
+# ─────────────────────────────────────────────────
+
+# GPC 代码 → 默认材质映射
+_GPC_MATERIAL_MAP = {
+    "4174": "Cotton",          # Jeans / 牛仔裤
+    "2271": "Polyester",       # Dresses / 连衣裙
+    "209": "Cotton",           # Socks / 袜子
+    "5423": "Polyester",       # Jumpsuits / 连体衣
+    "5598": "Polyester",       # Outerwear / 外套
+    "6228": "Polyester",       # Skirts / 裙子
+    "3913": "Polyester",       # Belts/Accessories
+    "207": "Polyester",        # Shorts / 短裤
+    "502999": "Polyester",     # Tops / 上衣
+}
+
+# 标题关键词 → 材质覆盖
+_TITLE_MATERIAL_KEYWORDS = {
+    "denim": "Denim", "jean": "Denim", "cotton": "Cotton",
+    "silk": "Silk", "linen": "Linen", "wool": "Wool",
+    "leather": "Leather", "polyester": "Polyester",
+    "spandex": "Spandex", "nylon": "Nylon",
+}
+
+
+def _infer_material(gpc_code: str, title: str, existing_material: str) -> str:
+    """推断材质：已有值 > 标题关键词 > GPC 默认值"""
+    if existing_material:
+        return existing_material
+    title_lower = title.lower()
+    for kw, mat in _TITLE_MATERIAL_KEYWORDS.items():
+        if kw in title_lower:
+            return mat
+    return _GPC_MATERIAL_MAP.get(gpc_code, "")
+
+
+# 尺码标准化映射
+_SIZE_NORMALIZE = {
+    "2XL": "XXL", "3XL": "XXXL",
+    "2xl": "XXL", "3xl": "XXXL",
+}
+
+# 颜色标准化 — 非标准长句颜色值 → GMC 标准色
+_COLOR_NORMALIZE = {
+    "one pair of mixed colors": "Multicolor",
+    "mixed colors": "Multicolor",
+}
+
+
+def _normalize_size(raw: str) -> str:
+    """统一尺码格式：2XL→XXL, 3XL→XXXL"""
+    if not raw:
+        return ""
+    return _SIZE_NORMALIZE.get(raw.strip(), raw.strip())
+
+
+def _normalize_color(raw: str) -> str:
+    """标准化颜色值：长句描述 → GMC 标准色名"""
+    if not raw:
+        return ""
+    lower = raw.strip().lower()
+    if lower in _COLOR_NORMALIZE:
+        return _COLOR_NORMALIZE[lower]
+    return raw.strip()
+
+
+# ─────────────────────────────────────────────────
+# 品牌规范化 — 处理 1688 厂名、大牌敏感词、空品牌
+# ─────────────────────────────────────────────────
+
+# 大牌敏感词字典 — 触发时警告，防止 IP 封号
+_SENSITIVE_BRANDS = {
+    # 奢侈品
+    "nike", "adidas", "gucci", "louis vuitton", "lv", "chanel", "prada",
+    "hermes", "dior", "burbery", "versace", "fendi", "balenciaga",
+    # 运动/潮牌
+    "puma", "reebok", "new balance", "converse", "vans", "supreme",
+    "off-white", "stussy", "champion", "north face", "patagonia",
+    # 快时尚
+    "zara", "h&m", "uniqlo", "shein", "temu",
+    # 电子
+    "apple", "samsung", "sony", "huawei", "xiaomi", "dyson",
+    # 珠宝/手表
+    "rolex", "cartier", "tiffany", "pandora", "swarovski",
+}
+
+# 中文厂名关键词
+_FACTORY_KEYWORDS_ZH = ["厂", "公司", "批发", "经销", "商行", "工坊", "工作室", "经营部"]
+
+# 拼音厂名特征词
+_FACTORY_KEYWORDS_EN = ["factory", "manufacturer", "wholesale", "supplier", "industrial",
+                        "trading", "import", "export", "co., ltd", "co.,ltd"]
+
+
+def _normalize_brand(brand: str, shop_name: str, default_brand: str = None) -> tuple[str, str]:
+    """品牌规范化 — 统一使用店铺名作为品牌，打造 D2C 品牌形象
+
+    Returns:
+        (clean_brand, status) — status: "ok" | "replaced" | "sensitive_warning"
+    """
+    fallback = shop_name or default_brand or "Store"
+    
+    if not brand or not brand.strip():
+        # 空品牌 → 用店铺名
+        return fallback, "replaced"
+
+    brand_stripped = brand.strip()
+    brand_lower = brand_stripped.lower()
+
+    # 1. 大牌敏感词检测 — 保留原值但警告
+    if brand_lower in _SENSITIVE_BRANDS:
+        return brand_stripped, "sensitive_warning"
+
+    # 2. 中文厂名检测（含中文汉字）→ 替换为店铺名
+    if any(ord(c) > 0x4e00 for c in brand_stripped):
+        return fallback, "replaced"
+
+    # 3. 拼音/英文厂名检测 → 替换为店铺名
+    if any(kw in brand_lower for kw in _FACTORY_KEYWORDS_EN):
+        return fallback, "replaced"
+
+    # 4. 统一使用店铺名作为品牌（打造 D2C 一致性）
+    #    除非是敏感品牌，否则全部替换为店铺名
+    return fallback, "replaced"
+
+
+# ─────────────────────────────────────────────────
+# 变体图片智能映射 — 补救 1688 导入工具未关联变体图片的问题
+# ─────────────────────────────────────────────────
+
+def _fetch_shopify_product_images(shopify_domain: str, access_token: str,
+                                   shopify_product_id: str) -> list[str]:
+    """从 Shopify API 拉取产品的所有图片 URL（按上传顺序）"""
+    import requests
+    if not shopify_domain or not access_token or not shopify_product_id:
+        return []
+    try:
+        url = f"https://{shopify_domain}/admin/api/2024-10/products/{shopify_product_id}.json"
+        headers = {"X-Shopify-Access-Token": access_token}
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            images = data.get("product", {}).get("images", [])
+            return [img["src"] for img in images if img.get("src")]
+    except Exception as e:
+        print(f"  [Warn] 拉取 Shopify 图片失败: {e}")
+    return []
+
+
+def _build_color_image_map(colors: list[str], all_images: list[str]) -> dict[str, str]:
+    """将颜色列表按顺序映射到图片列表
+
+    假设：前 N 张图对应 N 个颜色（1688 导入工具的上传顺序），剩余为细节图。
+    """
+    if not colors or not all_images:
+        return {}
+    mapping = {}
+    for i, color in enumerate(colors):
+        if i < len(all_images):
+            mapping[color] = all_images[i]
+    return mapping
+
+
+# ─────────────────────────────────────────────────
+# 三段式流水线：段3 — Feed XML 生成（纯静态读取）
+# ─────────────────────────────────────────────────
+
+def generate_feed_for_store(store_id: str, countries: list[str] = None,
+                            skip_out_of_stock: bool = False,
+                            platforms: list[str] = None) -> dict:
+    """段3: Feed XML 生成 — 只读 feed_enabled=1 且 ai_status=ready 的产品
+
+    不调用任何 AI，纯静态数据拼装，毫秒级完成。
+
+    Args:
+        store_id: 店铺 ID
+        countries: 目标国家，默认从 feed_configs 读取
+        skip_out_of_stock: True 时跳过库存=0的变体，不输出到 Feed
+        platforms: 目标平台列表，可选值: ["google", "meta", "tiktok"]
+                   默认只生成 Google Feed
+
+    Returns:
+        {"feed_urls": [...], "total_items": N}
+    """
+    from . import store_db
+    from .config import FEEDS_DIR, PUBLIC_BASE_URL
+    from .feed_generator import generate as generate_feed_xml
+    from .multi_platform_feeds import (
+        save_meta_feed, save_tiktok_feed, durable_feed_path, durable_feed_url,
+    )
+
+    store = store_db.get_store(store_id)
+    if not store:
+        raise ValueError(f"Store not found: {store_id}")
+
+    # 确定目标国家
+    if not countries:
+        configs = store_db.get_store_feed_configs(store_id)
+        countries = [fc.country for fc in configs] if configs else [DEFAULT_COUNTRY]
+
+    # 确定目标平台（默认只生成 Google）
+    if not platforms:
+        platforms = ["google"]
+    platforms = [p.lower() for p in platforms]
+    valid_platforms = {"google", "meta", "tiktok"}
+    platforms = [p for p in platforms if p in valid_platforms]
+    if not platforms:
+        platforms = ["google"]
+
+    # 读取已处理的产品（feed_enabled=1, ai_status=ready）
+    products = store_db.get_feed_products(store_id)
+    if not products:
+        print(f"[FeedGen] No feed-enabled products for store {store_id}")
+        return {"feed_urls": [], "total_items": 0, "message": "No feed-enabled products"}
+
+    print(f"\n[FeedGen] Generating feed for {store.shop_name} — {len(products)} products, {len(countries)} countries, platforms: {', '.join(platforms)}")
+
+    feed_urls = []
+    site_url = store.site_url or PUBLIC_BASE_URL
+    public_base = PUBLIC_BASE_URL
+    total_items = 0
+
+    for country in countries:
+        cu = country.upper()
+        rows = []
+
+        for p in products:
+            # 获取变体
+            variants = store_db.get_product_variants(p.id)
+            if not variants:
+                # 无变体，用产品本身作为单行
+                variants_data = [{
+                    "sku": p.shopify_product_id or p.id,
+                    "title": "",
+                    "color": "",
+                    "size": "",
+                    "price": 0,
+                    "inventory": 0,
+                    "image_url": p.image_url or "",
+                }]
+                additional_imgs = []
+            else:
+                variants_data = [
+                    {
+                        "sku": v.sku,
+                        "title": v.title or "",
+                        "color": v.color or "",
+                        "size": v.size or "",
+                        "price": v.price,
+                        "inventory": v.inventory,
+                        "image_url": v.image_url or p.image_url or "",
+                    }
+                    for v in variants
+                ]
+
+                # ── 变体图片补救：检测是否需要从 Shopify 拉取完整图片并映射 ──
+                unique_imgs = set(vd["image_url"] for vd in variants_data if vd["image_url"])
+                colors = []
+                for vd in variants_data:
+                    c = vd.get("color", "")
+                    if c and c not in colors:
+                        colors.append(c)
+
+                additional_imgs = []
+                # 回退获取 access_token：store DB > 环境变量
+                shop_token = store.access_token or os.environ.get("SHOPIFY_ACCESS_TOKEN", "")
+                if len(unique_imgs) <= 1 and len(colors) > 1 and store.shopify_domain and shop_token:
+                    # 所有变体共用同一张图 + 有多个颜色 → 需要补救
+                    all_imgs = _fetch_shopify_product_images(
+                        store.shopify_domain, shop_token, p.shopify_product_id
+                    )
+                    if len(all_imgs) > 1:
+                        color_img_map = _build_color_image_map(colors, all_imgs)
+                        # 更新变体的 image_url
+                        for vd in variants_data:
+                            c = vd.get("color", "")
+                            if c in color_img_map:
+                                vd["image_url"] = color_img_map[c]
+                        # 剩余图片作为附加图片
+                        color_count = len(colors)
+                        additional_imgs = all_imgs[color_count:] if len(all_imgs) > color_count else []
+                        print(f"  [ImageMap] {p.title[:30]}: {len(colors)}色 → {len(all_imgs)}图, 映射成功")
+
+            # ── 图片 AI 处理：去水印/换白底 + R2 上传 ──
+            from .config import IMAGE_AI_ENABLED, IMAGE_AI_REMOVE_WATERMARK, IMAGE_AI_WHITE_BACKGROUND, R2_ENABLED
+            from .image_processor import needs_image_processing, process_and_upload_image
+
+            if IMAGE_AI_ENABLED:
+                # 收集需要处理的图片 URL
+                urls_to_process = set()
+                for vd in variants_data:
+                    img_url = vd.get("image_url", "")
+                    if img_url and needs_image_processing(img_url):
+                        urls_to_process.add(img_url)
+
+                # 批量处理 + 上传 R2
+                processed_map = {}  # 原始URL → 处理后URL
+                for img_url in urls_to_process:
+                    result_url = process_and_upload_image(
+                        img_url,
+                        store_id=store_id,
+                        product_id=p.id,
+                        remove_wm=IMAGE_AI_REMOVE_WATERMARK,
+                        white_bg=IMAGE_AI_WHITE_BACKGROUND,
+                    )
+                    if result_url:
+                        processed_map[img_url] = result_url
+
+                # 更新变体图片 URL
+                if processed_map:
+                    for vd in variants_data:
+                        img_url = vd.get("image_url", "")
+                        if img_url in processed_map:
+                            vd["image_url"] = processed_map[img_url]
+                    r2_status = " + R2" if R2_ENABLED else ""
+                    print(f"  [ImageAI{r2_status}] {p.title[:30]}: 处理了 {len(processed_map)} 张图片")
+
+            # 解析多语种标题（fallback）；platform assets applied below
+            cleaned_title_dict = {}
+            if p.cleaned_title:
+                try:
+                    cleaned_title_dict = json.loads(p.cleaned_title)
+                except json.JSONDecodeError:
+                    pass
+            opt_title = cleaned_title_dict.get(cu, p.optimized_title or p.title)
+
+            # 构建绝对 URL
+            product_link = f"{site_url}/products/{p.handle}" if p.handle else f"{site_url}/products/{p.id}"
+
+            for v_data in variants_data:
+                variant_sku = v_data["sku"]
+                # URL 参数中 SKU 不能含空格
+                safe_sku = variant_sku.replace(" ", "-")
+                variant_link = f"{product_link}?variant={safe_sku}"
+                variant_image = v_data.get("image_url") or p.image_url or ""
+
+                # 材质推断：已有值 > 标题关键词 > GPC 默认
+                inferred_material = _infer_material(p.gpc_code or "", p.title or "", p.material or "")
+                # 品牌规范化：中文厂名/拼音厂名/空品牌 → 店铺名，大牌检测警告
+                clean_brand, brand_status = _normalize_brand(
+                    p.brand, store.shop_name, store.default_brand
+                )
+                if brand_status == "sensitive_warning":
+                    print(f"  [BrandWarn] 敏感品牌: {clean_brand} — 产品 {p.title[:30]}")
+                elif brand_status == "replaced":
+                    pass  # 静默替换，不输出日志
+
+                rows.append({
+                    "SKU": variant_sku,
+                    "优化后标题": opt_title,
+                    "标题": p.title or "",
+                    "描述": p.description or "",
+                    "GPC代码": p.gpc_code or "",
+                    "GPC路径": p.gpc_path or "",
+                    "材质": inferred_material,
+                    "颜色": _normalize_color(v_data.get("color", "")),
+                    "尺码": _normalize_size(v_data.get("size", "")),
+                    "品牌": clean_brand,
+                    "item_group_id": p.shopify_product_id or p.id,
+                    "gender": p.gender or "unisex",
+                    "age_group": p.age_group or "adult",
+                    "identifier_exists": "no",
+                    "gtin": "",
+                    "价格": v_data.get("price", 0),
+                    "库存": v_data.get("inventory", 0),
+                    "图片链接": variant_image,
+                    "附加图片": json.dumps(additional_imgs) if additional_imgs else (p.additional_images or ""),
+                    "链接": variant_link,
+                    "匹配置信度": p.gpc_confidence or 0,
+                    "合规状态": "pass",
+                    "违规详情": "0",
+                    "ai_tags": "",
+                    "description_snippet": "",
+                    "水印检测": "OK",
+                    "custom_label_0": "",
+                    "custom_label_1": "",
+                    "custom_label_2": "",
+                    "custom_label_3": "",
+                    "custom_label_4": "",
+                    "_product_id": p.id,
+                })
+
+        if not rows:
+            continue
+
+        # Durable feeds: FEEDS_DIR/{store_id}/{platform}/{lang}.{xml|csv}
+        for plat in platforms:
+            plat_rows = []
+            for row in rows:
+                r = dict(row)
+                asset = store_db.get_product_asset_by_key(
+                    r.get("_product_id", ""), plat, cu,
+                )
+                if asset and asset.title:
+                    r["优化后标题"] = asset.title
+                    if asset.description:
+                        r["描述"] = asset.description
+                plat_rows.append(r)
+
+            feed_path = durable_feed_path(FEEDS_DIR, store_id, plat, cu)
+            if plat == "google":
+                country_df = pd.DataFrame(plat_rows)
+                xml = generate_feed_xml(country_df, cu, skip_out_of_stock=skip_out_of_stock)
+                feed_path.parent.mkdir(parents=True, exist_ok=True)
+                feed_path.write_text(xml, encoding="utf-8")
+                item_count = xml.count("<item>")
+            elif plat == "meta":
+                item_count = save_meta_feed(
+                    plat_rows, feed_path, store.shop_name or "", site_url, cu,
+                )
+            else:
+                item_count = save_tiktok_feed(
+                    plat_rows, feed_path, store.shop_name or "",
+                )
+
+            total_items += item_count
+            feed_url = durable_feed_url(public_base, store_id, plat, cu)
+            store_db.save_feed_file(
+                store_id=store_id, country=cu, platform=plat,
+                file_path=str(feed_path), feed_url=feed_url,
+                item_count=item_count,
+            )
+            feed_urls.append({
+                "platform": plat,
+                "country": cu,
+                "language": cu,
+                "url": feed_url,
+                "items": item_count,
+            })
+            print(f"  [{plat}/{cu}] Feed: {item_count} items → {feed_url}")
+
+    print(f"[FeedGen] Total: {total_items} items across {len(feed_urls)} feeds\n")
+    return {
+        "feed_urls": feed_urls,
+        "total_items": total_items,
+        "products_used": len(products),
+    }
+
+
+# ─────────────────────────────────────────────────
+# 店铺模式：从 DB 读取 → 清洗 → 持久化 Feed
+# ─────────────────────────────────────────────────
+
+def run_for_store(store_id: str, countries: list[str] = None,
+                  force: bool = False, max_workers: int = None,
+                  progress_callback=None) -> dict:
+    """从 store_db 读取店铺产品 → 执行清洗流程 → 持久化 Feed XML
+
+    Args:
+        store_id: 店铺 ID
+        countries: 目标国家列表，默认从 feed_configs 读取
+        force: 跳过去重强制执行
+        max_workers: 并行线程数
+        progress_callback: 进度回调
+
+    Returns:
+        summary dict + feed_urls 列表
+    """
+    from . import store_db
+    from .config import FEEDS_DIR
+
+    # ── 1. 获取店铺信息 ──
+    store = store_db.get_store(store_id)
+    if not store:
+        raise ValueError(f"Store not found: {store_id}")
+
+    print(f"\n{'=' * 60}")
+    print(f"  Store Pipeline: {store.shop_name or store.shopify_domain}")
+    print(f"  Store ID: {store_id}")
+    print(f"{'=' * 60}")
+
+    # ── 2. 确定目标国家 ──
+    if not countries:
+        configs = store_db.get_store_feed_configs(store_id)
+        if configs:
+            countries = [fc.country for fc in configs]
+        else:
+            countries = [DEFAULT_COUNTRY]
+            # 自动创建默认 Feed 配置
+            for c in countries:
+                store_db.upsert_feed_config(store_id, c)
+
+    # ── 3. 从 DB 读取产品 ──
+    products = store_db.get_store_products(store_id)
+    if not products:
+        print(f"  [WARN] No active products for store {store_id}")
+        return {
+            "status": "no_products", "store_id": store_id,
+            "total_sku": 0, "countries": countries,
+        }
+
+    # 转换为 pipeline 标准格式
+    products_data = []
+    for p in products:
+        variants = store_db.get_product_variants(p.id)
+        # 取第一个变体的价格/库存作为主值（兼容单变体场景）
+        main_price = variants[0].price if variants else 0
+        main_inventory = variants[0].inventory if variants else 0
+        main_sku = variants[0].sku if variants else p.id
+
+        products_data.append({
+            "SKU": main_sku,
+            "标题": p.title or "",
+            "描述": p.description or "",
+            "分类": p.product_type or "",
+            "品牌": p.brand or store.default_brand or "",
+            "材质": p.material or "",
+            "颜色": "",
+            "尺码": "",
+            "图片链接": p.image_url or "",
+            "附加图片": p.additional_images or "",
+            "价格": main_price,
+            "库存": main_inventory,
+            "链接": f"/products/{p.handle}" if p.handle else "",
+            "_product_id": p.id,               # 内部引用
+            "_shopify_product_id": p.shopify_product_id,
+            "_existing_gpc_code": p.gpc_code,
+            "_existing_gpc_path": p.gpc_path,
+        })
+
+    print(f"  Loaded {len(products_data)} products from DB")
+
+    # ── 4. 确定 Feed 输出目录 ──
+    feed_output_dir = str(FEEDS_DIR / store_id)
+
+    # ── 5. 执行标准清洗流程 ──
+    summary = run(
+        countries=countries,
+        force=force,
+        max_workers=max_workers,
+        progress_callback=progress_callback,
+        products_data=products_data,
+        feed_dir=feed_output_dir,
+    )
+
+    # ── 6. 后处理：回写 DB ──
+    print(f"\n[Post] Saving results back to store_db...")
+
+    # 6a: 记录生成的 Feed 文件
+    feed_urls = []
+    site_url = store.site_url or f"https://api.deltfu.com"
+    for country in countries:
+        cu = country.upper()
+        feed_path = Path(feed_output_dir) / f"{cu.lower()}.xml"
+        if feed_path.exists():
+            feed_url = f"{site_url}/feeds/{store_id}/{cu.lower()}.xml"
+            # 统计 variant 数量
+            item_count = 0
+            try:
+                content = feed_path.read_text(encoding="utf-8")
+                item_count = content.count("<entry>")  # Atom format
+                if item_count == 0:
+                    item_count = content.count("<item>")  # RSS format
+            except Exception:
+                pass
+
+            store_db.save_feed_file(
+                store_id=store_id, country=cu,
+                file_path=str(feed_path), feed_url=feed_url,
+                item_count=item_count,
+            )
+            feed_urls.append({"country": cu, "url": feed_url, "items": item_count})
+            print(f"  [{cu}] Feed saved: {item_count} items → {feed_url}")
+
+    summary["feed_urls"] = feed_urls
+    summary["store_id"] = store_id
+
+    print(f"\n{'=' * 60}")
+    print(f"  Store Pipeline DONE — {store.shop_name or store.shopify_domain}")
+    print(f"  Feeds: {len(feed_urls)} countries")
+    for fu in feed_urls:
+        print(f"    {fu['country']}: {fu['url']} ({fu['items']} items)")
     print(f"{'=' * 60}\n")
 
     return summary

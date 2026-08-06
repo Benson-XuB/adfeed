@@ -1,7 +1,11 @@
-"""AdFeed AI — AI 标题优化引擎 v2.1（多国原生语种版本）
+"""AdFeed AI — AI 标题优化引擎 v3.0（黄金30字符 + 3段式描述 + 多语种原生）
 
 每条商品对每个目标国家独立调用 AI，生成该语种的原生标题。
-融合：品类化黄金长尾词公式 + 海外文化场景字典 + Structured Outputs JSON Schema + 70 字符前端加载。
+核心升级：
+- 黄金前30字符法则：核心品类词必须出现在标题最前面
+- 品类化核心词前置公式（Google 权重从左到右递减）
+- 3段式金字塔描述（痛点场景 → Bullet Points → 合规补充）
+- 填充词拦截（One Size / Free Shipping 等废话词绝对切除）
 """
 
 import json
@@ -58,24 +62,43 @@ class OptimizedTitleOutput(BaseModel):
             raise ValueError(f"front_70 too sparse — only {len(tokens)} tokens: '{v}'")
         return v
 
+    @field_validator("front_70")
+    @classmethod
+    def no_filler_phrases(cls, v: str) -> str:
+        """切除浪费标题空间的填充词"""
+        fillers = [
+            "one size", "one-size", "free size", "free shipping",
+            "high quality", "best quality", "top quality",
+            "new arrival", "hot sale", "100%",
+        ]
+        v_lower = v.lower()
+        for f in fillers:
+            if f in v_lower:
+                raise ValueError(f"front_70 contains filler phrase: '{f}' — remove it to save space")
+        return v
+
 
 # ─────────────────────────────────────────────
 # 品类化公式（语言无关，各语种 Prompt 共用）
 # ─────────────────────────────────────────────
 
-FORMULA_APPAREL = "[Color/Gender] + [Material] + [Core Function/Pain-Point] + [Category] + [1-2 Usage Scenes]"
-FORMULA_BAGS = "[Color/Gender] + [Material] + [Core Function(waterproof/anti-theft)] + [Category] + [1-2 Usage Scenes]"
-FORMULA_JEWELRY = "[Color/Style] + [Material(18K/Sterling/Titanium)] + [Category Type] + [1 Usage Scene(eg. Daily/Party/Gift)]"
-FORMULA_ELECTRONICS = "[Compatible Model + Core Pain-Point] + [Material/Tech(anti-yellow/shockproof)] + [Category] + [1 Usage Scene + Pack]"
-FORMULA_HOME = "[Color/Style] + [Material] + [Core Function] + [Category] + [1 Usage Scene(room/occasion)]"
-FORMULA_KITCHEN = "[Color/Material] + [Core Function(non-stick/insulated)] + [Category] + [1 Usage Scene + Quantity]"
-FORMULA_BEAUTY = "[Core Efficacy] + [Skin Type] + [Product Category(Serum/Cream)] + [1 Usage Scene(daily/self-care)] + [Volume]"
-FORMULA_SPORTS = "[Color/Gender] + [Material/Tech(quick-dry/anti-slip)] + [Category] + [1-2 Usage Scenes(gym/running/outdoor)]"
-FORMULA_PET = "[Color/Material] + [Safety Feature(chew-proof/non-toxic)] + [Category] + [Pet Breed/Size + 1 Scene]"
-FORMULA_TOYS = "[Material + Safety Cert(BPA-free/CE)] + [Educational Value] + [Age Range] + [Category] + [1 Play Scene]"
-FORMULA_AUTO = "[Compatible Model + Function] + [Material(no-residue/heat-resistant)] + [Category] + [1 Usage Scene]"
-FORMULA_OFFICE = "[Color/Design Style] + [Material] + [Category] + [1 Usage Scene(desk/college/studio)]"
-# Scene sourcing: inject 1-2 usage scene keywords from cultural_context occasions into front_70
+# ═══════════════════════════════════════════════════════════════
+# 品类化核心词前置公式（Google 权重从左到右递减）
+# 核心规则：前30字符必须包含核心品类名词
+# ═══════════════════════════════════════════════════════════════
+
+FORMULA_APPAREL = "[Gender] + [Core Category] + [Key Feature/Material] + [1-2 Usage Scenes]"
+FORMULA_BAGS = "[Gender] + [Core Category] + [Key Feature(waterproof/anti-theft)] + [Material] + [1-2 Usage Scenes]"
+FORMULA_JEWELRY = "[Material(18K/Sterling/Titanium)] + [Category Type] + [Style] + [1 Usage Scene(Daily/Party/Gift)]"
+FORMULA_ELECTRONICS = "[Core Function/Model] + [Product Category] + [Key Tech(anti-yellow/shockproof)] + [Color/Spec]"
+FORMULA_HOME = "[Style] + [Core Function] + [Category] + [Material] + [1 Usage Scene(room/occasion)]"
+FORMULA_KITCHEN = "[Core Function(non-stick/insulated)] + [Category] + [Material] + [1 Usage Scene + Quantity]"
+FORMULA_BEAUTY = "[Core Efficacy] + [Product Category(Serum/Cream)] + [Skin Type] + [1 Usage Scene(daily/self-care)] + [Volume]"
+FORMULA_SPORTS = "[Gender] + [Core Category] + [Key Tech(quick-dry/anti-slip)] + [1-2 Usage Scenes(gym/running/outdoor)]"
+FORMULA_PET = "[Safety Feature(chew-proof/non-toxic)] + [Category] + [Pet Breed/Size] + [1 Scene]"
+FORMULA_TOYS = "[Educational Value] + [Age Range] + [Category] + [Safety Cert(BPA-free/CE)] + [1 Play Scene]"
+FORMULA_AUTO = "[Core Function/Model] + [Category] + [Material(no-residue/heat-resistant)] + [1 Usage Scene]"
+FORMULA_OFFICE = "[Design Style] + [Category] + [Material] + [1 Usage Scene(desk/college/studio)]"
 
 
 def _get_formula_instruction(cn_category: str, gpc_path: str = "") -> str:
@@ -160,26 +183,38 @@ PRODUCT TO OPTIMIZE:
 - GPC Matched Category: {gpc_path}
 - Additional Attributes: {attributes}
 
-CRITICAL — THREE-TIER LONG-TAIL STRATEGY:
+CRITICAL — GOLDEN 30-CHARACTER RULE:
+Google Shopping weights DECREASE left-to-right. Users only read the first 25-30 chars on mobile.
+The FIRST 30 characters of front_70 MUST contain the CORE PRODUCT CATEGORY NOUN (e.g. "Running Shoes", "Phone Case", "Desk Lamp").
+NEVER start with filler words like "New", "Hot", "High Quality", "One Size".
+
+THREE-TIER LONG-TAIL STRATEGY:
 Tier 1 — front_70 (≤66 chars STRICT CEILING):
-  Pack: [Color/Gender] + [Material] + [Core Function] + [Category] + [1-2 Usage Scenes]
-  The scene keywords MUST come from the cultural_context occasions list. Scene words are the #1 priority — more important than color or material.
+  Structure: [Gender] + [Core Category] + [Key Feature/Material] + [1-2 Usage Scenes]
+  The scene keywords MUST come from the cultural_context occasions list. Scene words are the #1 priority.
   EXAMPLES:
-    GOOD (63ch): "Women Pink Mesh Running Sneakers Quick-Dry for Marathon Training"
-    BAD  (64ch): "iPhone 15 Pro Max Clear Acrylic Drop-Proof MagSafe Case for Back" ← "Back" is a CUT scene phrase, user sees garbage
+    GOOD (63ch): "Women Running Shoes Pink Mesh Quick-Dry for Marathon Training"
+    GOOD (28ch): "iPhone 15 Pro MagSafe Case Clear" ← core noun in first 30 chars
+    BAD  (64ch): "One Size Women Pink Mesh Running Sneakers for Back" ← "One Size" wastes space, "Back" is CUT
     BAD  (65ch): "Women Breathable Running Shoes Shock-Absorbing Lightweight for Dail" ← SCENE CUT mid-word
   RULES:
   - front_70 MUST be ≤66 characters. COUNT before output.
-  - MUST end with a complete meaningful word — a NOUN, the last word of your scene phrase, or a product term. NEVER end with "for Back", "for Dail", "for Summ" etc.
+  - FIRST 30 chars MUST contain the core product category noun.
+  - NEVER include "One Size", "Free Size", "Free Shipping", "High Quality", "100%", "New Arrival".
+  - MUST end with a complete meaningful word. NEVER end with "for Back", "for Dail", "for Summ" etc.
   - If the full scene phrase cannot fit, DROP secondary attributes (color, material first) — KEEP the scene intact.
-    Priority hierarchy: SCENE WORDS > Category > Core Function > Color > Material.
+    Priority hierarchy: CORE CATEGORY > SCENE WORDS > Core Function > Color > Material.
   - ONLY this product's real attributes. No cross-category vocabulary.
-  - SCENE ALWAYS follows a preposition: "for [Scene]" (not bare scene word). This helps Google's parser segment the title correctly.
+  - SCENE ALWAYS follows a preposition: "for [Scene]" (not bare scene word).
   - ZERO Chinese characters. 100% native English.
 Tier 2 — rest:
   Supplementary specs ONLY (size, pack count). NEVER repeat a category synonym from front_70.
-Tier 3 — description_snippet (AEO paragraph):
-  Write as if answering a shopper's question. Open with a use-case scene, blend in pain-point and material details. Natural US English.
+Tier 3 — description_snippet (3-TIER PYRAMID):
+  Write a structured 3-paragraph description in this EXACT format:
+  Paragraph 1 (1 sentence): Core pain point or usage scene. E.g. "The ultimate companion for your daily gym sessions and casual weekend hangouts."
+  Paragraph 2 (bullet points): 3-4 key selling points. Format: "• Premium Material: 100% Breathable Organic Cotton\n• Ergonomic Design: Loose fit for maximum comfort\n• Easy Care: Machine washable, shrinkage-resistant"
+  Paragraph 3 (compliance): Size/fit hints, "Brand New" statement, shipping note. E.g. "Please refer to size chart. 100% Brand New with tags."
+  Natural US English. Max 300 characters total.
 Tier 4 — ai_tags:
   ALWAYS output 3-5 lowercase English descriptive labels. These are SEO assets for custom labels and ad targeting.
 
@@ -191,7 +226,7 @@ OUTPUT FORMAT — valid JSON only:
   "description_snippet": "..."
 }}
 
-BANNED WORDS: Best, No.1, #1, Top-1, Guaranteed, Perfect, Amazing, Incredible, Unbeatable, 100%, Cheap, Discount, Free Shipping. Output ONLY valid JSON. No markdown."""
+BANNED WORDS: Best, No.1, #1, Top-1, Guaranteed, Perfect, Amazing, Incredible, Unbeatable, 100%, Cheap, Discount, Free Shipping, One Size, High Quality. Output ONLY valid JSON. No markdown."""
 
 _PROMPT_DE = """Du bist ein deutscher Google-Shopping-Spezialist.
 
@@ -207,6 +242,11 @@ PRODUKT ZU OPTIMIEREN:
 - Farbe: {color}
 - GPC-Kategorie: {gpc_path}
 - Attribute: {attributes}
+
+KRITISCHE GOLDENE-30-ZEICHEN-REGEL:
+Google-Shopping-Gewichte NEHMEN von links nach rechts AB. Benutzer lesen nur die ersten 25-30 Zeichen auf dem Handy.
+Die ERSTEN 30 ZEICHEN von front_70 MÜSSEN das HAUPTKATEGORIE-NOMEN enthalten (z.B. "Laufschuhe", "Handyhülle", "Schreibtischlampe").
+Beginnen Sie NIEMALS mit Füllwörtern wie "Neu", "Hot", "Hohe Qualität", "Einheitsgröße".
 
 KRITISCHE DREISTUFIGE LONG-TAIL-STRATEGIE:
 Stufe 1 — front_70 (≤66 Zeichen STRENGES LIMIT):
@@ -227,10 +267,15 @@ Stufe 1 — front_70 (≤66 Zeichen STRENGES LIMIT):
   - Null chinesische Zeichen. ALLES auf Deutsch.
   - Wenn der Originaltitel chinesische Zeichen enthält (z.B. "iPhone15Pro透明防摔磁吸手机壳"): Modellnamen behalten, ALLE chinesischen Teile ins Deutsche übersetzen, KEIN chinesisches Zeichen im Output.
 Stufe 2 — rest: NUR ergänzende Spezifikationen (Größe, Packungsgröße). Kein Kategorie-Synonym aus front_70.
-Stufe 3 — description_snippet (AEO-Absatz): Schreibe wie eine Käuferfrage-Antwort. Starte mit Nutzungsszene, verwebe Problemlösung und Materialdetails. Natürliches Deutsch.
+Stufe 3 — description_snippet (3-STUFEN-PYRAMIDE):
+  Schreibe eine strukturierte 3-Absatz-Beschreibung in diesem FORMAT:
+  Absatz 1 (1 Satz): Kern-Schmerzpunkt oder Nutzungsszene. Z.B. "Der ultimative Begleiter für Ihr tägliches Training und entspannte Wochenenden."
+  Absatz 2 (Aufzählungspunkte): 3-4 Hauptverkaufsargumente. Format: "• Premium-Material: 100% atmungsaktive Bio-Baumwolle\n• Ergonomisches Design: Lockere Passform für maximalen Komfort\n• Pflegeleicht: Maschinenwaschbar, einlaufsfrei"
+  Absatz 3 (Compliance): Größenhinweise, "Markenneu"-Erklärung. Z.B. "Bitte beachten Sie die Größentabelle. 100% markenneu mit Etiketten."
+  Natürliches Deutsch. Max 300 Zeichen insgesamt.
 Stufe 4 — ai_tags: IMMER 3-5 DEUTSCHE Labels (NICHT Englisch!). Getrennt durch Leerzeichen, KEINE Unterstriche/Bindestriche. Beispiel: ["laufschuhe damen", "park jogging", "leichtgewichtig"]. Diese sind SEO-Assets für Werbe-Targeting.
 
-VERBOTENE WÖRTER: Beste, Nr.1, #1, Top, 100%, Kostenloser Versand, Günstig, Rabatt, Garantiert, Perfekt, Unglaublich. KEINE chinesischen Zeichen. Gib NUR JSON aus."""
+VERBOTENE WÖRTER: Beste, Nr.1, #1, Top, 100%, Kostenloser Versand, Günstig, Rabatt, Garantiert, Perfekt, Unglaublich, Einheitsgröße, Hohe Qualität. KEINE chinesischen Zeichen. Gib NUR JSON aus."""
 
 _PROMPT_FR = """Tu es un spécialiste français de Google Shopping.
 
@@ -247,29 +292,38 @@ PRODUIT À OPTIMISER:
 - Catégorie GPC: {gpc_path}
 - Attributs: {attributes}
 
+RÈGLE D'OR DES 30 PREMIERS CARACTÈRES:
+Les poids Google Shopping DÉCROISSENT de gauche à droite. Les utilisateurs ne lisent que les 25-30 premiers caractères sur mobile.
+Les 30 PREMIERS caractères de front_70 DOIVENT contenir le NOM DE CATÉGORIE PRINCIPAL (ex: "Lampe Bureau", "Sac à Main", "Coque iPhone").
+Ne commencez JAMAIS par des mots remplisseurs comme "Nouveau", "Hot", "Haute Qualité", "Taille Unique".
+
 STRATÉGIE LONGUE TRAÎNE À TROIS NIVEAUX:
 Niveau 1 — front_70 (≤66 caractères LIMITE DURE):
   Structure: [Couleur/Genre] + [Matière] + [Fonction principale] + [Catégorie] + [1-2 Scènes d'usage]
   Les mots-clés de scène DOIVENT provenir des occasions cultural_context. Les scènes sont PRIORITÉ #1.
   EXEMPLES:
     BON  (66ch): "Blanc Fer Lampe Bureau Scandinave Gradation pour Cadeau de"
-    MAUVAIS (55ch): "Blanc Fer Lampe Bureau Scandinave pour Crémaillère" ← "Crémaillère" allein = zu knapp, die vollständige Phrase ist "cadeau de crémaillère"
+    MAUVAIS (55ch): "Blanc Fer Lampe Bureau Scandinave pour Crémaillère" ← "Crémaillère" seul = trop court
     MAUVAIS: "Cadeau de Crémaillère Structure en fer" ← front_70 et rest fusionnés illisiblement
   RÈGLES:
   - front_70 DOIT faire ≤66 caractères. COMPTEZ.
-  - Ordre des mots NATUREL en français: Adjectif de couleur AVANT le nom (ex: "Blanc Fer Lampe" pas "Fer Blanc Lampe").
-    Le nom principal (catégorie) vient AVANT les compléments de scène (ex: "Lampe ... pour Cadeau de Crémaillère").
+  - Ordre des mots NATUREL en français: Adjectif de couleur AVANT le nom.
+    Le nom principal (catégorie) vient AVANT les compléments de scène.
   - DOIT finir par un mot complet — un NOM ou le dernier mot de votre scène. JAMAIS finir par "de", "du", "pour", "avec", "et".
-  - La phrase de scène "cadeau de crémaillère" doit être COMPLÈTE, pas abrégée en "crémaillère" toute seule.
   - Si la scène ne tient pas entièrement, SUPPRIMEZ les attributs secondaires — GARDEZ la scène intacte.
     Priorité: SCÈNE > Catégorie > Fonction > Couleur > Matière.
   - Uniquement les attributs de CE produit. Zéro caractère chinois. 100% français.
-  - Scène TOUJOURS introduite par une préposition: "pour [Scène]" (pas de mot de scène nu). Cela aide le parser Google à segmenter correctement le titre.
+  - Scène TOUJOURS introduite par une préposition: "pour [Scène]". Cela aide le parser Google.
 Niveau 2 — rest: UNIQUEMENT spécifications (taille, lot). Jamais de synonyme de catégorie.
-Niveau 3 — description_snippet (AEO): Répondez comme à une question d'acheteur. Scène d'usage → résolution problème → détails matériel. Français naturel.
+Niveau 3 — description_snippet (PYRAMIDE 3 NIVEAUX):
+  Écrivez une description structurée en 3 paragraphes dans ce FORMAT:
+  Paragraphe 1 (1 phrase): Point de douleur principal ou scène d'usage.
+  Paragraphe 2 (points clés): 3-4 arguments de vente. Format: "• Matériau Premium: ...\n• Design Ergonomique: ...\n• Entretien Facile: ..."
+  Paragraphe 3 (conformité): Conseils taille, mention "Neuf".
+  Français naturel. Max 300 caractères au total.
 Niveau 4 — ai_tags: TOUJOURS 3-5 labels EN FRANÇAIS (PAS en anglais!). Séparés par des espaces, JAMAIS de tirets/soulignés. Exemple: ["lampe bureau", "cadeau cremaillere", "scandinave"]. Assets SEO.
 
-MOTS INTERDITS: Meilleur, N°1, #1, Top, 100%, Livraison gratuite, Pas cher, Remise, Garanti, Parfait, Incroyable. Donne UNIQUEMENT du JSON."""
+MOTS INTERDITS: Meilleur, N°1, #1, Top, 100%, Livraison gratuite, Pas cher, Remise, Garanti, Parfait, Incroyable, Taille unique, Haute Qualité. Donne UNIQUEMENT du JSON."""
 
 _PROMPT_ES = """Eres un especialista español de Google Shopping.
 
@@ -286,6 +340,11 @@ PRODUCTO A OPTIMIZAR:
 - Categoría GPC: {gpc_path}
 - Atributos: {attributes}
 
+REGLA DE ORO DE LOS 30 PRIMEROS CARACTERES:
+Los pesos de Google Shopping DISMINUYEN de izquierda a derecha. Los usuarios solo leen los primeros 25-30 caracteres en móvil.
+Los 30 PRIMEROS caracteres de front_70 DEBEN contener el NOMBRE DE CATEGORÍA PRINCIPAL.
+NUNCA empieces con palabras de relleno como "Nuevo", "Hot", "Alta Calidad", "Talla única".
+
 ESTRATEGIA LONG-TAIL DE TRES NIVELES:
 Nivel 1 — front_70 (≤66 caracteres LÍMITE DURO):
   Estructura: [Color/Género] + [Material] + [Función principal] + [Categoría] + [1-2 Escenas de uso]
@@ -301,12 +360,17 @@ Nivel 1 — front_70 (≤66 caracteres LÍMITE DURO):
   - Si la escena no cabe entera, ELIMINA atributos secundarios — CONSERVA la escena.
     Prioridad: ESCENA > Categoría > Función > Color > Material.
   - Solo atributos reales de ESTE producto. Cero caracteres chinos. 100% español.
-  - Escena SIEMPRE introducida por preposición: "para [Escena]" (no palabra de escena suelta). Ayuda al parser de Google a segmentar correctamente.
+  - Escena SIEMPRE introducida por preposición: "para [Escena]". Ayuda al parser de Google.
 Nivel 2 — rest: SOLO especificaciones (talla, lote). Sin sinónimos de categoría.
-Nivel 3 — description_snippet (AEO): Responde como a la pregunta de un comprador. Escena → problema → material. Español natural.
+Nivel 3 — description_snippet (PIRÁMIDE 3 NIVELES):
+  Escribe una descripción estructurada en 3 párrafos en este FORMATO:
+  Párrafo 1 (1 frase): Punto de dolor principal o escena de uso.
+  Párrafo 2 (puntos clave): 3-4 argumentos de venta. Format: "• Material Premium: ...\n• Diseño Ergonómico: ...\n• Cuidado Fácil: ..."
+  Párrafo 3 (conformidad): Consejos de talla, mención "Nuevo".
+  Español natural. Máx 300 caracteres en total.
 Nivel 4 — ai_tags: SIEMPRE 3-5 labels EN ESPAÑOL (NO en inglés!). Separados por espacios, NUNCA guiones/subrayados. Ejemplo: ["mascarilla facial", "acido hialuronico", "rutina diaria"]. Assets SEO.
 
-PALABRAS PROHIBIDAS: Mejor, N.º1, #1, Top, 100%, Envío gratis, Barato, Descuento, Garantizado, Perfecto, Increíble. Devuelve SOLO JSON."""
+PALABRAS PROHIBIDAS: Mejor, N.º1, #1, Top, 100%, Envío gratis, Barato, Descuento, Garantizado, Perfecto, Increíble, Talla única, Alta Calidad. Devuelve SOLO JSON."""
 
 _PROMPT_IT = """Sei uno specialista italiano di Google Shopping.
 
@@ -323,6 +387,11 @@ PRODOTTO DA OTTIMIZARE:
 - Categoria GPC: {gpc_path}
 - Attributi: {attributes}
 
+REGOLA D'ORO DEI 30 CARATTERI:
+I pesi di Google Shopping DIMINUISCONO da sinistra a destra. Gli utenti leggono solo i primi 25-30 caratteri su mobile.
+I primi 30 CARATTERI di front_70 DEVONO contenere il NOME DELLA CATEGORIA PRINCIPALE.
+Non iniziare MAI con parole riempitive come "Nuovo", "Hot", "Alta Qualità", "Taglia Unica".
+
 STRATEGIA LONG-TAIL A TRE LIVELLI:
 Livello 1 — front_70 (≤66 caratteri LIMITE RIGIDO):
   Struttura: [Colore/Genere] + [Materiale] + [Funzione principale] + [Categoria] + [1-2 Scene d'uso]
@@ -338,12 +407,17 @@ Livello 1 — front_70 (≤66 caratteri LIMITE RIGIDO):
   - Se la scena non ci sta per intero, ELIMINA attributi secondari — CONSERVA la scena.
     Priorità: SCENA > Categoria > Funzione > Colore > Materiale.
   - Solo attributi reali di QUESTO prodotto. Zero caratteri cinesi. 100% italiano.
-  - Scena SEMPRE introdotta da preposizione: "per [Scena]" (non parola di scena nuda). Aiuta il parser di Google.
+  - Scena SEMPRE introdotta da preposizione: "per [Scena]". Aiuta il parser di Google.
 Livello 2 — rest: SOLO specifiche (taglia, confezione). Nessun sinonimo di categoria.
-Livello 3 — description_snippet (AEO): Rispondi come alla domanda di un acquirente. Scena → soluzione → dettagli. Italiano naturale.
+Livello 3 — description_snippet (PIRAMIDE 3 LIVELLI):
+  Scrivi una descrizione strutturata in 3 paragrafi in questo FORMATO:
+  Paragrafo 1 (1 frase): Punto di dolore principale o scena d'uso.
+  Paragrafo 2 (punti chiave): 3-4 argomenti di vendita. Format: "• Materiale Premium: ...\n• Design Ergonomico: ...\n• Cura Facile: ..."
+  Paragrafo 3 (conformità): Consigli taglia, menzione "Nuovo".
+  Italiano naturale. Max 300 caratteri in totale.
 Livello 4 — ai_tags: SEMPRE 3-5 label IN ITALIANO (NON in inglese!). Separati da spazi, MAI trattini/sottolineature. Esempio: ["scarpe running", "palestra", "ammortizzate"]. Asset SEO.
 
-PAROLE VIETATE: Migliore, N.1, #1, Top, 100%, Spedizione gratuita, Economico, Sconto, Garantito, Perfetto, Incredibile. Restituisci SOLO JSON."""
+PAROLE VIETATE: Migliore, N.1, #1, Top, 100%, Spedizione gratuita, Economico, Sconto, Garantito, Perfetto, Incredibile, Taglia Unica, Alta Qualità. Restituisci SOLO JSON."""
 
 
 # ─────────────────────────────────────────────
@@ -466,6 +540,32 @@ def _validate_and_clean_output(parsed: dict, original_title: str, country: str =
     front_70 = re.sub(r'\s+', ' ', front_70).strip()
     rest = re.sub(r'\s+', ' ', rest).strip()
     description_snippet = re.sub(r'\s+', ' ', description_snippet).strip()
+
+    # ── 第 1.5 层：填充词切除（浪费标题空间的废话词）──
+    _FILLER_PATTERNS = [
+        r'(?i)\bone\s*size\b', r'(?i)\bfree\s*size\b',
+        r'(?i)\bfree\s*shipping\b', r'(?i)\bhigh\s*quality\b',
+        r'(?i)\bbest\s*quality\b', r'(?i)\btop\s*quality\b',
+        r'(?i)\bnew\s*arrival[s]?\b', r'(?i)\bhot\s*sale\b',
+        r'(?i)\b100%\b', r'(?i)\bpremium\s*quality\b',
+        # 德语填充词
+        r'(?i)\bEinheitsgröße\b', r'(?i)\bHohe Qualität\b',
+        r'(?i)\bKostenloser Versand\b',
+        # 法语填充词
+        r'(?i)\bTaille unique\b', r'(?i)\bHaute Qualité\b',
+        r'(?i)\bLivraison gratuite\b',
+        # 西语填充词
+        r'(?i)\bTalla única\b', r'(?i)\bAlta Calidad\b',
+        r'(?i)\bEnvío gratis\b',
+        # 意语填充词
+        r'(?i)\bTaglia Unica\b', r'(?i)\bAlta Qualità\b',
+        r'(?i)\bSpedizione gratuita\b',
+    ]
+    for pattern in _FILLER_PATTERNS:
+        front_70 = re.sub(pattern, '', front_70)
+        rest = re.sub(pattern, '', rest)
+    front_70 = re.sub(r'\s+', ' ', front_70).strip()
+    rest = re.sub(r'\s+', ' ', rest).strip()
 
     # ── 第二层：中文泄漏检测（三层分级）──
     market_is_cn = country.upper() in ("CN", "HK", "TW", "SG", "")
@@ -739,6 +839,67 @@ def optimize_multi_country(
         "ai_tags_by_lang": ai_tags_by_lang,
         "description_snippets": description_snippets,
         "per_country": per_country,
+    }
+
+
+# ─────────────────────────────────────────────
+# Platform-specific rewrite (Approach-3 layer 3)
+# ─────────────────────────────────────────────
+
+_PLATFORM_PREFIX = {
+    "google": "",
+    "meta": "",
+    "tiktok": "",
+}
+
+
+def rewrite_for_platform(
+    title: str,
+    description: str = "",
+    platform: str = "google",
+    language: str = "US",
+    tags: list = None,
+) -> dict:
+    """Rewrite language-skeleton copy into a platform asset.
+
+    Google: keep Shopping front_70 discipline (truncate to 150).
+    Meta: commerce-catalog friendly, slightly shorter hook.
+    TikTok: short shoppable ecommerce phrasing.
+
+    Pure transform by default (no LLM) so layered pipeline stays billable
+    and testable; set ADFEED_PLATFORM_LLM=1 to call the model later.
+    """
+    plat = (platform or "google").lower()
+    base_title = (title or "").strip()
+    base_desc = (description or "").strip()
+    tags = list(tags or [])
+
+    if plat == "meta":
+        # Commerce: punchy, under ~100 chars preferred
+        out_title = base_title
+        if len(out_title) > 100:
+            out_title = out_title[:97].rstrip() + "..."
+        out_desc = base_desc[:5000] if base_desc else base_title
+    elif plat == "tiktok":
+        # Short shoppable
+        out_title = base_title
+        if len(out_title) > 80:
+            out_title = out_title[:77].rstrip() + "..."
+        # Light TikTok cue without spammy emojis
+        if out_title and not out_title.lower().startswith("shop"):
+            pass
+        out_desc = (base_desc or base_title)[:1000]
+    else:
+        # Google Shopping
+        out_title = base_title[:150] if len(base_title) > 150 else base_title
+        out_desc = base_desc[:5000] if base_desc else base_title
+
+    return {
+        "platform": plat,
+        "language": language.upper(),
+        "title": out_title,
+        "description": out_desc,
+        "tags": tags,
     }
 
 
