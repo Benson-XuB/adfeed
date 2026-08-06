@@ -1,0 +1,1029 @@
+"""AdFeed AI — 多店铺多国家持久化 Feed 数据库层
+
+管理店铺、产品、变体、Feed 配置和生成记录。
+与现有 db.py 共享同一个 SQLite 数据库（webapp.db）。
+
+核心表：
+- stores: 店铺信息（Shopify App 安装后创建）
+- products: 产品主表（从 Shopify 同步或 Excel 导入）
+- product_variants: 变体表（颜色×尺码展开后）
+- feed_configs: Feed 配置表（每店×每国一条）
+- feed_files: 生成的 XML 文件记录
+"""
+
+import uuid
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Optional
+
+from .db import _conn, DATA_DIR
+
+
+# ─────────────────────────────────────────────
+# Schema 定义
+# ─────────────────────────────────────────────
+
+STORE_SCHEMA = """
+-- 店铺表（Shopify App 安装后创建）
+CREATE TABLE IF NOT EXISTS stores (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    shopify_domain TEXT UNIQUE NOT NULL,  -- mystore.myshopify.com
+    shop_name TEXT,
+    access_token TEXT,
+    site_url TEXT,                        -- 前端站点URL（用于拼接Feed link）
+    default_brand TEXT,
+    default_currency TEXT DEFAULT 'USD',
+    plan TEXT DEFAULT 'free',
+    quota_total INTEGER DEFAULT 10,
+    quota_used INTEGER DEFAULT 0,
+    subscription_id TEXT,
+    billing_status TEXT DEFAULT 'none',   -- none / active / cancelled / frozen
+    status TEXT DEFAULT 'active',         -- active / suspended / archived
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 产品主表（从 Shopify 同步或 Excel 导入）
+CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    shopify_product_id TEXT,              -- Shopify 原始ID
+    handle TEXT,                          -- URL slug
+    title TEXT,
+    vendor TEXT,
+    product_type TEXT,
+    brand TEXT,
+    material TEXT,
+    gender TEXT,                          -- male / female / unisex
+    age_group TEXT,                       -- adult / kids / toddler
+    gpc_code TEXT,                        -- 匹配后的GPC ID
+    gpc_path TEXT,
+    gpc_confidence REAL,
+    gpc_source TEXT,                      -- keyword / llm / manual
+    image_url TEXT,
+    additional_images TEXT,               -- JSON array
+    description TEXT,                     -- 原始描述
+    optimized_title TEXT,                 -- AI优化标题（默认/主语言）
+    cleaned_title TEXT,                   -- AI清洗后标题（多语种JSON）
+    cleaned_description TEXT,             -- AI清洗后描述（多语种JSON）
+    feed_enabled INTEGER DEFAULT 0,       -- 1=加入Google广告Feed, 0=不进XML
+    ai_status TEXT DEFAULT 'raw',         -- raw=待清洗 / processing=清洗中 / ready=已就绪
+    status TEXT DEFAULT 'active',         -- active / archived / error
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 变体表（每个产品多个变体：颜色×尺码）
+CREATE TABLE IF NOT EXISTS product_variants (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(id),
+    shopify_variant_id TEXT,
+    sku TEXT UNIQUE,
+    title TEXT,                           -- 如 "White / S"
+    color TEXT,
+    size TEXT,
+    price REAL,
+    compare_at_price REAL,
+    inventory INTEGER DEFAULT 0,
+    weight REAL,
+    weight_unit TEXT DEFAULT 'kg',
+    image_url TEXT,
+    barcode TEXT,                         -- UPC/EAN（如有）
+    status TEXT DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Feed 配置表（每店×每国一条）
+CREATE TABLE IF NOT EXISTS feed_configs (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    country TEXT NOT NULL,                -- US / DE / FR / ES / IT
+    currency TEXT DEFAULT 'USD',
+    language TEXT DEFAULT 'en',
+    site_link TEXT,                       -- 该国站点URL
+    auto_sync INTEGER DEFAULT 1,
+    last_synced_at TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(store_id, country)
+);
+
+-- Feed 文件记录表（生成的XML）
+CREATE TABLE IF NOT EXISTS feed_files (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    country TEXT NOT NULL,
+    platform TEXT DEFAULT 'google',       -- google / meta / tiktok
+    file_path TEXT NOT NULL,              -- 磁盘路径
+    feed_url TEXT NOT NULL,               -- 公开访问URL
+    item_count INTEGER DEFAULT 0,
+    file_size INTEGER DEFAULT 0,
+    generated_at TEXT,
+    expires_at TEXT,                      -- 可选过期时间
+    status TEXT DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 平台×语言 优化资产（计费单元）
+CREATE TABLE IF NOT EXISTS product_assets (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    product_id TEXT NOT NULL REFERENCES products(id),
+    platform TEXT NOT NULL,               -- google / meta / tiktok
+    language TEXT NOT NULL,               -- US / DE / FR / ES / IT
+    title TEXT,
+    description TEXT,
+    tags_json TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(product_id, platform, language)
+);
+
+-- 配额扣费明细
+CREATE TABLE IF NOT EXISTS usage_ledger (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    job_id TEXT,
+    sku TEXT,
+    platform TEXT NOT NULL,
+    language TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- App 生成任务（店铺维度）
+CREATE TABLE IF NOT EXISTS store_jobs (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    status TEXT DEFAULT 'pending',        -- pending / processing / completed / failed
+    platforms TEXT NOT NULL DEFAULT '["google"]',
+    languages TEXT NOT NULL DEFAULT '["US"]',
+    product_ids TEXT,                     -- JSON array
+    total_units INTEGER DEFAULT 0,        -- SKU×platform×language
+    done_units INTEGER DEFAULT 0,
+    ok_units INTEGER DEFAULT 0,
+    fail_units INTEGER DEFAULT 0,
+    result_json TEXT,
+    error_msg TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_products_store ON products(store_id, status);
+CREATE INDEX IF NOT EXISTS idx_products_gpc ON products(gpc_code);
+CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id, status);
+CREATE INDEX IF NOT EXISTS idx_variants_sku ON product_variants(sku);
+CREATE INDEX IF NOT EXISTS idx_feed_configs_store ON feed_configs(store_id, country);
+CREATE INDEX IF NOT EXISTS idx_feed_files_store ON feed_files(store_id, country);
+CREATE INDEX IF NOT EXISTS idx_product_assets_store ON product_assets(store_id, platform, language);
+CREATE INDEX IF NOT EXISTS idx_usage_ledger_store ON usage_ledger(store_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_store_jobs_store ON store_jobs(store_id, created_at DESC);
+"""
+
+
+def init_store_schema():
+    """初始化店铺相关表结构"""
+    with _conn() as c:
+        c.executescript(STORE_SCHEMA)
+        c.commit()
+
+        # 迁移：为已存在的表添加新字段
+        migrations = [
+            "ALTER TABLE products ADD COLUMN cleaned_title TEXT",
+            "ALTER TABLE products ADD COLUMN cleaned_description TEXT",
+            "ALTER TABLE products ADD COLUMN feed_enabled INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN ai_status TEXT DEFAULT 'raw'",
+            "ALTER TABLE stores ADD COLUMN plan TEXT DEFAULT 'free'",
+            "ALTER TABLE stores ADD COLUMN quota_total INTEGER DEFAULT 10",
+            "ALTER TABLE stores ADD COLUMN quota_used INTEGER DEFAULT 0",
+            "ALTER TABLE stores ADD COLUMN subscription_id TEXT",
+            "ALTER TABLE stores ADD COLUMN billing_status TEXT DEFAULT 'none'",
+            "ALTER TABLE feed_files ADD COLUMN platform TEXT DEFAULT 'google'",
+        ]
+        for sql in migrations:
+            try:
+                c.execute(sql)
+            except Exception:
+                pass  # 字段已存在，忽略
+        c.commit()
+
+        # 迁移后创建索引（依赖新字段）
+        try:
+            c.execute("CREATE INDEX IF NOT EXISTS idx_products_feed ON products(store_id, feed_enabled, ai_status)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_product_assets_store ON product_assets(store_id, platform, language)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_usage_ledger_store ON usage_ledger(store_id, created_at)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_store_jobs_store ON store_jobs(store_id, created_at DESC)")
+            c.commit()
+        except Exception:
+            pass
+
+    print("[StoreDB] 店铺数据库表已初始化")
+
+
+# ─────────────────────────────────────────────
+# Data Classes
+# ─────────────────────────────────────────────
+
+@dataclass
+class Store:
+    id: str
+    user_id: str
+    shopify_domain: str
+    shop_name: Optional[str] = None
+    access_token: Optional[str] = None
+    site_url: Optional[str] = None
+    default_brand: Optional[str] = None
+    default_currency: str = "USD"
+    plan: str = "free"
+    quota_total: int = 10
+    quota_used: int = 0
+    subscription_id: Optional[str] = None
+    billing_status: str = "none"
+    status: str = "active"
+    created_at: str = ""
+    updated_at: str = ""
+
+    @property
+    def quota_remaining(self) -> int:
+        return max(0, self.quota_total - self.quota_used)
+
+
+@dataclass
+class Product:
+    id: str
+    store_id: str
+    title: str
+    shopify_product_id: Optional[str] = None
+    handle: Optional[str] = None
+    vendor: Optional[str] = None
+    product_type: Optional[str] = None
+    brand: Optional[str] = None
+    material: Optional[str] = None
+    gender: Optional[str] = None
+    age_group: Optional[str] = None
+    gpc_code: Optional[str] = None
+    gpc_path: Optional[str] = None
+    gpc_confidence: float = 0.0
+    gpc_source: Optional[str] = None
+    image_url: Optional[str] = None
+    additional_images: Optional[str] = None
+    description: Optional[str] = None
+    optimized_title: Optional[str] = None
+    cleaned_title: Optional[str] = None
+    cleaned_description: Optional[str] = None
+    feed_enabled: int = 0
+    ai_status: str = "raw"
+    status: str = "active"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class ProductVariant:
+    id: str
+    product_id: str
+    sku: str
+    shopify_variant_id: Optional[str] = None
+    title: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    price: float = 0.0
+    compare_at_price: Optional[float] = None
+    inventory: int = 0
+    weight: Optional[float] = None
+    weight_unit: str = "kg"
+    image_url: Optional[str] = None
+    barcode: Optional[str] = None
+    status: str = "active"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class FeedConfig:
+    id: str
+    store_id: str
+    country: str
+    currency: str = "USD"
+    language: str = "en"
+    site_link: Optional[str] = None
+    auto_sync: bool = True
+    last_synced_at: Optional[str] = None
+    status: str = "active"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class FeedFile:
+    id: str
+    store_id: str
+    country: str
+    file_path: str
+    feed_url: str
+    item_count: int = 0
+    file_size: int = 0
+    generated_at: Optional[str] = None
+    status: str = "active"
+    platform: str = "google"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass
+class ProductAsset:
+    id: str
+    store_id: str
+    product_id: str
+    platform: str
+    language: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags_json: Optional[str] = None
+    updated_at: str = ""
+    created_at: str = ""
+
+
+@dataclass
+class StoreJob:
+    id: str
+    store_id: str
+    status: str = "pending"
+    platforms: str = '["google"]'
+    languages: str = '["US"]'
+    product_ids: Optional[str] = None
+    total_units: int = 0
+    done_units: int = 0
+    ok_units: int = 0
+    fail_units: int = 0
+    result_json: Optional[str] = None
+    error_msg: Optional[str] = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+def _row_to_store(row) -> Store:
+    keys = row.keys() if hasattr(row, "keys") else []
+    return Store(
+        id=row["id"], user_id=row["user_id"], shopify_domain=row["shopify_domain"],
+        shop_name=row["shop_name"], access_token=row["access_token"],
+        site_url=row["site_url"], default_brand=row["default_brand"],
+        default_currency=row["default_currency"] or "USD",
+        plan=row["plan"] if "plan" in keys else "free",
+        quota_total=row["quota_total"] if "quota_total" in keys else 10,
+        quota_used=row["quota_used"] if "quota_used" in keys else 0,
+        subscription_id=row["subscription_id"] if "subscription_id" in keys else None,
+        billing_status=row["billing_status"] if "billing_status" in keys else "none",
+        status=row["status"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+# ─────────────────────────────────────────────
+# Store CRUD
+# ─────────────────────────────────────────────
+
+def create_store(user_id: str, shopify_domain: str, shop_name: str = None,
+                 access_token: str = None, site_url: str = None,
+                 plan: str = "free", quota_total: int = 10) -> Store:
+    """创建新店铺"""
+    sid = str(uuid.uuid4())
+    with _conn() as c:
+        c.execute(
+            """INSERT INTO stores
+               (id, user_id, shopify_domain, shop_name, access_token, site_url, plan, quota_total, quota_used, billing_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'none')""",
+            (sid, user_id, shopify_domain, shop_name, access_token, site_url, plan, quota_total),
+        )
+        c.commit()
+    return get_store(sid)
+
+
+def get_store(store_id: str) -> Optional[Store]:
+    """获取店铺信息"""
+    with _conn() as c:
+        row = c.execute("SELECT * FROM stores WHERE id = ?", (store_id,)).fetchone()
+    if not row:
+        return None
+    return _row_to_store(row)
+
+
+def get_store_by_domain(shopify_domain: str) -> Optional[Store]:
+    """通过 Shopify domain 获取店铺"""
+    with _conn() as c:
+        row = c.execute("SELECT * FROM stores WHERE shopify_domain = ?", (shopify_domain,)).fetchone()
+    if not row:
+        return None
+    return get_store(row["id"])
+
+
+def list_stores(user_id: str) -> list[Store]:
+    """列出用户的所有店铺"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM stores WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        ).fetchall()
+    return [get_store(r["id"]) for r in rows]
+
+
+def update_store(store_id: str, **kwargs) -> bool:
+    """更新店铺信息"""
+    allowed = {"shop_name", "access_token", "site_url", "default_brand",
+               "default_currency", "status", "plan", "quota_total", "quota_used",
+               "subscription_id", "billing_status"}
+    sets, vals = [], []
+    for k, v in kwargs.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            vals.append(v)
+    if not sets:
+        return False
+    sets.append("updated_at = datetime('now')")
+    vals.append(store_id)
+    with _conn() as c:
+        c.execute(f"UPDATE stores SET {', '.join(sets)} WHERE id = ?", vals)
+        c.commit()
+    return True
+
+
+# ─────────────────────────────────────────────
+# Product CRUD
+# ─────────────────────────────────────────────
+
+def save_product(store_id: str, title: str, **kwargs) -> Product:
+    """保存或更新产品（按 shopify_product_id 去重）"""
+    pid = kwargs.get("id") or str(uuid.uuid4())
+    shopify_pid = kwargs.get("shopify_product_id")
+
+    with _conn() as c:
+        # 检查是否已存在
+        if shopify_pid:
+            existing = c.execute(
+                "SELECT id FROM products WHERE store_id = ? AND shopify_product_id = ?",
+                (store_id, shopify_pid),
+            ).fetchone()
+            if existing:
+                pid = existing["id"]
+
+        c.execute(
+            """INSERT OR REPLACE INTO products
+               (id, store_id, shopify_product_id, handle, title, vendor, product_type,
+                brand, material, gender, age_group, gpc_code, gpc_path, gpc_confidence,
+                gpc_source, image_url, additional_images, description, optimized_title,
+                cleaned_title, cleaned_description, feed_enabled, ai_status, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (pid, store_id, shopify_pid, kwargs.get("handle"), title,
+             kwargs.get("vendor"), kwargs.get("product_type"),
+             kwargs.get("brand"), kwargs.get("material"),
+             kwargs.get("gender"), kwargs.get("age_group"),
+             kwargs.get("gpc_code"), kwargs.get("gpc_path"),
+             kwargs.get("gpc_confidence", 0), kwargs.get("gpc_source"),
+             kwargs.get("image_url"), kwargs.get("additional_images"),
+             kwargs.get("description"), kwargs.get("optimized_title"),
+             kwargs.get("cleaned_title"), kwargs.get("cleaned_description"),
+             kwargs.get("feed_enabled", 0), kwargs.get("ai_status", "raw"),
+             kwargs.get("status", "active")),
+        )
+        c.commit()
+    return get_product(pid)
+
+
+def get_product(product_id: str) -> Optional[Product]:
+    """获取产品信息"""
+    with _conn() as c:
+        row = c.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    if not row:
+        return None
+    return Product(**{k: row[k] for k in Product.__dataclass_fields__})
+
+
+def get_store_products(store_id: str, status: str = "active") -> list[Product]:
+    """获取店铺的所有产品"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM products WHERE store_id = ? AND status = ? ORDER BY title",
+            (store_id, status),
+        ).fetchall()
+    return [Product(**{k: r[k] for k in Product.__dataclass_fields__}) for r in rows]
+
+
+def update_product_gpc(product_id: str, gpc_code: str, gpc_path: str,
+                       confidence: float = 1.0, source: str = "manual") -> bool:
+    """更新产品的 GPC 分类（商家手动确认/修改）"""
+    with _conn() as c:
+        c.execute(
+            """UPDATE products SET gpc_code=?, gpc_path=?, gpc_confidence=?,
+               gpc_source=?, updated_at=datetime('now') WHERE id=?""",
+            (gpc_code, gpc_path, confidence, source, product_id),
+        )
+        c.commit()
+    return True
+
+
+# ─────────────────────────────────────────────
+# Variant CRUD
+# ─────────────────────────────────────────────
+
+def save_variant(product_id: str, sku: str, **kwargs) -> ProductVariant:
+    """保存或更新变体（按 SKU 去重）"""
+    vid = kwargs.get("id") or str(uuid.uuid4())
+
+    with _conn() as c:
+        # 按 SKU 去重
+        existing = c.execute(
+            "SELECT id FROM product_variants WHERE sku = ?", (sku,),
+        ).fetchone()
+        if existing:
+            vid = existing["id"]
+
+        c.execute(
+            """INSERT OR REPLACE INTO product_variants
+               (id, product_id, shopify_variant_id, sku, title, color, size,
+                price, compare_at_price, inventory, weight, weight_unit,
+                image_url, barcode, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (vid, product_id, kwargs.get("shopify_variant_id"), sku,
+             kwargs.get("title"), kwargs.get("color"), kwargs.get("size"),
+             kwargs.get("price", 0), kwargs.get("compare_at_price"),
+             kwargs.get("inventory", 0), kwargs.get("weight"),
+             kwargs.get("weight_unit", "kg"), kwargs.get("image_url"),
+             kwargs.get("barcode"), kwargs.get("status", "active")),
+        )
+        c.commit()
+    return get_variant(vid)
+
+
+def get_variant(variant_id: str) -> Optional[ProductVariant]:
+    """获取变体信息"""
+    with _conn() as c:
+        row = c.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,)).fetchone()
+    if not row:
+        return None
+    return ProductVariant(**{k: row[k] for k in ProductVariant.__dataclass_fields__})
+
+
+def get_product_variants(product_id: str) -> list[ProductVariant]:
+    """获取产品的所有变体"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM product_variants WHERE product_id = ? AND status = 'active' ORDER BY color, size",
+            (product_id,),
+        ).fetchall()
+    return [ProductVariant(**{k: r[k] for k in ProductVariant.__dataclass_fields__}) for r in rows]
+
+
+def bulk_save_variants(product_id: str, variants: list[dict]) -> int:
+    """批量保存变体（用于 Shopify 同步后）"""
+    count = 0
+    for v in variants:
+        save_variant(product_id, v["sku"], **v)
+        count += 1
+    return count
+
+
+# ─────────────────────────────────────────────
+# Feed Config CRUD
+# ─────────────────────────────────────────────
+
+def upsert_feed_config(store_id: str, country: str, **kwargs) -> FeedConfig:
+    """创建或更新 Feed 配置（每店×每国唯一）"""
+    fid = kwargs.get("id") or str(uuid.uuid4())
+
+    with _conn() as c:
+        # 检查是否已存在
+        existing = c.execute(
+            "SELECT id FROM feed_configs WHERE store_id = ? AND country = ?",
+            (store_id, country),
+        ).fetchone()
+        if existing:
+            fid = existing["id"]
+
+        c.execute(
+            """INSERT OR REPLACE INTO feed_configs
+               (id, store_id, country, currency, language, site_link, auto_sync, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (fid, store_id, country, kwargs.get("currency", "USD"),
+             kwargs.get("language", "en"), kwargs.get("site_link"),
+             1 if kwargs.get("auto_sync", True) else 0,
+             kwargs.get("status", "active")),
+        )
+        c.commit()
+    return get_feed_config(fid)
+
+
+def get_feed_config(config_id: str) -> Optional[FeedConfig]:
+    """获取 Feed 配置"""
+    with _conn() as c:
+        row = c.execute("SELECT * FROM feed_configs WHERE id = ?", (config_id,)).fetchone()
+    if not row:
+        return None
+    return FeedConfig(
+        id=row["id"], store_id=row["store_id"], country=row["country"],
+        currency=row["currency"], language=row["language"],
+        site_link=row["site_link"], auto_sync=bool(row["auto_sync"]),
+        last_synced_at=row["last_synced_at"], status=row["status"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+def get_store_feed_configs(store_id: str) -> list[FeedConfig]:
+    """获取店铺的所有 Feed 配置"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM feed_configs WHERE store_id = ? AND status = 'active'",
+            (store_id,),
+        ).fetchall()
+    return [get_feed_config(r["id"]) for r in rows]
+
+
+# ─────────────────────────────────────────────
+# Feed File 记录
+# ─────────────────────────────────────────────
+
+def save_feed_file(store_id: str, country: str, file_path: str,
+                   feed_url: str, item_count: int = 0) -> FeedFile:
+    """保存 Feed 文件记录"""
+    fid = str(uuid.uuid4())
+    file_size = Path(file_path).stat().st_size if Path(file_path).exists() else 0
+    now = datetime.now(timezone.utc).isoformat()
+
+    with _conn() as c:
+        c.execute(
+            """INSERT INTO feed_files
+               (id, store_id, country, file_path, feed_url, item_count, file_size, generated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (fid, store_id, country, file_path, feed_url, item_count, file_size, now),
+        )
+        # 更新 feed_configs 的 last_synced_at
+        c.execute(
+            """UPDATE feed_configs SET last_synced_at = ?, updated_at = datetime('now')
+               WHERE store_id = ? AND country = ?""",
+            (now, store_id, country),
+        )
+        c.commit()
+    return get_feed_file(fid)
+
+
+def get_feed_file(file_id: str) -> Optional[FeedFile]:
+    """获取 Feed 文件记录"""
+    with _conn() as c:
+        row = c.execute("SELECT * FROM feed_files WHERE id = ?", (file_id,)).fetchone()
+    if not row:
+        return None
+    return FeedFile(
+        id=row["id"], store_id=row["store_id"], country=row["country"],
+        file_path=row["file_path"], feed_url=row["feed_url"],
+        item_count=row["item_count"], file_size=row["file_size"],
+        generated_at=row["generated_at"], status=row["status"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+def get_store_feed(store_id: str, country: str) -> Optional[FeedFile]:
+    """获取店铺某国最新的 Feed 文件"""
+    with _conn() as c:
+        row = c.execute(
+            """SELECT * FROM feed_files
+               WHERE store_id = ? AND country = ? AND status = 'active'
+               ORDER BY generated_at DESC LIMIT 1""",
+            (store_id, country),
+        ).fetchone()
+    if not row:
+        return None
+    return FeedFile(
+        id=row["id"], store_id=row["store_id"], country=row["country"],
+        file_path=row["file_path"], feed_url=row["feed_url"],
+        item_count=row["item_count"], file_size=row["file_size"],
+        generated_at=row["generated_at"], status=row["status"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+def list_store_feeds(store_id: str) -> list[FeedFile]:
+    """列出店铺所有国家的最新 Feed"""
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT * FROM feed_files
+               WHERE store_id = ? AND status = 'active'
+               ORDER BY country, generated_at DESC""",
+            (store_id,),
+        ).fetchall()
+    # 每个国家只取最新的
+    seen_countries = set()
+    feeds = []
+    for r in rows:
+        if r["country"] not in seen_countries:
+            seen_countries.add(r["country"])
+            feeds.append(FeedFile(
+                id=r["id"], store_id=r["store_id"], country=r["country"],
+                file_path=r["file_path"], feed_url=r["feed_url"],
+                item_count=r["item_count"], file_size=r["file_size"],
+                generated_at=r["generated_at"], status=r["status"],
+                created_at=r["created_at"], updated_at=r["updated_at"],
+            ))
+    return feeds
+
+
+# ─────────────────────────────────────────────
+# 批量操作（三段式流水线支持）
+# ─────────────────────────────────────────────
+
+def batch_set_feed_enabled(product_ids: list[str], enabled: bool = True) -> int:
+    """批量设置产品是否进入 Feed"""
+    if not product_ids:
+        return 0
+    placeholders = ",".join("?" for _ in product_ids)
+    with _conn() as c:
+        c.execute(
+            f"UPDATE products SET feed_enabled = ?, updated_at = datetime('now') WHERE id IN ({placeholders})",
+            [1 if enabled else 0] + product_ids,
+        )
+        c.commit()
+    return len(product_ids)
+
+
+def batch_set_ai_status(product_ids: list[str], ai_status: str) -> int:
+    """批量更新 AI 处理状态"""
+    if not product_ids:
+        return 0
+    placeholders = ",".join("?" for _ in product_ids)
+    with _conn() as c:
+        c.execute(
+            f"UPDATE products SET ai_status = ?, updated_at = datetime('now') WHERE id IN ({placeholders})",
+            [ai_status] + product_ids,
+        )
+        c.commit()
+    return len(product_ids)
+
+
+def update_product_ai_result(product_id: str, optimized_title: str,
+                             gpc_code: str = None, gpc_path: str = None,
+                             gpc_confidence: float = None, gpc_source: str = None,
+                             cleaned_title: str = None, cleaned_description: str = None,
+                             gender: str = None, age_group: str = None) -> bool:
+    """更新单个产品的 AI 处理结果"""
+    with _conn() as c:
+        sets = ["ai_status = 'ready'", "updated_at = datetime('now')"]
+        vals = []
+        if optimized_title:
+            sets.append("optimized_title = ?")
+            vals.append(optimized_title)
+        if gpc_code:
+            sets.append("gpc_code = ?")
+            vals.append(gpc_code)
+        if gpc_path:
+            sets.append("gpc_path = ?")
+            vals.append(gpc_path)
+        if gpc_confidence is not None:
+            sets.append("gpc_confidence = ?")
+            vals.append(gpc_confidence)
+        if gpc_source:
+            sets.append("gpc_source = ?")
+            vals.append(gpc_source)
+        if cleaned_title:
+            sets.append("cleaned_title = ?")
+            vals.append(cleaned_title)
+        if cleaned_description:
+            sets.append("cleaned_description = ?")
+            vals.append(cleaned_description)
+        if gender:
+            sets.append("gender = ?")
+            vals.append(gender)
+        if age_group:
+            sets.append("age_group = ?")
+            vals.append(age_group)
+        vals.append(product_id)
+        c.execute(f"UPDATE products SET {', '.join(sets)} WHERE id = ?", vals)
+        c.commit()
+    return True
+
+
+def get_feed_products(store_id: str) -> list[Product]:
+    """获取已启用 Feed 且 AI 处理就绪的产品"""
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT * FROM products
+               WHERE store_id = ? AND feed_enabled = 1 AND ai_status = 'ready' AND status = 'active'
+               ORDER BY title""",
+            (store_id,),
+        ).fetchall()
+    return [Product(**{k: r[k] for k in Product.__dataclass_fields__}) for r in rows]
+
+
+def get_store_products_by_status(store_id: str, ai_status: str = None) -> list[Product]:
+    """按 AI 状态获取产品（用于前端展示）"""
+    with _conn() as c:
+        if ai_status:
+            rows = c.execute(
+                "SELECT * FROM products WHERE store_id = ? AND ai_status = ? AND status = 'active' ORDER BY title",
+                (store_id, ai_status),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM products WHERE store_id = ? AND status = 'active' ORDER BY title",
+                (store_id,),
+            ).fetchall()
+    return [Product(**{k: r[k] for k in Product.__dataclass_fields__}) for r in rows]
+
+
+def get_store_dashboard(store_id: str) -> dict:
+    """获取店铺仪表盘数据（前端展示用）"""
+    with _conn() as c:
+        total = c.execute(
+            "SELECT COUNT(*) FROM products WHERE store_id = ? AND status = 'active'",
+            (store_id,),
+        ).fetchone()[0]
+        raw = c.execute(
+            "SELECT COUNT(*) FROM products WHERE store_id = ? AND ai_status = 'raw' AND status = 'active'",
+            (store_id,),
+        ).fetchone()[0]
+        ready = c.execute(
+            "SELECT COUNT(*) FROM products WHERE store_id = ? AND ai_status = 'ready' AND status = 'active'",
+            (store_id,),
+        ).fetchone()[0]
+        feed_enabled = c.execute(
+            "SELECT COUNT(*) FROM products WHERE store_id = ? AND feed_enabled = 1 AND status = 'active'",
+            (store_id,),
+        ).fetchone()[0]
+
+    return {
+        "store_id": store_id,
+        "total_products": total,
+        "ai_raw": raw,
+        "ai_ready": ready,
+        "feed_enabled": feed_enabled,
+    }
+
+
+# ─────────────────────────────────────────────
+# 统计
+# ─────────────────────────────────────────────
+
+def get_store_stats(store_id: str) -> dict:
+    """获取店铺统计信息"""
+    with _conn() as c:
+        products = c.execute(
+            "SELECT COUNT(*) FROM products WHERE store_id = ? AND status = 'active'",
+            (store_id,),
+        ).fetchone()[0]
+        variants = c.execute(
+            """SELECT COUNT(*) FROM product_variants pv
+               JOIN products p ON pv.product_id = p.id
+               WHERE p.store_id = ? AND pv.status = 'active'""",
+            (store_id,),
+        ).fetchone()[0]
+        feeds = c.execute(
+            "SELECT COUNT(DISTINCT country) FROM feed_files WHERE store_id = ? AND status = 'active'",
+            (store_id,),
+        ).fetchone()[0]
+
+    return {
+        "store_id": store_id,
+        "active_products": products,
+        "active_variants": variants,
+        "feed_countries": feeds,
+    }
+
+
+# ─────────────────────────────────────────────
+# Product Assets / Usage / Store Jobs
+# ─────────────────────────────────────────────
+
+def upsert_product_asset(store_id: str, product_id: str, platform: str, language: str,
+                         title: str = "", description: str = "",
+                         tags: list = None) -> ProductAsset:
+    """写入或更新 product_assets（product_id + platform + language 唯一）"""
+    tags_json = json.dumps(tags or [], ensure_ascii=False)
+    with _conn() as c:
+        existing = c.execute(
+            """SELECT id FROM product_assets
+               WHERE product_id = ? AND platform = ? AND language = ?""",
+            (product_id, platform.lower(), language.upper()),
+        ).fetchone()
+        if existing:
+            aid = existing["id"]
+            c.execute(
+                """UPDATE product_assets
+                   SET title=?, description=?, tags_json=?, updated_at=datetime('now')
+                   WHERE id=?""",
+                (title, description, tags_json, aid),
+            )
+        else:
+            aid = str(uuid.uuid4())
+            c.execute(
+                """INSERT INTO product_assets
+                   (id, store_id, product_id, platform, language, title, description, tags_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (aid, store_id, product_id, platform.lower(), language.upper(),
+                 title, description, tags_json),
+            )
+        c.commit()
+    return get_product_asset(aid)
+
+
+def get_product_asset(asset_id: str) -> Optional[ProductAsset]:
+    with _conn() as c:
+        row = c.execute("SELECT * FROM product_assets WHERE id = ?", (asset_id,)).fetchone()
+    if not row:
+        return None
+    return ProductAsset(
+        id=row["id"], store_id=row["store_id"], product_id=row["product_id"],
+        platform=row["platform"], language=row["language"],
+        title=row["title"], description=row["description"], tags_json=row["tags_json"],
+        updated_at=row["updated_at"], created_at=row["created_at"],
+    )
+
+
+def get_product_asset_by_key(product_id: str, platform: str, language: str) -> Optional[ProductAsset]:
+    with _conn() as c:
+        row = c.execute(
+            """SELECT * FROM product_assets
+               WHERE product_id = ? AND platform = ? AND language = ?""",
+            (product_id, platform.lower(), language.upper()),
+        ).fetchone()
+    if not row:
+        return None
+    return get_product_asset(row["id"])
+
+
+def record_usage(store_id: str, platform: str, language: str,
+                 job_id: str = None, sku: str = None) -> str:
+    """记录一条配额消耗，并 +1 stores.quota_used"""
+    lid = str(uuid.uuid4())
+    with _conn() as c:
+        c.execute(
+            """INSERT INTO usage_ledger (id, store_id, job_id, sku, platform, language)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (lid, store_id, job_id, sku, platform.lower(), language.upper()),
+        )
+        c.execute(
+            """UPDATE stores SET quota_used = quota_used + 1, updated_at=datetime('now')
+               WHERE id = ?""",
+            (store_id,),
+        )
+        c.commit()
+    return lid
+
+
+def create_store_job(store_id: str, platforms: list, languages: list,
+                     product_ids: list, total_units: int = 0) -> StoreJob:
+    jid = str(uuid.uuid4())
+    with _conn() as c:
+        c.execute(
+            """INSERT INTO store_jobs
+               (id, store_id, status, platforms, languages, product_ids, total_units)
+               VALUES (?, ?, 'pending', ?, ?, ?, ?)""",
+            (jid, store_id, json.dumps(platforms), json.dumps(languages),
+             json.dumps(product_ids), total_units),
+        )
+        c.commit()
+    return get_store_job(jid)
+
+
+def get_store_job(job_id: str) -> Optional[StoreJob]:
+    with _conn() as c:
+        row = c.execute("SELECT * FROM store_jobs WHERE id = ?", (job_id,)).fetchone()
+    if not row:
+        return None
+    return StoreJob(
+        id=row["id"], store_id=row["store_id"], status=row["status"],
+        platforms=row["platforms"], languages=row["languages"],
+        product_ids=row["product_ids"], total_units=row["total_units"],
+        done_units=row["done_units"], ok_units=row["ok_units"],
+        fail_units=row["fail_units"], result_json=row["result_json"],
+        error_msg=row["error_msg"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
+def update_store_job(job_id: str, **kwargs) -> bool:
+    allowed = {"status", "total_units", "done_units", "ok_units", "fail_units",
+               "result_json", "error_msg", "platforms", "languages", "product_ids"}
+    sets, vals = [], []
+    for k, v in kwargs.items():
+        if k in allowed:
+            sets.append(f"{k} = ?")
+            vals.append(v)
+    if not sets:
+        return False
+    sets.append("updated_at = datetime('now')")
+    vals.append(job_id)
+    with _conn() as c:
+        c.execute(f"UPDATE store_jobs SET {', '.join(sets)} WHERE id = ?", vals)
+        c.commit()
+    return True
+
+
+# ─────────────────────────────────────────────
+# 初始化
+# ─────────────────────────────────────────────
+
+init_store_schema()
