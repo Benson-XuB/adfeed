@@ -1,9 +1,12 @@
-"""AdFeed AI — GPC (Google Product Category) 类目匹配引擎
+"""AdFeed AI — GPC 类目匹配引擎 v2.0（方案C：关键词 + LLM 兜底）
 
-Phase 0: 混合方案 — 关键词快速匹配 + LLM 兜底确认
-- 无需 Embedding API，无需本地大模型，轻量快速
-- 从 taxonomy 文件中按关键词优先级匹配
-- 低置信度时触发 LLM 二次确认
+匹配策略：
+1. 从产品标题/分类/材质提取英文关键词
+2. 在 SQLite gpc_taxonomy 表中做 LIKE 模糊匹配（零 API 成本，<10ms）
+3. 高置信度（≥0.65）→ 直接返回 GPC ID
+4. 低置信度 → 取 Top 5 候选，调 LLM 确认（~1-3s，¥0.002/次）
+
+接口签名与 v1 完全兼容，pipeline 零改动。
 """
 
 import re
@@ -11,15 +14,16 @@ import json
 from pathlib import Path
 
 from .config import (
-    TAXONOMY_FILE, GPC_CONFIDENCE_THRESHOLD,
+    GPC_CONFIDENCE_THRESHOLD,
     DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, LLM_MODEL, PROMPTS_DIR,
 )
-
-_taxonomy_entries: list[dict] = None
-_taxonomy_lookup: dict[str, list[int]] = {}  # keyword → [index]
+from . import gpc_db
 
 
-# 1688 常见品类中文关键词到英文的映射（优先级权重）
+# ─────────────────────────────────────────────
+# 中文品类 → 英文关键词映射（用于 1688/中文标题）
+# ─────────────────────────────────────────────
+
 CATEGORY_KEYWORD_MAP = {
     "T恤": {"keys": ["t-shirt", "shirt", "top", "tee"], "weight": 1.5},
     "衬衫": {"keys": ["shirt", "dress shirt", "button-up"], "weight": 1.2},
@@ -86,188 +90,429 @@ CATEGORY_KEYWORD_MAP = {
     "饮料": {"keys": ["beverage", "drink", "coffee", "tea"], "weight": 1.4},
     "茶": {"keys": ["tea", "beverage", "drink"], "weight": 1.5},
     "咖啡": {"keys": ["coffee", "beverage", "drink"], "weight": 1.5},
+    "水杯": {"keys": ["water bottle", "drinkware", "water"], "weight": 1.6},
+    "水壶": {"keys": ["kettle", "water bottle", "thermos"], "weight": 1.5},
 }
 
 
-def _parse_taxonomy() -> list[dict]:
-    """解析 Google taxonomy 文件"""
-    global _taxonomy_entries
-    if _taxonomy_entries is not None:
-        return _taxonomy_entries
+# ─────────────────────────────────────────────
+# 关键词提取
+# ─────────────────────────────────────────────
 
-    entries = []
-    with open(TAXONOMY_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split(" - ", 1)
-            if len(parts) == 2:
-                code, path = parts
-                entries.append({
-                    "gpc_code": code.strip(),
-                    "path_en": path.strip(),
-                    "path_lower": path.strip().lower(),
-                })
-    _taxonomy_entries = entries
-    print(f"[GPCMatcher] 加载 taxonomy: {len(entries)} 个类目")
-    return entries
+# 常见材质/形容词（不应作为品类匹配关键词）
+_MATERIAL_WORDS = {
+    "stainless", "steel", "cotton", "polyester", "nylon", "leather", "rubber",
+    "plastic", "wooden", "metal", "ceramic", "glass", "silicone", "aluminum",
+    "insulated", "lightweight", "breathable", "waterproof", "portable",
+    "adjustable", "foldable", "reusable", "electric", "wireless", "digital",
+}
+
+# 强品类词：标题里出现时应压过装饰/部件词（如 zipper on jeans）
+_PRODUCT_TYPE_WORDS = {
+    "jeans": ["pants", "jeans", "denim"],  # taxonomy 无 Jeans 叶，用 Pants
+    "dress": ["dress", "dresses", "gown"],
+    "skirt": ["skirt", "skirts"],
+    "pants": ["pants", "trousers", "leggings"],
+    "shorts": ["shorts"],
+    "shirt": ["shirt", "shirts", "blouse", "tee", "t-shirt"],
+    "socks": ["socks", "sock", "hosiery"],
+    "jacket": ["jacket", "coat", "outerwear"],
+    "sweater": ["sweater", "hoodie", "cardigan"],
+    "shoes": ["shoes", "sneakers", "boots", "sandals"],
+    "bag": ["handbag", "backpack", "tote", "purse"],
+}
+
+# 强品类 → 可靠 GPC 直达（taxonomy 缺叶或易被部件词带偏时）
+_PRODUCT_TYPE_GPC_ALIAS = {
+    "jeans": {
+        "gpc_code": "204",
+        "gpc_path": "Apparel & Accessories > Clothing > Pants",
+        "confidence": 0.96,
+        "source": "product_type_alias",
+    },
+    "dress": {
+        "gpc_code": "2271",
+        "gpc_path": "Apparel & Accessories > Clothing > Dresses",
+        "confidence": 0.96,
+        "source": "product_type_alias",
+    },
+    "socks": {
+        "gpc_code": "209",
+        "gpc_path": "Apparel & Accessories > Clothing > Underwear & Socks > Socks",
+        "confidence": 0.96,
+        "source": "product_type_alias",
+    },
+    "pants": {
+        "gpc_code": "204",
+        "gpc_path": "Apparel & Accessories > Clothing > Pants",
+        "confidence": 0.94,
+        "source": "product_type_alias",
+    },
+}
+
+# 服饰部件/修饰词：有强品类词时不当作品类关键词
+_FEATURE_NOISE = {
+    "zipper", "zippered", "zip", "button", "buttons", "lace", "tied", "tie",
+    "high", "waisted", "waist", "leg", "legs", "sleeve", "sleeveless",
+    "printed", "print", "solid", "plain", "casual", "sexy", "slim",
+    "loose", "tight", "stretch", "elastic", "women", "woman", "men", "man",
+    "for", "with", "and", "the", "low", "cut", "boat", "ankle", "crew",
+}
 
 
-def _keyword_score(entry: dict, keywords: list[str], weights: dict[str, float]) -> float:
-    """计算一个 taxonomy 条目对给定关键词的匹配得分"""
-    score = 0.0
-    path = entry["path_lower"]
-
-    for kw in keywords:
-        kw_lower = kw.lower()
-        if kw_lower in path:
-            # 越深的层级匹配权重越高
-            depth = path.count(">")
-            weight = weights.get(kw, 1.0)
-            # 完全匹配最后一级加额外分
-            if path.endswith(kw_lower) or path.endswith(kw_lower + "s"):
-                score += 3.0 * weight
-            else:
-                score += 1.0 * weight * (1 + depth * 0.1)
-
-    return score
+def _detect_product_types(title: str) -> list[str]:
+    """从标题检测强品类词（英文）。"""
+    t = (title or "").lower()
+    found = []
+    for canon, variants in _PRODUCT_TYPE_WORDS.items():
+        if any(re.search(rf"(?<![a-z]){re.escape(v)}(?![a-z])", t) for v in variants):
+            found.append(canon)
+    return found
 
 
 def _extract_keywords(title: str, category: str, material: str) -> list[str]:
-    """从商品信息中提取关键词"""
+    """从商品信息中提取英文关键词
+
+    策略：
+    1. 从中文品类映射表获取核心品类词（最高优先级）
+    2. 强品类词（jeans/dress/socks）置顶并加权
+    3. 从原始分类中提取（按分隔符拆分）
+    4. 从标题中提取名词性词组（过滤材质/部件噪声）
+    5. 材质单独处理（低权重）
+    """
     keywords = []
+    product_types = _detect_product_types(title)
 
-    # 从原始分类中提取
-    cat_parts = re.split(r'[>/\-\s,]+', category)
-    for part in cat_parts:
-        part = part.strip().lower()
-        if part and part not in ("", "&", "and") and not part.isdigit() and len(part) >= 2:
-            keywords.append(part)
-
-    # 从标题中提取（跳过纯数字、年份、单字符和营销词）
-    title_parts = re.split(r'[,\s，]+', title)
-    skip_words = {"2024", "2025", "2026", "new", "hot", "free", "sale", "cheap", "🔥"}
-    for part in title_parts:
-        part = part.strip().lower()
-        if len(part) >= 2 and part not in skip_words and not part.isdigit():
-            keywords.append(part)
-        if len(keywords) >= 10:
-            break
-
-    # 从中文关键词映射表中获取英文关键词
+    # 0. 中文品类映射（最高优先级，核心品类词）
     for cn_kw, mapping in CATEGORY_KEYWORD_MAP.items():
         if cn_kw in title or cn_kw in category:
-            keywords.extend(mapping["keys"])
+            keywords.extend(mapping["keys"][:2])
 
-    # 材质关键词
+    # 0b. 英文强品类词置顶（jeans 压过 zipper）
+    for pt in product_types:
+        keys = _PRODUCT_TYPE_WORDS.get(pt, [pt])
+        # 重复注入提高相对 zipper 的得分
+        keywords.extend(keys[:2] * 3)
+
+    # 1. 从原始分类提取（只取具体品类名，跳过顶层通用词）
+    generic_cats = {"apparel", "accessories", "clothing", "shoes", "home", "garden",
+                    "kitchen", "dining", "food", "beverages", "sporting", "goods"}
+    if category:
+        cat_parts = re.split(r'[>/\-\s,]+', category)
+        for part in cat_parts:
+            part = part.strip().lower()
+            if part and part not in generic_cats and part not in ("", "&", "and") \
+               and not part.isdigit() and len(part) >= 2:
+                keywords.append(part)
+
+    # 2. 从标题提取（过滤材质/形容词/停用词/部件噪声）
+    title_parts = re.split(r'[,\s，]+', title)
+    skip_words = {"2024", "2025", "2026", "new", "hot", "free", "sale", "cheap", "🔥",
+                  "men's", "women's", "unisex", "no.", "no", "1", "2", "3",
+                  "neck", "crew", "sleeve", "fit", "style", "design", "pattern"}
+    for part in title_parts:
+        part = part.strip().lower()
+        if len(part) < 3:
+            continue
+        if part in skip_words or part.isdigit():
+            continue
+        if part in _MATERIAL_WORDS:
+            continue
+        # 有强品类时跳过 zipper/tied 等部件词
+        if product_types and part in _FEATURE_NOISE:
+            continue
+        keywords.append(part)
+        if len(keywords) >= 18:
+            break
+
+    # 3. 材质单独添加（放在最后，权重最低）
     if material and material not in ("", "N/A"):
-        keywords.append(material.lower())
+        mat_lower = material.lower()
+        if mat_lower not in _MATERIAL_WORDS:
+            keywords.append(mat_lower)
 
-    return list(set(keywords))  # 去重
+    # 去重，保留顺序
+    seen = set()
+    unique = []
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            unique.append(kw)
 
+    return unique[:15]
+
+
+def _rerank_candidates(title: str, candidates: list[dict]) -> list[dict]:
+    """标题含服饰强信号时，优先 Apparel；压制 Arts&Crafts Zippers 误伤。"""
+    if not candidates:
+        return candidates
+    product_types = _detect_product_types(title)
+    if not product_types:
+        return candidates
+
+    def score_boost(c: dict) -> float:
+        path = (c.get("gpc_path") or "").lower()
+        base = float(c.get("confidence") or c.get("score") or 0)
+        if path.startswith("apparel & accessories"):
+            # jeans → prefer Jeans/Pants leaf
+            if "jeans" in product_types and "jean" in path:
+                return base + 5.0
+            if "dress" in product_types and "dress" in path:
+                return base + 5.0
+            if "socks" in product_types and "sock" in path:
+                return base + 5.0
+            return base + 2.0
+        # craft zippers / stationery when title is clearly clothing
+        if "arts & crafts" in path or "craft fasteners" in path or "zippers" == path.split(">")[-1].strip():
+            return base - 5.0
+        return base
+
+    return sorted(candidates, key=score_boost, reverse=True)
+
+
+# ─────────────────────────────────────────────
+# 核心匹配接口
+# ─────────────────────────────────────────────
 
 def match(title: str, category: str = "", material: str = "",
           attributes: dict = None) -> dict:
-    """匹配 GPC 类目
+    """匹配 GPC 类目（方案C：关键词 + LLM 兜底）
 
-    策略：关键词匹配 + 低置信度 LLM 兜底
+    Args:
+        title: 商品标题
+        category: 原始分类
+        material: 材质
+        attributes: 额外属性
+
+    Returns:
+        {
+            "gpc_code": "212",
+            "gpc_path": "Apparel & Accessories > Clothing > Shirts & Tops",
+            "confidence": 0.85,
+            "source": "keyword",  # 或 "llm_confirm" / "llm_classify"
+            "candidates": [...]   # Top 5 候选列表
+        }
     """
-    entries = _parse_taxonomy()
+    # 提取关键词
     keywords = _extract_keywords(title, category, material)
 
+    # 强品类直达：jeans/dress/socks 避免 zipper 等部件词劫持
+    product_types = _detect_product_types(title)
+    for pt in product_types:
+        alias = _PRODUCT_TYPE_GPC_ALIAS.get(pt)
+        if alias:
+            return {
+                "gpc_code": alias["gpc_code"],
+                "gpc_path": alias["gpc_path"],
+                "confidence": alias["confidence"],
+                "source": alias["source"],
+                "candidates": [alias],
+            }
+
     if not keywords:
-        return {"gpc_code": "", "gpc_path": "", "confidence": 0.0, "source": "no_keywords"}
+        return {
+            "gpc_code": "", "gpc_path": "",
+            "confidence": 0.0, "source": "no_keywords",
+            "candidates": [],
+        }
 
-    # 为每个类目计算得分
-    scored = []
-    for i, entry in enumerate(entries):
-        s = _keyword_score(entry, keywords, {})
-        if s > 0:
-            scored.append((s, i, entry))
+    # 在 SQLite 中搜索候选
+    candidates_raw = gpc_db.search_candidates(keywords, top_k=10)
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    if not candidates_raw:
+        # 无匹配 → LLM 直接分类
+        return _llm_classify(title, category, material)
 
-    if not scored:
-        # 无关键词匹配 → LLM 直接分类
-        return _llm_classify(title, category, material, entries[:200])
+    # 归一化置信度（基于得分分布）
+    max_score = candidates_raw[0]["score"] if candidates_raw else 1.0
+    candidates = []
+    for c in candidates_raw[:5]:
+        confidence = min(0.99, c["score"] / max(max_score, 1.0))
+        candidates.append({
+            "gpc_code": c["gpc_code"],
+            "gpc_path": c["gpc_path"],
+            "confidence": round(confidence, 4),
+            "score": c["score"],
+        })
 
-    top_score, top_idx, top_entry = scored[0]
+    candidates = _rerank_candidates(title, candidates)
+    best = candidates[0]
+    confidence = best["confidence"]
+    # 服饰强信号 + Apparel 路径：抬升置信度，避免再被 LLM/部件词带偏
+    if _detect_product_types(title) and (best.get("gpc_path") or "").startswith("Apparel"):
+        confidence = max(confidence, 0.92)
 
-    # 归一化置信度（原始分 / 理论最高分）
-    normalized_confidence = min(top_score / 10.0, 0.99)
+    # 高置信度 → 直接返回
+    if confidence >= GPC_CONFIDENCE_THRESHOLD:
+        return {
+            "gpc_code": best["gpc_code"],
+            "gpc_path": best["gpc_path"],
+            "confidence": round(confidence, 4),
+            "source": "keyword",
+            "candidates": candidates,
+        }
 
-    result = {
-        "gpc_code": top_entry["gpc_code"],
-        "gpc_path": top_entry["path_en"],
-        "confidence": round(normalized_confidence, 4),
-        "source": "keyword",
-    }
-
-    # 低置信度 → LLM 确认
-    if normalized_confidence < GPC_CONFIDENCE_THRESHOLD:
-        candidates = [
-            entries[idx] for _, idx, _ in scored[:5]
-        ]
-        result = _llm_confirm_candidates(title, category, material, candidates)
-        result["source"] = "llm_confirm"
-
+    # 低置信度 → LLM 从候选中确认
+    result = _llm_confirm_candidates(title, category, material, candidates)
+    result["source"] = "llm_confirm"
+    result["candidates"] = candidates
     return result
 
 
-def _llm_classify(title: str, category: str, material: str,
-                  sample_entries: list[dict]) -> dict:
-    """关键词匹配失败时，直接用 LLM 从顶层类目中分类"""
-    from openai import OpenAI
+def match_batch(products: list[dict], top_k: int = 3) -> list[dict]:
+    """批量匹配 GPC 类目
 
-    # 只发送顶层类目（深度 ≤ 2）减少 token
-    top_levels = []
-    for e in sample_entries:
-        depth = e["path_en"].count(">")
-        if depth <= 2 and e not in top_levels:
-            top_levels.append(e)
-        if len(top_levels) >= 50:
-            break
+    高置信度直接返回，低置信度逐个调 LLM 确认。
+    """
+    results = []
+    need_llm = []  # (index, title, category, material, candidates)
 
-    cats_text = "\n".join(f"- {e['gpc_code']}: {e['path_en']}" for e in top_levels)
+    # 第一轮：关键词匹配
+    for i, p in enumerate(products):
+        title = p.get("title", "")
+        category = p.get("category", "")
+        material = p.get("material", "")
+
+        keywords = _extract_keywords(title, category, material)
+        if not keywords:
+            results.append((i, {
+                "gpc_code": "", "gpc_path": "",
+                "confidence": 0.0, "source": "no_keywords",
+                "candidates": [],
+            }))
+            continue
+
+        candidates_raw = gpc_db.search_candidates(keywords, top_k=5)
+        if not candidates_raw:
+            need_llm.append((i, title, category, material, []))
+            continue
+
+        max_score = candidates_raw[0]["score"]
+        candidates = []
+        for c in candidates_raw[:top_k]:
+            conf = min(0.99, c["score"] / max(max_score, 1.0))
+            candidates.append({
+                "gpc_code": c["gpc_code"],
+                "gpc_path": c["gpc_path"],
+                "confidence": round(conf, 4),
+            })
+
+        best = candidates[0]
+        if best["confidence"] >= GPC_CONFIDENCE_THRESHOLD:
+            results.append((i, {
+                "gpc_code": best["gpc_code"],
+                "gpc_path": best["gpc_path"],
+                "confidence": round(best["confidence"], 4),
+                "source": "keyword",
+                "candidates": candidates,
+            }))
+        else:
+            need_llm.append((i, title, category, material, candidates))
+
+    # 第二轮：LLM 兜底（逐个确认）
+    for idx, title, category, material, candidates in need_llm:
+        if candidates:
+            result = _llm_confirm_candidates(title, category, material, candidates)
+            result["source"] = "llm_confirm"
+            result["candidates"] = candidates
+        else:
+            result = _llm_classify(title, category, material)
+        results.append((idx, result))
+
+    # 按原始顺序排序
+    results.sort(key=lambda x: x[0])
+    return [r for _, r in results]
+
+
+# ─────────────────────────────────────────────
+# LLM 分类（仅兜底）
+# ─────────────────────────────────────────────
+
+def _llm_classify(title: str, category: str, material: str) -> dict:
+    """关键词匹配完全失败时，用 LLM 从顶层类目中分类"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return {"gpc_code": "", "gpc_path": "", "confidence": 0.0,
+                "source": "llm_unavailable", "candidates": []}
+
+    if not DASHSCOPE_API_KEY:
+        return {"gpc_code": "", "gpc_path": "", "confidence": 0.0,
+                "source": "no_api_key", "candidates": []}
+
+    # 获取顶层类目（depth ≤ 2）
+    top_entries = gpc_db.get_top_level()
+    cats_text = "\n".join(f"- {e['gpc_code']}: {e['gpc_path']}" for e in top_entries)
 
     prompt = f"""You are a Google Product Category classifier.
-From the following categories, pick the SINGLE most appropriate GPC code for this product.
+From the following top-level categories, pick the SINGLE most appropriate GPC code for this product.
 
 Product:
 - Title: {title}
 - Source Category: {category}
 - Material: {material}
 
-Categories (top level only):
+Top-level Categories:
 {cats_text}
 
-Output ONLY the GPC code number. Example: 2271"""
+Output ONLY the GPC code number. Example: 166"""
 
-    client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=10, temperature=0.1,
-    )
-    answer = response.choices[0].message.content.strip()
+    try:
+        client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=10, temperature=0.1,
+        )
+        answer = response.choices[0].message.content.strip()
 
-    # 查找匹配的条目
-    for e in entries if (entries := _taxonomy_entries) else []:
-        if e["gpc_code"] in answer or e["gpc_code"] == answer:
-            return {"gpc_code": e["gpc_code"], "gpc_path": e["path_en"],
-                    "confidence": 0.75, "source": "llm_classify"}
+        # 查找匹配的条目
+        entry = gpc_db.get_by_code(answer)
+        if entry:
+            return {
+                "gpc_code": entry["gpc_code"],
+                "gpc_path": entry["gpc_path"],
+                "confidence": 0.70,
+                "source": "llm_classify",
+                "candidates": [],
+            }
 
-    return {"gpc_code": answer, "gpc_path": "", "confidence": 0.5, "source": "llm_classify"}
+        return {"gpc_code": answer, "gpc_path": "", "confidence": 0.50,
+                "source": "llm_classify", "candidates": []}
+    except Exception as e:
+        return {"gpc_code": "", "gpc_path": "", "confidence": 0.0,
+                "source": f"llm_error:{type(e).__name__}", "candidates": []}
 
 
 def _llm_confirm_candidates(title: str, category: str, material: str,
                             candidates: list[dict]) -> dict:
-    """LLM 从候选类目中确认最佳匹配"""
-    from openai import OpenAI
+    """LLM 从候选中确认最佳匹配（准确率更高）"""
+    # 无候选时直接返回空
+    if not candidates:
+        return {"gpc_code": "", "gpc_path": "", "confidence": 0.0,
+                "source": "no_candidates"}
+
+    # 无 API key 时返回关键词最佳候选
+    if not DASHSCOPE_API_KEY:
+        return {
+            "gpc_code": candidates[0]["gpc_code"],
+            "gpc_path": candidates[0]["gpc_path"],
+            "confidence": candidates[0]["confidence"],
+            "source": "keyword_low_confidence",
+        }
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return {
+            "gpc_code": candidates[0]["gpc_code"],
+            "gpc_path": candidates[0]["gpc_path"],
+            "confidence": candidates[0]["confidence"],
+            "source": "keyword_low_confidence",
+        }
 
     candidates_text = "\n".join(
-        f"{i+1}. {c['gpc_code']} — {c['path_en']}"
+        f"{i+1}. {c['gpc_code']} — {c['gpc_path']}"
         for i, c in enumerate(candidates)
     )
 
@@ -278,27 +523,48 @@ Product: title="{title}", category="{category}", material="{material}"
 Candidates:
 {candidates_text}
 
-Output ONLY the GPC code number. Example: 2271"""
+Output ONLY the GPC code number. Example: 212"""
 
-    client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=10, temperature=0.1,
-    )
-    answer = response.choices[0].message.content.strip()
+    try:
+        client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=10, temperature=0.1,
+        )
+        answer = response.choices[0].message.content.strip()
 
-    for c in candidates:
-        if c["gpc_code"] in answer:
-            return {"gpc_code": c["gpc_code"], "gpc_path": c["path_en"],
-                    "confidence": 0.80, "source": "llm_confirm"}
+        # 在候选中查找
+        for c in candidates:
+            if c["gpc_code"] == answer or c["gpc_code"] in answer:
+                return {
+                    "gpc_code": c["gpc_code"],
+                    "gpc_path": c["gpc_path"],
+                    "confidence": 0.80,
+                    "source": "llm_confirm",
+                }
 
-    # 兜底：返回第一个候选
-    return {"gpc_code": candidates[0]["gpc_code"], "gpc_path": candidates[0]["path_en"],
-            "confidence": 0.60, "source": "llm_fallback"}
+        # 兜底：返回第一个候选
+        return {
+            "gpc_code": candidates[0]["gpc_code"],
+            "gpc_path": candidates[0]["gpc_path"],
+            "confidence": 0.60,
+            "source": "llm_fallback",
+        }
+    except Exception:
+        return {
+            "gpc_code": candidates[0]["gpc_code"],
+            "gpc_path": candidates[0]["gpc_path"],
+            "confidence": candidates[0]["confidence"],
+            "source": "llm_error_fallback",
+        }
 
+
+# ─────────────────────────────────────────────
+# 向后兼容接口
+# ─────────────────────────────────────────────
 
 def load_taxonomy(force_rebuild: bool = False) -> tuple[list[dict], None]:
-    """加载 taxonomy（Phase 0 纯内存方案，不需要 FAISS 索引）"""
-    entries = _parse_taxonomy()
-    return entries, None
+    """兼容旧接口：初始化 taxonomy 数据库"""
+    gpc_db.init_gpc_db(force_rebuild=force_rebuild)
+    return [], None

@@ -1880,6 +1880,12 @@ def resolve_category(cn_category: str = "", gpc_path: str = "") -> str:
 # 标题 → 中文品类字面值（非 cultural_key，后者由 resolve_category 内部 L2 做）
 _TITLE_CATEGORY_HINTS: list[tuple[list[str], str]] = [
     # 优先级从高到低排列 — 具体词在前，通配词在后
+    # 英文服饰（Shopify 标题常见）
+    (["jeans", "denim", "dress", "dresses", "skirt", "socks", "sock",
+      "t-shirt", "tshirt", "blouse", "hoodie", "sweater", "cardigan",
+      "legging", "jumpsuit", "romper", "camisole", "pants", "trousers",
+      "shorts", "jacket", "coat", "blazer", "vest", "swimsuit", "bikini",
+      "underwear", "bra", "panty", "hosiery", "tights"], "服装鞋帽"),
     (["手机壳", "手机套", "iPhone", "Samsung", "数据线", "充电器", "充电宝",
       "蓝牙耳机", "无线耳机", "平板壳", "键盘", "鼠标", "投影仪", "自拍杆",
       "手机支架", "贴膜", "屏幕保护", "转换器", "读卡器", "U盘", "u盘",
@@ -2004,9 +2010,37 @@ def get_context(country: str, cn_category: str = "", gpc_path: str = "",
 
     cat_data = country_data[cat_key]
     seasonal = cat_data.get("seasonal", {}).get(season, [])
-    occasions = cat_data.get("occasions", [])[:3]
-    pain_points = cat_data.get("pain_points", [])[:3]
-    slang = cat_data.get("slang", [])[:2]
+    occasions = list(cat_data.get("occasions", [])[:3])
+    pain_points = list(cat_data.get("pain_points", [])[:3])
+    slang = list(cat_data.get("slang", [])[:2])
+
+    # 袜子/内衣等基础服饰：不要用礼服/婚礼场景词
+    leaf = _extract_gpc_leaf(gpc_path)
+    leaf_l = (leaf or "").lower()
+    path_l = (gpc_path or "").lower()
+    basic_apparel = any(
+        k in leaf_l or k in path_l
+        for k in ("sock", "hosiery", "underwear", "bra", "panty", "brief", "tights")
+    )
+    if basic_apparel:
+        occasions = [
+            "Everyday Comfort",
+            "Daily Essentials",
+            "Travel Packing",
+        ]
+        pain_points = [
+            "Breathable Soft",
+            "No-Show Fit",
+            "All-Day Comfort",
+        ][:3]
+        slang = ["True to Size", "Soft & Stretchy"][:2]
+
+    # 连衣裙/礼服以外的服饰：过滤婚礼场景（避免袜子/牛仔裤套 Wedding Guest）
+    elif cat_key == "apparel" and "dress" not in leaf_l and "bridal" not in leaf_l:
+        blocked = ("wedding", "bridal", "baby shower", "country club", "opera")
+        occasions = [o for o in occasions if not any(b in o.lower() for b in blocked)]
+        if not occasions:
+            occasions = ["Weekend Brunch", "Business Casual Office", "Everyday Wear"]
 
     parts = []
     if occasions:
@@ -2019,7 +2053,6 @@ def get_context(country: str, cn_category: str = "", gpc_path: str = "",
         parts.append(f"Seasonal trends ({season}): {', '.join(seasonal)}")
 
     # L2: GPC 叶节点补充 — 告诉 AI 具体子品类
-    leaf = _extract_gpc_leaf(gpc_path)
     if leaf and len(leaf) >= 3:
         parts.append(f"Product subcategory: {leaf}")
 

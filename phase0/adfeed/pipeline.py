@@ -7,6 +7,7 @@ v3.0: 集成 dirty_word_filter + attribute_normalizer，全面消灭中文泄漏
 
 import json
 import os
+import re
 import time
 import pandas as pd
 from pathlib import Path
@@ -944,10 +945,32 @@ _COLOR_NORMALIZE = {
 
 
 def _normalize_size(raw: str) -> str:
-    """统一尺码格式：2XL→XXL, 3XL→XXXL"""
+    """统一尺码：标准码保留；营销长句清空。"""
     if not raw:
         return ""
-    return _SIZE_NORMALIZE.get(raw.strip(), raw.strip())
+    s = raw.strip()
+    s = _SIZE_NORMALIZE.get(s, s)
+    # 营销长句 / 脏词尺码
+    if len(s) > 24:
+        return ""
+    if re.search(r"[*\[\]【】]|anti-odor|breathable|nude|fits most|wedding", s, re.I):
+        return ""
+    # 允许多词标准尺码
+    if re.match(
+        r"^(XS|S|M|L|XL|XXL|XXXL|XXXXL|2XL|3XL|4XL|One Size|Free Size|"
+        r"One size fits all|\d{1,3}(?:\.\d)?(?:\s?(?:cm|mm|in|inch))?|"
+        r"[A-Za-z]{1,12}(?:\s*/\s*[A-Za-z0-9]{1,8})?)$",
+        s,
+        re.I,
+    ):
+        return s
+    # 简单色码组合如 "Blue / S" 不应出现在 size 字段——若含空格且不像 One Size，丢弃
+    if " " in s and not re.match(r"^One Size", s, re.I):
+        # 允许 "US 8" / "EU 40"
+        if re.match(r"^(US|EU|UK|CN)\s?\d+", s, re.I):
+            return s
+        return ""
+    return s
 
 
 def _normalize_color(raw: str) -> str:
@@ -957,6 +980,9 @@ def _normalize_color(raw: str) -> str:
     lower = raw.strip().lower()
     if lower in _COLOR_NORMALIZE:
         return _COLOR_NORMALIZE[lower]
+    # 过长颜色描述清空
+    if len(raw.strip()) > 40:
+        return ""
     return raw.strip()
 
 
@@ -988,17 +1014,37 @@ _FACTORY_KEYWORDS_EN = ["factory", "manufacturer", "wholesale", "supplier", "ind
                         "trading", "import", "export", "co., ltd", "co.,ltd"]
 
 
+def _is_shop_handle_brand(name: str) -> bool:
+    """myshopify 子域 / 随机 handle 不能当品牌（会污染标题前缀）。"""
+    if not name:
+        return True
+    n = name.strip()
+    low = n.lower()
+    if ".myshopify.com" in low or low.endswith(".com"):
+        return True
+    # qx2kd5-s7 这类无空格 handle
+    if " " not in n and re.match(r"^[a-z0-9][a-z0-9\-]{3,40}$", low):
+        # 含数字+连字符的商店 handle
+        if re.search(r"\d", low) and "-" in low:
+            return True
+    return False
+
+
 def _normalize_brand(brand: str, shop_name: str, default_brand: str = None) -> tuple[str, str]:
-    """品牌规范化 — 统一使用店铺名作为品牌，打造 D2C 品牌形象
+    """品牌规范化。
 
     Returns:
         (clean_brand, status) — status: "ok" | "replaced" | "sensitive_warning"
     """
-    fallback = shop_name or default_brand or "Store"
-    
+    # 可用的店铺展示名：排除 myshopify handle
+    clean_shop = ""
+    if default_brand and not _is_shop_handle_brand(default_brand):
+        clean_shop = default_brand.strip()
+    elif shop_name and not _is_shop_handle_brand(shop_name):
+        clean_shop = shop_name.strip()
+
     if not brand or not brand.strip():
-        # 空品牌 → 用店铺名
-        return fallback, "replaced"
+        return clean_shop, "replaced" if clean_shop else "replaced"
 
     brand_stripped = brand.strip()
     brand_lower = brand_stripped.lower()
@@ -1007,17 +1053,23 @@ def _normalize_brand(brand: str, shop_name: str, default_brand: str = None) -> t
     if brand_lower in _SENSITIVE_BRANDS:
         return brand_stripped, "sensitive_warning"
 
-    # 2. 中文厂名检测（含中文汉字）→ 替换为店铺名
+    # 2. 中文厂名检测（含中文汉字）→ 替换
     if any(ord(c) > 0x4e00 for c in brand_stripped):
-        return fallback, "replaced"
+        return clean_shop, "replaced"
 
-    # 3. 拼音/英文厂名检测 → 替换为店铺名
+    # 3. 拼音/英文厂名检测 → 替换
     if any(kw in brand_lower for kw in _FACTORY_KEYWORDS_EN):
-        return fallback, "replaced"
+        return clean_shop, "replaced"
 
-    # 4. 统一使用店铺名作为品牌（打造 D2C 一致性）
-    #    除非是敏感品牌，否则全部替换为店铺名
-    return fallback, "replaced"
+    # 4. 品牌本身就是店铺 handle → 清空，避免标题前缀污染
+    if _is_shop_handle_brand(brand_stripped):
+        return clean_shop, "replaced"
+
+    # 5. 保留看起来像真实品牌的英文名（含空格或纯字母品牌）
+    if re.search(r"[A-Za-z]", brand_stripped) and not _is_shop_handle_brand(brand_stripped):
+        return brand_stripped, "ok"
+
+    return clean_shop, "replaced"
 
 
 # ─────────────────────────────────────────────────
