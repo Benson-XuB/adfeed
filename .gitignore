@@ -78,3 +78,6 @@ phase0/scripts/.tunnel-urls
 
 # Cursor local (optional — rules are tracked under .cursor/rules if present)
 .cursor/projects/
+
+# Large listing assets (upload to Partner Dashboard from local)
+docs/app-store-listing/icon-1200.png
