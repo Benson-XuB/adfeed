@@ -114,10 +114,38 @@ def handle_app_uninstalled(shop_domain: str) -> dict:
     return {"ok": True, "store_id": store.id}
 
 
+def handle_shop_redact(shop_domain: str, payload: Optional[dict] = None) -> dict:
+    payload = payload or {}
+    shop = _norm_shop(shop_domain or payload.get("shop_domain") or "")
+    if not shop:
+        return {"ok": True, "purged": False, "reason": "missing_shop"}
+    store = store_db.get_store_by_domain(shop)
+    if not store:
+        return {"ok": True, "purged": False, "reason": "store_not_found"}
+    store_db.purge_store_data(store.id)
+    return {"ok": True, "purged": True, "store_id": store.id}
+
+
+def handle_compliance_webhook(topic: str, payload: dict, shop_domain: str = "") -> dict:
+    """GDPR mandatory topics. We do not store customer PII."""
+    raw_topic = (topic or "").strip().lower().replace(".", "/")
+    if raw_topic in ("shop/redact", "shop_redact"):
+        return handle_shop_redact(shop_domain, payload)
+    logger.info(
+        "GDPR webhook %s ack (no customer PII stored): keys=%s",
+        raw_topic,
+        list((payload or {}).keys()),
+    )
+    return {
+        "ok": True,
+        "topic": raw_topic or topic,
+        "stored_customer_pii": False,
+    }
+
+
 def handle_gdpr_stub(topic: str, payload: dict) -> dict:
-    """Return 200-ready ack; persistence TODO for App Store review if required."""
-    logger.info("GDPR webhook %s received (stub ack): keys=%s", topic, list(payload.keys()))
-    return {"ok": True, "topic": topic, "todo": "persist_if_required_for_review"}
+    """Back-compat alias for compliance handler."""
+    return handle_compliance_webhook(topic, payload, payload.get("shop_domain") or "")
 
 
 def _norm_shop(shop_domain: str) -> str:

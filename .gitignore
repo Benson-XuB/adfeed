@@ -57,8 +57,12 @@ phase0/web/*.tar.gz
 phase0/data/gpc_taxonomy.db
 phase0/data/gpc_taxonomy.db-*
 
-# App Store listing — keep HTML/screenshots; screencast is generated locally
-docs/app-store-listing/screencast/
+# Local dev OAuth helpers (may contain shop-specific credentials — never commit)
+phase0/exchange_legacy_token.py
+phase0/get_shopify_token.py
+phase0/oauth_callback_server.py
+phase0/oauth_full_flow.py
+phase0/shopify_feed.py
 
 # Sample data (binary Excel)
 *_realistic.xlsx

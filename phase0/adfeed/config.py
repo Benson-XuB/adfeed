@@ -38,7 +38,10 @@ GPC_CONFIDENCE_THRESHOLD = 0.65
 # ============================================
 # 标题优化配置
 # ============================================
-TITLE_MAX_LENGTH = 150
+TITLE_MAX_LENGTH = 150  # Google Shopping title hard limit
+DESCRIPTION_MAX_LENGTH = 5000  # Google Shopping description hard limit
+# Empty by default — field contract: no silent eprolo; App sets default_brand.
+DEFAULT_STORE_BRAND = os.getenv("ADFEED_DEFAULT_BRAND", "")
 DEFAULT_COUNTRY = "US"
 
 # ============================================
@@ -48,6 +51,8 @@ IMAGE_AI_ENABLED = os.getenv("IMAGE_AI_ENABLED", "false").lower() in ("true", "1
 IMAGE_AI_REMOVE_WATERMARK = True    # 去水印（中英文）
 IMAGE_AI_WHITE_BACKGROUND = False   # 换白底（耗时较长，可选）
 IMAGE_AI_CDN_BASE_URL = os.getenv("IMAGE_AI_CDN_BASE_URL", "")  # Cloudflare R2 URL
+# Cap DashScope cleans per generate_feed_for_store job (cost control)
+IMAGE_CLEAN_MAX_PER_JOB = int(os.getenv("IMAGE_CLEAN_MAX_PER_JOB", "20"))
 
 # Cloudflare R2 配置
 R2_ENABLED = os.getenv("R2_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -63,7 +68,9 @@ R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "")  # 自定义域名或 R2 公开 U
 SHOPIFY_CLIENT_ID = os.getenv("SHOPIFY_CLIENT_ID", "")
 SHOPIFY_CLIENT_SECRET = os.getenv("SHOPIFY_CLIENT_SECRET", "")
 SHOPIFY_REDIRECT_URI = os.getenv("SHOPIFY_REDIRECT_URI", "https://deltfu.com/api/shopify/callback")
-SHOPIFY_SCOPES = "read_products"
+SHOPIFY_SCOPES = "read_products,write_products,read_legal_policies"
+# contextualPricing works with read_products on modern Admin API; merchants with
+# Markets-only catalogs may need re-auth if GraphQL returns access errors.
 SHOPIFY_API_VERSION = "2024-07"
 
 # ============================================

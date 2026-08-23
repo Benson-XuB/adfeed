@@ -32,14 +32,25 @@ from .store_db import Store as StoreModel
 
 app = FastAPI(title="AdFeed AI", version="0.3.0", request_max_size=200 * 1024 * 1024)
 
+# Embedded admin + CLI tunnels call the API from HTTPS origins (not localhost UI).
+# Admin UI extensions run on extensions.shopifycdn.com (CORS preflight Origin).
+# Admin UI extensions: extensions.shopifycdn.com
+# iframe React Router App Home: Shopify CLI tunnel + local Vite ports
+_cors_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+    "http://localhost:3458",
+    "https://deltfu.com",
+    "https://admin.shopify.com",
+    "https://extensions.shopifycdn.com",
+    "https://cdn.shopify.com",
+    os.getenv("FRONTEND_URL", "http://localhost:3000"),
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "https://deltfu.com",
-        os.getenv("FRONTEND_URL", "http://localhost:3000"),
-    ],
+    allow_origins=[o for o in _cors_origins if o],
+    allow_origin_regex=r"https://(.*\.)?(myshopify\.com|trycloudflare\.com|ngrok-free\.app|ngrok\.io|shopifypreview\.com|shopifycdn\.com|shopify\.com)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,6 +71,58 @@ async def log_requests(request: Request, call_next):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/")
+async def app_root():
+    """Shopify embeds application_url. Merchant UI is React Router iframe App Home.
+    Never return JSON 404 here — Admin shows it as a broken app page.
+    """
+    return HTMLResponse(
+        """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AdFeed AI</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;
+      margin:0;padding:48px 24px;background:#f6f6f7;color:#202223;text-align:center}
+    .card{max-width:520px;margin:0 auto;background:#fff;border:1px solid #e1e3e5;
+      border-radius:12px;padding:28px 24px}
+    h1{font-size:22px;margin:0 0 8px}
+    p{color:#6d7175;line-height:1.5;margin:8px 0}
+    code{background:#f1f2f3;padding:2px 6px;border-radius:4px;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>AdFeed AI</h1>
+    <p>API is running. The merchant UI is the <strong>embedded iframe App Home</strong>
+       (React Router) inside Shopify Admin — not this page.</p>
+    <p>If you see this instead of Home/Plans, <code>application_url</code> still points at
+       the API host. Point it at the web app (see <code>shopify.app.toml.prod-backup</code>)
+       and reopen <strong>Apps → AdFeed AI</strong>.</p>
+    <p><code>/api/health</code> OK</p>
+  </div>
+</body>
+</html>""",
+        status_code=200,
+    )
+
+
+@app.get("/privacy")
+@app.get("/api/privacy")
+async def privacy_policy():
+    from .legal_pages import privacy_html
+    return HTMLResponse(privacy_html())
+
+
+@app.get("/support")
+@app.get("/api/support")
+async def support_page():
+    from .legal_pages import support_html
+    return HTMLResponse(support_html())
 
 
 # ═══════════════ Shopify App APIs (session required) ═══════════════
@@ -83,7 +146,6 @@ async def app_billing_status(store: StoreModel = Depends(require_store)):
 class BillingSubscribeBody(BaseModel):
     plan: str = "starter"
     return_url: Optional[str] = None
-    test: bool = True
 
 
 @app.post("/api/app/billing/subscribe")
@@ -103,14 +165,35 @@ async def app_billing_subscribe(
             store=store,
             plan=body.plan,
             return_url=return_url,
-            test=body.test,
         )
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     except Exception as e:
         logger.error(f"Billing subscribe failed: {e}")
-        raise HTTPException(502, f"Shopify billing error: {e}") from e
+        msg = str(e)
+        # Surface Shopify Partner/distribution misconfig clearly (UI often shows "Failed to fetch" on 502).
+        if "owned by a Shop" in msg or "migrated to the Shopify partners" in msg.lower():
+            raise HTTPException(
+                400,
+                "Shopify refused to create a subscription. In Partner Dashboard → this app → "
+                "Distribution, choose Custom or Public first. Without Distribution, Billing API "
+                "returns “owned by a Shop”. Then reinstall the app on this store and try again.",
+            ) from e
+        raise HTTPException(400, f"Shopify billing error: {e}") from e
     return result
+
+
+@app.get("/api/app/billing/return")
+async def app_billing_return(shop: Optional[str] = None, charge_id: Optional[str] = None):
+    """After Shopify charge approval, send merchant back into Admin."""
+    raw = (shop or "").strip().replace("https://", "").replace("http://", "")
+    host = raw.replace(".myshopify.com", "").split("/")[0]
+    app_key = config.SHOPIFY_CLIENT_ID or os.getenv("SHOPIFY_CLIENT_ID", "")
+    if host and app_key:
+        return RedirectResponse(f"https://admin.shopify.com/store/{host}/apps/{app_key}")
+    if host:
+        return RedirectResponse(f"https://admin.shopify.com/store/{host}")
+    return RedirectResponse("https://admin.shopify.com")
 
 
 @app.post("/api/webhooks/shopify/app_subscriptions_update")
@@ -155,6 +238,7 @@ async def app_list_products(store: StoreModel = Depends(require_store)):
                 shop_domain=store.shopify_domain,
                 access_token=store.access_token,
                 limit=250,
+                lite=True,
             )
             products = [
                 {
@@ -163,6 +247,10 @@ async def app_list_products(store: StoreModel = Depends(require_store)):
                     "image_url": p.get("图片链接") or p.get("image_url") or "",
                     "price": p.get("价格") or p.get("price") or 0,
                     "status": "active",
+                    "need_color": bool(p.get("need_color")),
+                    "need_size": bool(p.get("need_size")),
+                    "product_type": p.get("product_type") or p.get("分类") or "",
+                    "variant_count": int(p.get("variant_count") or 0),
                 }
                 for p in data.get("products", [])
             ]
@@ -171,17 +259,23 @@ async def app_list_products(store: StoreModel = Depends(require_store)):
             logger.warning(f"Shopify product pull failed: {e}")
 
     if not products:
+        from .product_attr_check import check_store_product_attrs
+
         cached = store_db.get_store_products(store.id)
-        products = [
-            {
+        products = []
+        for p in cached:
+            gaps = check_store_product_attrs(p, store_db.get_product_variants(p.id))
+            products.append({
                 "id": p.shopify_product_id or p.id,
                 "title": p.title,
                 "image_url": p.image_url or "",
                 "price": 0,
                 "status": p.status,
-            }
-            for p in cached
-        ]
+                "need_color": gaps["need_color"],
+                "need_size": gaps["need_size"],
+                "product_type": p.product_type or "",
+                "variant_count": 0,
+            })
         source = "cache"
 
     return {
@@ -197,7 +291,9 @@ class AppGenerateBody(BaseModel):
     product_ids: list[str]
     platforms: list[str] = ["google"]
     languages: list[str] = ["US"]
-    remove_watermarks: bool = False
+    # True: optimize only product_ids, then write XML = (ids already in durable
+    # feeds) ∪ product_ids. False (default): XML contains only product_ids.
+    merge: bool = False
 
 
 @app.post("/api/app/bootstrap")
@@ -214,7 +310,11 @@ async def app_bootstrap(
     if not session_token:
         raise HTTPException(401, "Missing session token")
 
-    updated = await ensure_store_access_token(store, session_token)
+    updated = await ensure_store_access_token(store, session_token, force=False)
+    # Refresh shop currency so App can guide market selection
+    if updated.access_token:
+        from .store_sync import refresh_store_currency_from_shopify
+        updated = refresh_store_currency_from_shopify(updated)
     has_token = bool(updated.access_token)
     return {
         "ok": has_token,
@@ -222,6 +322,7 @@ async def app_bootstrap(
         "shop_domain": updated.shopify_domain,
         "shop_name": updated.shop_name,
         "has_access_token": has_token,
+        "default_currency": (updated.default_currency or "USD").upper(),
         "plan": updated.plan,
         "quota_remaining": updated.quota_remaining,
         "message": (
@@ -240,10 +341,127 @@ async def app_connection(store: StoreModel = Depends(require_store)):
         "shop_name": store.shop_name,
         "has_access_token": bool(store.access_token),
         "site_url": store.site_url,
+        "default_brand": store.default_brand or "",
+        "default_currency": (store.default_currency or "USD").upper(),
         "status": store.status,
         "plan": store.plan,
         "quota_remaining": store.quota_remaining,
     }
+
+
+@app.get("/api/app/compatible-markets")
+async def app_compatible_markets(store: StoreModel = Depends(require_store)):
+    """Batch GREEN countries for market dropdown (shop currency + Markets + preflight)."""
+    from .compatible_markets import list_compatible_markets
+
+    return list_compatible_markets(
+        store_id=store.id,
+        shop_domain=store.shopify_domain or "",
+        access_token=store.access_token,
+        shop_currency=store.default_currency or "USD",
+    )
+
+
+@app.get("/api/app/market-ready")
+async def app_market_ready(
+    country: str = "US",
+    store: StoreModel = Depends(require_store),
+):
+    """Can this shop emit a feed for ``country`` without inventing FX?"""
+    from . import store_db
+    from .market_pricing import (
+        PreflightStatus,
+        expected_currency_for_country,
+        preflight_country,
+    )
+    from .shopify_markets import fetch_contextual_pricing
+
+    cu = (country or "US").strip().upper()
+    shop_ccy = (store.default_currency or "USD").strip().upper()
+    vids: list[str] = []
+    for p in store_db.get_store_products(store.id)[:12]:
+        for v in store_db.get_product_variants(p.id):
+            vid = (v.shopify_variant_id or "").strip()
+            if vid.isdigit():
+                vids.append(vid)
+            if len(vids) >= 5:
+                break
+        if len(vids) >= 5:
+            break
+
+    sample = None
+    if store.access_token and store.shopify_domain and vids:
+        fetched = fetch_contextual_pricing(
+            store.shopify_domain, store.access_token, vids, cu,
+        )
+        if fetched:
+            first = next(iter(fetched.values()))
+            sample = {cu: first}
+
+    pf = preflight_country(shop_currency=shop_ccy, country=cu, sample_presentment=sample)
+    return {
+        "country": cu,
+        "ready": pf.status == PreflightStatus.GREEN,
+        "shop_currency": shop_ccy,
+        "expected_currency": expected_currency_for_country(cu),
+        "message": pf.message,
+    }
+
+
+@app.patch("/api/app/store/brand")
+async def app_update_store_brand(
+    request: Request,
+    store: StoreModel = Depends(require_store),
+):
+    """Confirm advertising brand written to g:brand (field contract owner: store)."""
+    from . import store_db
+
+    body = await request.json()
+    brand = (body.get("default_brand") or "").strip()
+    if len(brand) > 70:
+        raise HTTPException(400, "Brand name too long (max 70 characters)")
+    store_db.update_store(store.id, default_brand=brand or None)
+    updated = store_db.get_store(store.id)
+    return {
+        "store_id": updated.id,
+        "default_brand": updated.default_brand or "",
+        "shop_name": updated.shop_name,
+    }
+
+
+@app.get("/api/app/store/compliance")
+async def app_store_compliance(
+    request: Request,
+    store: StoreModel = Depends(require_store),
+    countries: str = "US",
+):
+    """Lite storefront compliance scan (policies + HTTPS + contact + currency hint)."""
+    from .store_sync import ensure_store_access_token
+    from .store_compliance import diagnose_store_compliance
+
+    auth = request.headers.get("Authorization", "")
+    session_token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    if session_token and not store.access_token:
+        store = await ensure_store_access_token(store, session_token)
+
+    if not store.access_token:
+        raise HTTPException(
+            409,
+            "Store is not connected to the Admin API yet. Open the app to finish bootstrap.",
+        )
+
+    cu_list = [c.strip().upper() for c in (countries or "US").split(",") if c.strip()]
+    if not cu_list:
+        cu_list = ["US"]
+
+    report = diagnose_store_compliance(
+        shop_domain=store.shopify_domain,
+        access_token=store.access_token,
+        site_url=store.site_url or "",
+        shop_currency=store.default_currency or "USD",
+        countries=cu_list,
+    )
+    return report.to_dict()
 
 
 @app.post("/api/app/generate")
@@ -273,7 +491,16 @@ async def app_generate(
     if not store.access_token:
         raise HTTPException(
             409,
-            "店铺尚未获得 Admin API token。请先调用 /api/app/bootstrap（打开 App 会自动调用）。",
+            "No Admin API token yet. Open the app (bootstrap runs automatically on load).",
+        )
+
+    # Apparel feeds need g:brand — block until merchant confirms advertising brand
+    store = store_db.get_store(store.id) or store
+    if not (store.default_brand or "").strip():
+        raise HTTPException(
+            409,
+            "Confirm an ad brand in the app before generating a feed. Apparel on Google needs "
+            "brand; an empty brand often fails as Missing brand.",
         )
 
     # Sync selected Shopify products (+ variants) into store_db
@@ -281,12 +508,12 @@ async def app_generate(
         internal_ids = await sync_products_for_generate(store, product_ids)
     except Exception as e:
         logger.exception("product sync failed")
-        raise HTTPException(502, f"产品同步失败: {e}") from e
+        raise HTTPException(502, f"Product sync failed: {e}") from e
 
     if not internal_ids:
         raise HTTPException(
             404,
-            "未能同步任何产品到本地库。请确认商品 ID 正确且 App 有 read_products 权限。",
+            "Could not sync any products locally. Check product IDs and read_products scope.",
         )
 
     cost = estimate_cost(len(internal_ids), platforms, languages)
@@ -304,10 +531,12 @@ async def app_generate(
 
     import threading
     store_id = store.id
-    remove_wm = body.remove_watermarks
+
+    merge = bool(getattr(body, "merge", False))
 
     def _run():
         from .pipeline import optimize_layered, generate_feed_for_store
+        from .feed_preview import internal_ids_in_durable_feeds
         try:
             def progress(done, total):
                 store_db.update_store_job(job.id, done_units=done, total_units=total)
@@ -317,15 +546,22 @@ async def app_generate(
                 product_ids=internal_ids,
                 platforms=platforms,
                 languages=languages,
-                remove_watermarks=remove_wm,
                 job_id=job.id,
                 progress_callback=progress,
             )
+            write_ids = list(internal_ids)
+            if merge:
+                existing = internal_ids_in_durable_feeds(
+                    store_id,
+                    platforms=platforms,
+                    countries=languages,
+                )
+                write_ids = list(existing | set(internal_ids))
             feeds = generate_feed_for_store(
                 store_id=store_id,
                 countries=languages,
                 platforms=platforms,
-                product_ids=internal_ids,
+                product_ids=write_ids,
             )
             result = {
                 "optimize": {
@@ -334,7 +570,12 @@ async def app_generate(
                     "assets_written": opt.get("assets_written", 0),
                 },
                 "feeds": feeds.get("feed_urls", []),
+                "blocked_countries": feeds.get("blocked_countries", []),
+                "quality_report": feeds.get("quality_report"),
                 "synced_products": len(internal_ids),
+                "write_products": len(write_ids),
+                "merge": merge,
+                "message": feeds.get("message"),
             }
             store_db.update_store_job(
                 job.id,
@@ -386,25 +627,554 @@ async def app_job_status(job_id: str, store: StoreModel = Depends(require_store)
     }
 
 
+class BulkPatchItem(BaseModel):
+    sku: str
+    color: Optional[str] = None
+    size: Optional[str] = None
+
+
+class BulkPatchBody(BaseModel):
+    patches: list[BulkPatchItem]
+    platforms: list[str] = ["google"]
+    languages: list[str] = ["US"]
+    regenerate: bool = True
+    shopify_product_id: Optional[str] = None
+
+
+@app.post("/api/app/quality/bulk_patch")
+async def app_quality_bulk_patch(
+    body: BulkPatchBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Batch-confirm Multicolor / One Size (etc.) → DB + optional feed regenerate."""
+    from .quality_bulk import bulk_patch_and_regen
+
+    if not body.patches:
+        raise HTTPException(400, "patches required")
+
+    try:
+        result = bulk_patch_and_regen(
+            store.id,
+            [p.model_dump() for p in body.patches],
+            platforms=body.platforms,
+            languages=body.languages,
+            regenerate=body.regenerate,
+            shopify_product_id=body.shopify_product_id,
+        )
+    except Exception as e:
+        logger.exception("bulk_patch failed")
+        raise HTTPException(500, f"Bulk patch failed: {e}") from e
+
+    return result
+
+
+class ShopifyVariantPatchBody(BaseModel):
+    shopify_product_id: str
+    patches: list[BulkPatchItem]
+
+
+@app.post("/api/app/products/shopify_variant_patch")
+async def app_shopify_variant_patch(
+    body: ShopifyVariantPatchBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Write color/size to Shopify variant options, then sync store_db."""
+    import asyncio
+
+    from .product_attr_check import check_shopify_product_attrs
+    from .shopify_variant_patch import patch_shopify_variant_attrs
+    from .store_sync import fetch_raw_product, upsert_raw_shopify_product
+
+    if not body.patches:
+        raise HTTPException(400, "patches required")
+    if not store.access_token:
+        raise HTTPException(401, "Store not connected — reopen the App to authorize")
+
+    pid = str(body.shopify_product_id or "").strip()
+    if not pid:
+        raise HTTPException(400, "shopify_product_id required")
+
+    patch_dump = [p.model_dump() for p in body.patches]
+    logger.info(
+        "shopify_variant_patch request store=%s product=%s patches=%s",
+        store.id,
+        pid,
+        patch_dump,
+    )
+
+    try:
+        result = await asyncio.to_thread(
+            patch_shopify_variant_attrs,
+            store.shopify_domain,
+            store.access_token,
+            pid,
+            patch_dump,
+        )
+    except Exception as e:
+        logger.exception("shopify_variant_patch failed")
+        raise HTTPException(500, f"Shopify write failed: {e}") from e
+
+    logger.info(
+        "shopify_variant_patch result store=%s product=%s updated=%s message=%s debug=%s",
+        store.id,
+        pid,
+        result.get("updated"),
+        result.get("message"),
+        result.get("debug"),
+    )
+
+    if not result.get("updated"):
+        msg = result.get("message") or "No variants were updated"
+        code = 403 if result.get("need_reauth") else 400
+        raise HTTPException(code, msg)
+
+    raw = await fetch_raw_product(store.shopify_domain, store.access_token, pid)
+    gaps: dict = {}
+    if raw:
+        upsert_raw_shopify_product(store.id, raw)
+        gaps = check_shopify_product_attrs(raw)
+
+    return {
+        **result,
+        "need_color": bool(gaps.get("need_color")),
+        "need_size": bool(gaps.get("need_size")),
+        "gaps": gaps,
+    }
+
+
+class ImagePatchItem(BaseModel):
+    sku: str
+    image_url: str
+
+
+class ImagePatchBody(BaseModel):
+    patches: list[ImagePatchItem]
+    platforms: list[str] = ["google"]
+    languages: list[str] = ["US"]
+    regenerate: bool = True
+
+
+@app.get("/api/app/feed-images")
+async def app_feed_images(
+    sku: str,
+    store: StoreModel = Depends(require_store),
+):
+    """Feed main-image candidates + recommendation for one SKU."""
+    from .feed_image import get_feed_image_context
+
+    sku = (sku or "").strip()
+    if not sku:
+        raise HTTPException(400, "sku required")
+    ctx = get_feed_image_context(store.id, sku)
+    if not ctx:
+        raise HTTPException(404, f"SKU not found: {sku}")
+    return ctx
+
+
+@app.post("/api/app/quality/image_patch")
+async def app_quality_image_patch(
+    body: ImagePatchBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Set per-SKU feed_image_url override → optional feed regenerate."""
+    from .feed_image import image_patch_and_regen
+
+    if not body.patches:
+        raise HTTPException(400, "patches required")
+    try:
+        result = image_patch_and_regen(
+            store.id,
+            [p.model_dump() for p in body.patches],
+            platforms=body.platforms,
+            languages=body.languages,
+            regenerate=body.regenerate,
+        )
+    except Exception as e:
+        logger.exception("image_patch failed")
+        raise HTTPException(500, f"Image update failed: {e}") from e
+    return result
+
+
 @app.get("/api/app/feeds")
 async def app_list_feeds(store: StoreModel = Depends(require_store)):
+    """List feeds + last completed job quality_report (for honest KPI after refresh)."""
+    import json as _json
     from . import store_db
+
     feeds = store_db.list_store_feeds(store.id)
+    quality_report = None
+    last_job = None
+    job = store_db.get_latest_completed_store_job(store.id)
+    if job:
+        try:
+            langs = _json.loads(job.languages) if job.languages else []
+        except Exception:
+            langs = []
+        try:
+            plats = _json.loads(job.platforms) if job.platforms else []
+        except Exception:
+            plats = []
+        last_job = {
+            "id": job.id,
+            "languages": langs if isinstance(langs, list) else [],
+            "platforms": plats if isinstance(plats, list) else [],
+            "updated_at": job.updated_at,
+        }
+        if job.result_json:
+            try:
+                result = _json.loads(job.result_json)
+                if isinstance(result, dict):
+                    quality_report = result.get("quality_report")
+            except Exception:
+                quality_report = None
+
+    from .config import PUBLIC_BASE_URL
+    from .multi_platform_feeds import durable_feed_url
+
     return {
         "feeds": [
             {
                 "platform": f.platform,
                 "country": f.country,
                 "language": f.country,
-                "url": f.feed_url,
-                "csv_url": f.feed_url.replace(".xml", ".csv"),
+                "url": durable_feed_url(
+                    PUBLIC_BASE_URL, store.id, f.platform, f.country,
+                ),
+                "csv_url": durable_feed_url(
+                    PUBLIC_BASE_URL, store.id, f.platform, f.country,
+                ).replace(".xml", ".csv"),
                 "item_count": f.item_count,
                 "updated_at": f.generated_at,
             }
             for f in feeds
         ],
+        "quality_report": quality_report,
+        "last_job": last_job,
         "store_id": store.id,
     }
+
+
+class FeedRowPatchItem(BaseModel):
+    sku: str
+    title: Optional[str] = None
+    color: Optional[str] = None
+    size: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class FeedRowPatchBody(BaseModel):
+    patches: list[FeedRowPatchItem]
+    platforms: list[str] = ["google"]
+    languages: list[str] = ["US"]
+    regenerate: bool = True
+
+
+class FeedRowDeleteBody(BaseModel):
+    skus: list[str]
+    platforms: list[str] = ["google"]
+    languages: list[str] = ["US"]
+
+
+def _latest_quality_for_store(store_id: str):
+    import json as _json
+    from . import store_db
+
+    job = store_db.get_latest_completed_store_job(store_id)
+    if not job or not job.result_json:
+        return None
+    try:
+        result = _json.loads(job.result_json)
+        if isinstance(result, dict):
+            return result.get("quality_report")
+    except Exception:
+        return None
+    return None
+
+
+@app.get("/api/app/feeds/{platform}/{country}/preview")
+async def app_feed_preview(
+    platform: str,
+    country: str,
+    store: StoreModel = Depends(require_store),
+    limit: int = 20,
+    offset: int = 0,
+    q: str = "",
+    product_id: str = "",
+):
+    """Paginated feed item preview from the durable current file."""
+    from . import store_db
+    from .feed_preview import preview_feed_items
+    from .config import PUBLIC_BASE_URL
+    from .multi_platform_feeds import durable_feed_url
+
+    plat = (platform or "google").lower()
+    cu = (country or "US").upper()
+    feed = store_db.get_store_feed(store.id, cu, plat)
+    if not feed or not feed.file_path:
+        raise HTTPException(404, "Feed not found — generate first")
+
+    data = preview_feed_items(
+        file_path=feed.file_path,
+        platform=plat,
+        limit=limit,
+        offset=offset,
+        q=q,
+        quality_report=_latest_quality_for_store(store.id),
+        product_id=product_id,
+        store_id=store.id,
+    )
+    public_url = durable_feed_url(PUBLIC_BASE_URL, store.id, plat, cu)
+    return {
+        **data,
+        "platform": plat,
+        "country": cu,
+        "url": public_url,
+        "csv_url": public_url.replace(".xml", ".csv"),
+        "item_count": feed.item_count,
+        "updated_at": feed.generated_at,
+        "store_id": store.id,
+    }
+
+
+@app.get("/api/app/feeds/{platform}/{country}/workbench")
+async def app_feed_workbench(
+    platform: str,
+    country: str,
+    store: StoreModel = Depends(require_store),
+):
+    """Product-row workbench: products + per-product feed status for current feed."""
+    from . import store_db
+    from .feed_preview import build_workbench_product_rows
+    from .config import PUBLIC_BASE_URL
+    from .multi_platform_feeds import durable_feed_url
+    from .shopify_client import fetch_shopify_products
+
+    plat = (platform or "google").lower()
+    cu = (country or "US").upper()
+    feed = store_db.get_store_feed(store.id, cu, plat)
+
+    products: list[dict] = []
+    if store.access_token:
+        try:
+            data = await fetch_shopify_products(
+                shop_domain=store.shopify_domain,
+                access_token=store.access_token,
+                limit=250,
+                lite=True,
+            )
+            products = [
+                {
+                    "id": str(p.get("shopify_id") or p.get("SKU") or ""),
+                    "title": p.get("标题") or p.get("title") or "",
+                    "image_url": p.get("图片链接") or p.get("image_url") or "",
+                    "price": p.get("价格") or p.get("price") or 0,
+                    "status": "active",
+                    "need_color": bool(p.get("need_color")),
+                    "need_size": bool(p.get("need_size")),
+                    "product_type": p.get("product_type") or p.get("分类") or "",
+                    "variant_count": int(p.get("variant_count") or 0),
+                    "variant_skus": list(p.get("variant_skus") or []),
+                }
+                for p in data.get("products", [])
+            ]
+        except Exception as e:
+            logger.warning("workbench shopify pull failed: %s", e)
+    if not products:
+        from .product_attr_check import check_store_product_attrs
+
+        cached = store_db.get_store_products(store.id)
+        products = []
+        for p in cached:
+            gaps = check_store_product_attrs(p, store_db.get_product_variants(p.id))
+            variants = store_db.get_product_variants(p.id)
+            products.append({
+                "id": p.shopify_product_id or p.id,
+                "title": p.title,
+                "image_url": p.image_url or "",
+                "price": 0,
+                "status": p.status,
+                "need_color": gaps["need_color"],
+                "need_size": gaps["need_size"],
+                "product_type": p.product_type or "",
+                "variant_count": len(variants),
+                "variant_skus": [v.sku for v in variants if v.sku],
+            })
+
+    qr = _latest_quality_for_store(store.id)
+    from .product_attr_check import check_store_product_attrs
+
+    # Prefer local DB SKUs + patched color/size when store variants exist.
+    by_shopify: dict[str, list[str]] = {}
+    store_products_by_shopify: dict[str, object] = {}
+    for sp in store_db.get_store_products(store.id):
+        key = str(sp.shopify_product_id or sp.id)
+        by_shopify[key] = [
+            v.sku for v in store_db.get_product_variants(sp.id) if v.sku
+        ]
+        store_products_by_shopify[key] = sp
+    for row in products:
+        pid = str(row.get("id") or "")
+        if not row.get("variant_skus"):
+            row["variant_skus"] = by_shopify.get(pid, [])
+        sp = store_products_by_shopify.get(pid)
+        if sp:
+            variants = store_db.get_product_variants(sp.id)
+            if variants:
+                gaps = check_store_product_attrs(sp, variants)
+                row["need_color"] = gaps["need_color"]
+                row["need_size"] = gaps["need_size"]
+                row["gaps_from_store_db"] = True
+
+    rows = build_workbench_product_rows(
+        store_id=store.id,
+        file_path=feed.file_path if feed else "",
+        platform=plat,
+        products=products,
+        quality_report=qr,
+    )
+    public_url = (
+        durable_feed_url(PUBLIC_BASE_URL, store.id, plat, cu) if feed else ""
+    )
+    return {
+        "platform": plat,
+        "country": cu,
+        "products": rows,
+        "count": len(rows),
+        "feed": {
+            "url": public_url,
+            "csv_url": public_url.replace(".xml", ".csv") if public_url else "",
+            "item_count": feed.item_count if feed else 0,
+            "updated_at": feed.generated_at if feed else None,
+            "exists": bool(feed),
+        },
+        "quality_report": qr,
+        "store_id": store.id,
+    }
+
+
+@app.get("/api/app/feeds/{platform}/{country}/download.csv")
+async def app_feed_download_csv(
+    platform: str,
+    country: str,
+    store: StoreModel = Depends(require_store),
+):
+    """Auth download of Google TSV derived from current XML."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    from . import store_db
+    from .feed_preview import write_google_tsv_from_xml
+
+    plat = (platform or "google").lower()
+    cu = (country or "US").upper()
+    feed = store_db.get_store_feed(store.id, cu, plat)
+    if not feed or not feed.file_path:
+        raise HTTPException(404, "Feed not found")
+    xml_path = Path(feed.file_path)
+    if not xml_path.exists():
+        raise HTTPException(404, "Feed file missing on disk")
+    csv_path = xml_path.with_suffix(".csv")
+    if plat == "google":
+        write_google_tsv_from_xml(xml_path, csv_path)
+    elif not csv_path.exists():
+        raise HTTPException(404, "CSV not available for this platform")
+    return FileResponse(
+        csv_path,
+        media_type="text/tab-separated-values",
+        filename=f"{plat}_{cu.lower()}.csv",
+    )
+
+
+@app.get("/api/app/feeds/{platform}/{country}/snapshots")
+async def app_feed_snapshots(
+    platform: str,
+    country: str,
+    store: StoreModel = Depends(require_store),
+):
+    from .feed_snapshots import list_snapshots
+
+    return {
+        "snapshots": list_snapshots(store.id, platform, country),
+        "platform": (platform or "google").lower(),
+        "country": (country or "US").upper(),
+    }
+
+
+@app.post("/api/app/feeds/snapshots/{snapshot_id}/restore")
+async def app_feed_snapshot_restore(
+    snapshot_id: str,
+    store: StoreModel = Depends(require_store),
+):
+    from .feed_snapshots import restore_snapshot
+
+    try:
+        return restore_snapshot(store.id, snapshot_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.get("/api/app/feeds/snapshots/{snapshot_id}/download")
+async def app_feed_snapshot_download(
+    snapshot_id: str,
+    store: StoreModel = Depends(require_store),
+):
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    from .feed_snapshots import get_snapshot
+
+    snap = get_snapshot(store.id, snapshot_id)
+    if not snap:
+        raise HTTPException(404, "snapshot not found")
+    path = Path(snap["file_path"])
+    if not path.exists():
+        raise HTTPException(404, "snapshot file missing")
+    return FileResponse(path, filename=path.name)
+
+
+@app.post("/api/app/feeds/row_patch")
+async def app_feed_row_patch(
+    body: FeedRowPatchBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Edit title/color/size/image on owner layers, optionally regenerate feed."""
+    from .feed_row_edit import row_patch_and_regen
+
+    if not body.patches:
+        raise HTTPException(400, "patches required")
+    try:
+        return row_patch_and_regen(
+            store.id,
+            [p.model_dump() for p in body.patches],
+            platforms=body.platforms,
+            languages=body.languages,
+            regenerate=body.regenerate,
+        )
+    except Exception as e:
+        logger.exception("row_patch failed")
+        raise HTTPException(500, f"Row edit failed: {e}") from e
+
+
+@app.post("/api/app/feeds/row_delete")
+async def app_feed_row_delete(
+    body: FeedRowDeleteBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Remove SKU rows from durable feed (does not delete Shopify products)."""
+    from .feed_row_edit import delete_feed_rows
+
+    if not body.skus:
+        raise HTTPException(400, "skus required")
+    try:
+        plat = (body.platforms or ["google"])[0].lower()
+        cu = (body.languages or ["US"])[0].upper()
+        return delete_feed_rows(
+            store.id,
+            body.skus,
+            platform=plat,
+            country=cu,
+        )
+    except Exception as e:
+        logger.exception("row_delete failed")
+        raise HTTPException(500, f"Row delete failed: {e}") from e
 
 
 @app.post("/api/app/quota/estimate")
@@ -449,15 +1219,15 @@ async def current_user(
     if not token:
         token = request.cookies.get("adfeed_token")
     if not token:
-        raise HTTPException(status_code=401, detail="未登录")
+        raise HTTPException(status_code=401, detail="Not signed in")
 
     payload = decode_jwt(token)
     if not payload:
-        raise HTTPException(status_code=401, detail="token 已过期")
+        raise HTTPException(status_code=401, detail="Token expired")
 
     user = get_user(payload["sub"])
     if not user:
-        raise HTTPException(status_code=401, detail="用户不存在")
+        raise HTTPException(status_code=401, detail="User not found")
     return user
 
 
@@ -472,7 +1242,7 @@ async def google_auth_url():
 async def google_callback(body: GoogleCallbackRequest):
     result = await google_login(body.code)
     if not result:
-        raise HTTPException(400, "Google 认证失败")
+        raise HTTPException(400, "Google sign-in failed")
 
     user, token = result
     resp = JSONResponse({
@@ -502,7 +1272,7 @@ async def request_magic_link(body: MagicLinkRequest):
     from .db import create_magic_link
     token = create_magic_link(body.email)
     await send_magic_link_email(body.email, token)
-    return {"ok": True, "message": "Magic link 已发送至您的邮箱"}
+    return {"ok": True, "message": "Magic link sent to your email"}
 
 
 @app.get("/api/auth/magic-link/verify")
@@ -510,7 +1280,7 @@ async def verify_magic_link(token: str):
     _require_web_saas()
     result = verify_magic_link_and_login(token)
     if not result:
-        raise HTTPException(400, "链接无效或已过期")
+        raise HTTPException(400, "Link is invalid or expired")
 
     user, jwt_token = result
     resp = JSONResponse({
@@ -553,7 +1323,7 @@ async def upload_file(
     # 校验扩展名
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(400, f"不支持的文件类型: {ext}。支持: {', '.join(ALLOWED_EXTENSIONS)}")
+        raise HTTPException(400, f"Unsupported file type: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
 
     # 流式保存文件（不一次性加载 200MB 到内存）
     file_id = str(uuid.uuid4())
@@ -577,7 +1347,7 @@ async def upload_file(
     try:
         countries_parsed = json.loads(countries)
     except json.JSONDecodeError:
-        raise HTTPException(400, "countries 格式错误，应为 JSON 数组，如 [\"US\",\"DE\"]")
+        raise HTTPException(400, 'Invalid countries format — use a JSON array, e.g. ["US","DE"]')
 
     # 创建任务，状态为 analyzing
     job = create_job(user.id, file.filename, json.dumps(countries_parsed), file_hash)
@@ -606,7 +1376,7 @@ def _analyze_upload(job_id: str, file_path: str):
                    preview_json=json.dumps(preview_rows[:10], ensure_ascii=False))
         logger.info(f"_analyze_upload done: {total_rows} rows in {(time.time()-t0)*1000:.0f}ms")
     except Exception as e:
-        update_job(job_id, status="failed", error_msg=f"文件分析失败: {e}")
+        update_job(job_id, status="failed", error_msg=f"File analysis failed: {e}")
 
 
 def _fast_preview(file_path: str) -> tuple[int, list[dict]]:
@@ -737,9 +1507,9 @@ async def start_process(
 ):
     job = get_job(job_id)
     if not job or job.user_id != user.id:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, "Job not found")
     if job.status != "uploaded":
-        raise HTTPException(400, f"任务状态不可处理: {job.status}")
+        raise HTTPException(400, f"Job cannot be processed in status: {job.status}")
 
     countries = json.loads(job.country_mask)
     file_id = Path(job.filename).stem
@@ -754,7 +1524,7 @@ async def start_process(
             break
 
     if not file_path:
-        raise HTTPException(404, "上传文件未找到")
+        raise HTTPException(404, "Uploaded file not found")
 
     import threading
     threading.Thread(target=_process_job, args=(job_id, user.id, file_path, countries), daemon=True).start()
@@ -782,7 +1552,7 @@ async def get_jobs(user: User = Depends(current_user), limit: int = 20):
 async def get_job_detail(job_id: str, user: User = Depends(current_user)):
     job = get_job(job_id)
     if not job or job.user_id != user.id:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, "Job not found")
 
     preview_rows = []
     if job.preview_json:
@@ -810,9 +1580,9 @@ async def get_job_results(job_id: str, user: User = Depends(current_user)):
     import openpyxl
     job = get_job(job_id)
     if not job or job.user_id != user.id:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, "Job not found")
     if job.status != "completed":
-        return {"rows": [], "message": "任务尚未完成"}
+        return {"rows": [], "message": "Job not finished yet"}
 
     report_path = Path(job.result_csv) if job.result_csv else None
     if not report_path or not report_path.exists():
@@ -837,7 +1607,7 @@ async def get_job_results(job_id: str, user: User = Depends(current_user)):
         wb.close()
         return {"rows": rows, "source": "report", "total": len(rows)}
     except Exception:
-        return {"rows": [], "error": "无法读取结果文件"}
+        return {"rows": [], "error": "Could not read result file"}
 
 
 # ═══════════════ Feed Export ═══════════════
@@ -850,7 +1620,7 @@ async def download_feed(country: str, user: User = Depends(current_user)):
     allowed = {"US", "DE", "FR", "ES", "IT"}
     country = country.upper()
     if country not in allowed:
-        raise HTTPException(400, f"不支持的国家: {country}。支持: {', '.join(sorted(allowed))}")
+        raise HTTPException(400, f"Unsupported country: {country}. Allowed: {', '.join(sorted(allowed))}")
 
     xml = generate_from_memory(country, user_id=user.id)
     return HTMLResponse(content=xml, media_type="application/xml",
@@ -882,7 +1652,7 @@ PAYPAL_PLAN_IDS = {
     "growth":  os.getenv("PAYPAL_PLAN_ID_GROWTH", ""),
 }
 
-PLAN_QUOTAS = {"starter": 120, "growth": 400}
+PLAN_QUOTAS = {"starter": 150, "growth": 400}
 
 
 @app.get("/api/billing/plans")
@@ -912,7 +1682,7 @@ async def activate_subscription(
     plan_id = body.get("paypal_plan_id", "")
 
     if not sub_id:
-        raise HTTPException(400, "缺少 paypal_subscription_id")
+        raise HTTPException(400, "Missing paypal_subscription_id")
 
     # 根据 plan_id 找到对应档位
     plan_name = None
@@ -922,7 +1692,7 @@ async def activate_subscription(
             break
 
     if not plan_name:
-        raise HTTPException(400, f"未知的 plan_id: {plan_id}")
+        raise HTTPException(400, f"Unknown plan_id: {plan_id}")
 
     from .db import update_user
     quota = PLAN_QUOTAS.get(plan_name, 100)
@@ -970,7 +1740,7 @@ async def shopify_status(user: User = Depends(current_user)):
 async def shopify_auth_url(shop: str = ""):
     """获取 Shopify OAuth 授权 URL"""
     if not shop:
-        raise HTTPException(400, "请提供 Shopify 店铺域名，如 mystore")
+        raise HTTPException(400, "Provide a Shopify shop domain, e.g. mystore")
     url = get_shopify_auth_url(shop)
     return {"url": url}
 
@@ -979,11 +1749,11 @@ async def shopify_auth_url(shop: str = ""):
 async def shopify_callback(shop: str = "", code: str = ""):
     """Shopify OAuth 回调 — 换 token 并存储"""
     if not shop or not code:
-        raise HTTPException(400, "缺少 shop 或 code 参数")
+        raise HTTPException(400, "Missing shop or code parameter")
 
     # 这里需要从 cookie 或 session 获取用户
     # 简化处理：要求前端在 callback 页面手动调用 /api/shopify/connect
-    return {"shop": shop, "code": code, "message": "请使用前端完成连接"}
+    return {"shop": shop, "code": code, "message": "Complete connection from the frontend"}
 
 
 @app.post("/api/shopify/connect")
@@ -991,7 +1761,7 @@ async def shopify_connect(body: ShopifyConnectBody, user: User = Depends(current
     """连接 Shopify 店铺（前端拿到 code 后调用）"""
     result = await connect_shopify_store(user.id, body.shop_domain, body.code)
     if not result:
-        raise HTTPException(400, "Shopify 授权失败，请检查店铺域名和授权码")
+        raise HTTPException(400, "Shopify authorization failed — check shop domain and code")
 
     # Also mirror into stores (App single source of truth)
     from . import store_db
@@ -1032,7 +1802,7 @@ async def shopify_products(
     """拉取 Shopify 产品列表"""
     conn = get_shopify_connection(user.id)
     if not conn:
-        raise HTTPException(400, "请先连接 Shopify 店铺")
+        raise HTTPException(400, "Connect a Shopify store first")
 
     result = await fetch_shopify_products(
         shop_domain=conn.shop_domain,
@@ -1048,10 +1818,10 @@ async def shopify_process(body: ShopifyProcessBody, user: User = Depends(current
     """选择 Shopify 产品 + 国家 → 启动 AI pipeline"""
     conn = get_shopify_connection(user.id)
     if not conn:
-        raise HTTPException(400, "请先连接 Shopify 店铺")
+        raise HTTPException(400, "Connect a Shopify store first")
 
     if not body.product_ids:
-        raise HTTPException(400, "请至少选择一个产品")
+        raise HTTPException(400, "Select at least one product")
 
     # 拉取选中产品的完整数据
     all_products = await fetch_shopify_products(
@@ -1063,7 +1833,7 @@ async def shopify_process(body: ShopifyProcessBody, user: User = Depends(current
     # 过滤出用户选中的产品
     selected = [p for p in all_products["products"] if p["shopify_id"] in body.product_ids]
     if not selected:
-        raise HTTPException(404, "未找到选中的产品")
+        raise HTTPException(404, "Selected products not found")
 
     # 创建 job
     job = create_job(
@@ -1187,7 +1957,7 @@ async def shopify_feed_status(shop_domain: str = ""):
     from . import store_db
 
     if not shop_domain:
-        raise HTTPException(400, "请提供 shop_domain")
+        raise HTTPException(400, "shop_domain is required")
 
     shop_domain = shop_domain.replace(".myshopify.com", "").strip() + ".myshopify.com"
     store = store_db.get_store_by_domain(shop_domain)
@@ -1218,7 +1988,7 @@ FEEDS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _feed_file_response(file_path: Path, filename: str):
     if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(404, f"Feed 文件不存在: {filename}")
+        raise HTTPException(404, f"Feed file not found: {filename}")
     if filename.endswith(".xml"):
         media_type = "application/xml"
     elif filename.endswith(".csv"):
@@ -1290,7 +2060,7 @@ async def webhook_app_uninstalled(request: Request):
 
 
 async def _webhook_gdpr(request: Request):
-    from .shopify_webhooks import verify_shopify_hmac, handle_gdpr_stub
+    from .shopify_webhooks import verify_shopify_hmac, handle_compliance_webhook
     raw = await request.body()
     if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
         if config.SHOPIFY_CLIENT_SECRET and os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
@@ -1300,11 +2070,13 @@ async def _webhook_gdpr(request: Request):
         payload = json.loads(raw.decode("utf-8") or "{}")
     except json.JSONDecodeError:
         payload = {}
-    return handle_gdpr_stub(topic, payload)
+    shop = request.headers.get("X-Shopify-Shop-Domain", "") or payload.get("shop_domain", "")
+    return handle_compliance_webhook(topic, payload, shop)
 
 
-@app.post("/api/webhooks/shopify/customers_data_request")
-async def webhook_customers_data_request(request: Request):
+@app.post("/api/webhooks/shopify/compliance")
+async def webhook_shopify_compliance(request: Request):
+    """Single URI for toml compliance_topics (customers/* + shop/redact)."""
     return await _webhook_gdpr(request)
 
 

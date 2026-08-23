@@ -1,4 +1,4 @@
-"""Shopify 集成模块 — OAuth 授权 + 产品拉取 + 字段映射"""
+"""Shopify 集成模块 — OAuth 授权 + 产品拉取 + 字段映射 + v3.0 脏词清洗/属性标准化"""
 import os
 import secrets
 import logging
@@ -8,8 +8,10 @@ from urllib.parse import urlencode
 import httpx
 
 from .config import (
-    SHOPIFY_CLIENT_ID, SHOPIFY_CLIENT_SECRET,
-    SHOPIFY_REDIRECT_URI, SHOPIFY_SCOPES, SHOPIFY_API_VERSION,
+    SHOPIFY_CLIENT_ID,
+    SHOPIFY_CLIENT_SECRET,
+    SHOPIFY_REDIRECT_URI,
+    SHOPIFY_SCOPES,
 )
 from .db import (
     create_shopify_connection, get_shopify_connection, delete_shopify_connection,
@@ -73,22 +75,18 @@ async def exchange_shopify_code(shop_domain: str, code: str) -> Optional[dict]:
 
 
 async def get_shop_info(shop_domain: str, access_token: str) -> Optional[dict]:
-    """获取店铺基本信息"""
-    shop = shop_domain.replace(".myshopify.com", "").strip()
+    """获取店铺基本信息（Admin GraphQL）。"""
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/shop.json",
-                headers={"X-Shopify-Access-Token": access_token},
-            )
-            if resp.status_code != 200:
-                return None
-            data = resp.json().get("shop", {})
-            return {
-                "name": data.get("name", ""),
-                "domain": data.get("myshopify_domain", shop_domain),
-                "email": data.get("email", ""),
-            }
+        from .shopify_admin_gql import fetch_shop
+        data = fetch_shop(shop_domain, access_token)
+        if not data.get("name") and not data.get("myshopify_domain"):
+            return None
+        return {
+            "name": data.get("name", ""),
+            "domain": data.get("myshopify_domain") or shop_domain,
+            "email": data.get("email", ""),
+            "currency": str(data.get("currency") or "").strip().upper(),
+        }
     except Exception as e:
         logger.error(f"Shopify shop info error: {e}")
         return None
@@ -96,8 +94,14 @@ async def get_shop_info(shop_domain: str, access_token: str) -> Optional[dict]:
 
 # ═══════════════ 产品拉取 ═══════════════
 
-async def fetch_shopify_products(shop_domain: str, access_token: str,
-                                  limit: int = 250, page_info: str = None) -> dict:
+async def fetch_shopify_products(
+    shop_domain: str,
+    access_token: str,
+    limit: int = 250,
+    page_info: str = None,
+    *,
+    lite: bool = False,
+) -> dict:
     """从 Shopify 拉取产品列表
 
     Returns:
@@ -108,65 +112,38 @@ async def fetch_shopify_products(shop_domain: str, access_token: str,
         }
     """
     shop = shop_domain.replace(".myshopify.com", "").strip()
-    headers = {"X-Shopify-Access-Token": access_token}
-    params = {"limit": min(limit, 250), "fields": "id,title,handle,vendor,product_type,variants,images,tags,status,created_at"}
-
-    if page_info:
-        params["page_info"] = page_info
-
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/products.json",
-                headers=headers,
-                params=params,
-            )
-            if resp.status_code != 200:
-                logger.error(f"Shopify products fetch failed: {resp.status_code}")
-                return {"products": [], "next_page_info": None, "total_count": 0}
-
-            data = resp.json()
-            raw_products = data.get("products", [])
-
-            # 解析分页信息
-            next_page_info = None
-            link_header = resp.headers.get("Link", "")
-            if 'rel="next"' in link_header:
-                # 从 Link header 提取 page_info
-                import re
-                match = re.search(r'page_info=([^&"]+)', link_header)
-                if match:
-                    next_page_info = match.group(1)
-
-            # 获取总数
-            total_count = len(raw_products)
-            try:
-                count_resp = await client.get(
-                    f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/products/count.json",
-                    headers=headers,
-                )
-                if count_resp.status_code == 200:
-                    total_count = count_resp.json().get("count", total_count)
-            except Exception:
-                pass
-
-            # 映射为我们的格式
-            mapped = [_map_shopify_product(p) for p in raw_products]
-
-            return {
-                "products": mapped,
-                "next_page_info": next_page_info,
-                "total_count": total_count,
-            }
+        from .shopify_admin_gql import fetch_products_page
+        page = fetch_products_page(
+            shop_domain,
+            access_token,
+            limit=min(limit, 100),
+            cursor=page_info,
+            lite=lite,
+        )
+        mapped = [
+            _map_shopify_product(p, shop + ".myshopify.com") for p in page.get("products") or []
+        ]
+        return {
+            "products": mapped,
+            "next_page_info": page.get("next_page_info"),
+            "total_count": page.get("total_count") or len(mapped),
+        }
     except Exception as e:
         logger.error(f"Shopify products fetch error: {e}")
         return {"products": [], "next_page_info": None, "total_count": 0}
 
 
-def _map_shopify_product(product: dict) -> dict:
-    """将 Shopify 产品数据映射为 pipeline 需要的格式"""
+def _map_shopify_product(product: dict, shop_domain: str = "") -> dict:
+    """将 Shopify 产品数据映射为 pipeline 需要的格式
+
+    v3.0: 链接使用产品页 URL / 变体颜色尺码提取 / 脏词清洗
+    """
+    from .dirty_word_filter import clean_dirty_words
+
     variants = product.get("variants", [])
     images = product.get("images", [])
+    handle = product.get("handle", "")
 
     # 取第一个 variant 的信息
     first_variant = variants[0] if variants else {}
@@ -179,10 +156,52 @@ def _map_shopify_product(product: dict) -> dict:
     min_price = min(prices) if prices else 0
     max_price = max(prices) if prices else 0
 
+    # v3.0: 从 variant options 提取颜色/尺码
+    color = ""
+    size = ""
+    for v in variants:
+        opt1 = v.get("option1", "") or ""
+        opt2 = v.get("option2", "") or ""
+        opt3 = v.get("option3", "") or ""
+        # 启发式：通常 option1=颜色, option2=尺码，或反过来
+        for opt in [opt1, opt2, opt3]:
+            opt_lower = opt.lower().strip()
+            if not opt_lower or opt_lower == "default title" or opt_lower == "default":
+                continue
+            if not color and any(c in opt_lower for c in ["red", "blue", "black", "white", "green", "pink", "brown", "gray", "grey", "gold", "silver", "purple", "orange", "beige", "navy", "khaki"]):
+                color = opt
+            elif not size and opt_lower in ("xs", "s", "m", "l", "xl", "xxl", "one size", "free size"):
+                size = opt
+        if color and size:
+            break
+    # 回退：从 option1/option2 名称推断
+    if not color and not size:
+        options = product.get("options", [])
+        for opt_group in options:
+            opt_name = (opt_group.get("name", "") or "").lower()
+            if "color" in opt_name or "colour" in opt_name or "farbe" in opt_name:
+                color = first_variant.get(f"option{opt_group.get('position', 1)}", "")
+            elif "size" in opt_name or "größe" in opt_name or "taille" in opt_name:
+                size = first_variant.get(f"option{opt_group.get('position', 1)}", "")
+
+    # v3.0: 脏词清洗标题
+    raw_title = product.get("title", "")
+    dirty_result = clean_dirty_words(raw_title)
+    clean_title = dirty_result["clean_title"] or raw_title
+
+    # v3.0: 产品页链接
+    if shop_domain and handle:
+        product_link = f"https://{shop_domain}/products/{handle}"
+    else:
+        product_link = ""
+
+    from .product_attr_check import check_shopify_product_attrs
+    gaps = check_shopify_product_attrs(product)
+
     return {
         # pipeline 需要的字段
         "SKU": sku,
-        "标题": product.get("title", ""),
+        "标题": clean_title,
         "描述": _strip_html(product.get("body_html", "")),
         "价格": min_price,
         "图片链接": images[0].get("src", "") if images else "",
@@ -190,19 +209,27 @@ def _map_shopify_product(product: dict) -> dict:
         "分类": product.get("product_type", "") or product.get("vendor", ""),
         "品牌": product.get("vendor", ""),
         "材质": "",  # Shopify 标准字段里没有材质
-        "颜色": "",  # 需要从 variant options 提取
-        "尺码": "",  # 需要从 variant options 提取
+        "颜色": color,
+        "尺码": size,
         "库存": inventory,
+        "链接": product_link,
 
         # 额外信息（供前端展示）
         "shopify_id": str(product.get("id", "")),
-        "shopify_handle": product.get("handle", ""),
+        "shopify_handle": handle,
         "shopify_status": product.get("status", ""),
         "shopify_tags": product.get("tags", []),
-        "variant_count": len(variants),
+        "variant_count": int(product.get("total_variant_count") or len(variants)),
         "image_count": len(images),
         "price_range": f"${min_price:.2f} - ${max_price:.2f}" if min_price != max_price else f"${min_price:.2f}",
         "created_at": product.get("created_at", ""),
+        "product_type": product.get("product_type", "") or "",
+        "need_color": gaps["need_color"],
+        "need_size": gaps["need_size"],
+        "variant_skus": [
+            (str(v.get("sku") or "").strip() or f"{product.get('id')}-{v.get('id')}")
+            for v in variants
+        ],
     }
 
 

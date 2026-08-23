@@ -155,15 +155,33 @@ def _build_prompt(country: str, formula_instruction: str, cultural_context: str,
         )
 
     if country_upper == "DE":
-        return _fmt(_PROMPT_DE)
+        body = _fmt(_PROMPT_DE)
     elif country_upper == "FR":
-        return _fmt(_PROMPT_FR)
+        body = _fmt(_PROMPT_FR)
     elif country_upper == "ES":
-        return _fmt(_PROMPT_ES)
+        body = _fmt(_PROMPT_ES)
     elif country_upper == "IT":
-        return _fmt(_PROMPT_IT)
+        body = _fmt(_PROMPT_IT)
     else:
-        return _fmt(_PROMPT_EN)
+        body = _fmt(_PROMPT_EN)
+    return _FEED_TITLE_PREMISE + "\n\n" + body
+
+
+# ── 标题模型大前提（字段合同：骨架不要写成属性墙）──
+
+_FEED_TITLE_PREMISE = """STANDING PREMISE — Google Shopping title skeleton (world apparel formula):
+Write Gender + at most 2 searchable selling points + exact product type. Not an attribute dump.
+Use the FULL 2-attr budget when description/image clearly supports two real points
+(e.g. High Waist + Denim, Lace + V-Neck, Floral + Sleeveless, Lace-Up + Belted).
+Prefer pattern/print (Floral, Striped) for one of the 2 slots when present.
+Searchable materials OK as one slot: Denim, Leather, Silk, Cashmere, Merino, Cotton.
+NEVER pad with unearned buzzwords: summer, vintage, elegant, loose fit, plus size (unless clearly true).
+NEVER invent Casual/Everyday just to fill length. Prefer readable ~55–70 char skeleton
+(renderer adds color + size → about 80–110 final). Hard cap remains 150.
+NEVER: Closure / Fit Type / Pullover Closure / Fitted Fit / Polyester-Spandex walls / • or | / size ranges (S-5XL).
+Do NOT invent brand, GTIN, or MPN. Weak/supplier brands (eprolo) must not appear.
+The feed renderer adds THIS variant's color and size once — do not list every colorway.
+Keep the core category noun early (first ~30 characters when possible)."""
 
 
 # ── 英文 (US) ──
@@ -185,30 +203,41 @@ PRODUCT TO OPTIMIZE:
 
 CRITICAL — GOLDEN 30-CHARACTER RULE:
 Google Shopping weights DECREASE left-to-right. Users only read the first 25-30 chars on mobile.
-The FIRST 30 characters of front_70 MUST contain the CORE PRODUCT CATEGORY NOUN (e.g. "Running Shoes", "Phone Case", "Desk Lamp").
+The FIRST 30 characters of front_70 MUST contain the CORE PRODUCT CATEGORY NOUN (e.g. "Jeans", "Dress", "Jacket", "Running Shoes").
 NEVER start with filler words like "New", "Hot", "High Quality", "One Size".
 
 THREE-TIER LONG-TAIL STRATEGY:
-Tier 1 — front_70 (≤66 chars STRICT CEILING):
-  Structure: [Gender] + [Core Category] + [Key Feature/Material] + [1-2 Usage Scenes]
-  The scene keywords MUST come from the cultural_context occasions list. Scene words are the #1 priority.
+Tier 1 — front_70 (≤70 chars STRICT CEILING; prefer complete words):
+  World apparel structure (weak brand → do NOT force brand first):
+    [Women's/Men's] + [Plus Size if true] + [Attr1] + [Attr2] + [Exact Product Type]
+  Attr budget: MAX 2 searchable selling points.
+  Priority for attrs: pattern/print (Floral, Striped, Plaid) > neckline/sleeve/waist (V-Neck, Sleeveless, High Waist, Lace)
+    > searchable material (Denim, Leather, Silk, Cotton, Cashmere, Merino) > short scene.
+  SCENE is optional and must be evidenced (Wedding Guest, Beach) — never invent summer/vintage/elegant/Casual padding.
   EXAMPLES:
-    GOOD (63ch): "Women Running Shoes Pink Mesh Quick-Dry for Marathon Training"
-    GOOD (28ch): "iPhone 15 Pro MagSafe Case Clear" ← core noun in first 30 chars
-    BAD  (64ch): "One Size Women Pink Mesh Running Sneakers for Back" ← "One Size" wastes space, "Back" is CUT
-    BAD  (65ch): "Women Breathable Running Shoes Shock-Absorbing Lightweight for Dail" ← SCENE CUT mid-word
+    GOOD: "Women's High Waist Stretch Jeans"
+    GOOD: "Women's Floral Sleeveless Dress"
+    GOOD: "Women's Lace V-Neck Jacket"
+    GOOD: "Women's Lace-Up Belted Jacket"
+    BAD:  "Women Dress Sleeveless Striped Polyester for Beach Day • Fitted Fit • Pullover Closure"
+    BAD:  "Women's Jacket Casual" (empty Casual pad)
+    BAD:  "Women's Elegant Vintage Summer Dress" (unearned buzzwords)
   RULES:
-  - front_70 MUST be ≤66 characters. COUNT before output.
-  - FIRST 30 chars MUST contain the core product category noun.
-  - NEVER include "One Size", "Free Size", "Free Shipping", "High Quality", "100%", "New Arrival".
-  - MUST end with a complete meaningful word. NEVER end with "for Back", "for Dail", "for Summ" etc.
-  - If the full scene phrase cannot fit, DROP secondary attributes (color, material first) — KEEP the scene intact.
-    Priority hierarchy: CORE CATEGORY > SCENE WORDS > Core Function > Color > Material.
+  - front_70 MUST be ≤70 characters. COUNT before output.
+  - Prefer using BOTH attr slots when two real searchable points exist in the product data.
+  - FIRST 30 chars SHOULD contain the core product category noun when possible.
+  - NEVER include: Pullover Closure, Closure, Fitted Fit, Fit Type, zipper fly, Polyester, Spandex, Nylon-Spandex Blend, bullet • or pipe |.
+  - NEVER include "One Size", "Free Size", "Free Shipping", "High Quality", "100%", "New Arrival", "eprolo".
+  - NEVER pad with: summer, vintage, elegant, loose fit, plus size, Casual, Everyday — unless clearly in source data.
+  - Do NOT duplicate category ("Coats Jackets" → one word "Jacket").
+  - MUST end with a complete meaningful word. NEVER end mid-phrase.
+  - If over budget: drop scene first, then the weaker attr — KEEP gender + core type + strongest attr.
+    Priority: CORE PRODUCT TYPE > pattern/print > other searchable attr > searchable material > SCENE (optional).
   - ONLY this product's real attributes. No cross-category vocabulary.
-  - SCENE ALWAYS follows a preposition: "for [Scene]" (not bare scene word).
+  - When scene is included, it ALWAYS follows a preposition: "for [Scene]" (not bare scene word).
   - ZERO Chinese characters. 100% native English.
 Tier 2 — rest:
-  Supplementary specs ONLY (size, pack count). NEVER repeat a category synonym from front_70.
+  Supplementary specs ONLY (pack count). NEVER size ranges. NEVER repeat a category synonym from front_70.
 Tier 3 — description_snippet (3-TIER PYRAMID):
   Write a structured 3-paragraph description in this EXACT format:
   Paragraph 1 (1 sentence): Core pain point or usage scene. E.g. "The ultimate companion for your daily gym sessions and casual weekend hangouts."
@@ -226,7 +255,7 @@ OUTPUT FORMAT — valid JSON only:
   "description_snippet": "..."
 }}
 
-BANNED WORDS: Best, No.1, #1, Top-1, Guaranteed, Perfect, Amazing, Incredible, Unbeatable, 100%, Cheap, Discount, Free Shipping, One Size, High Quality. Output ONLY valid JSON. No markdown."""
+BANNED WORDS: Best, No.1, #1, Top-1, Guaranteed, Perfect, Amazing, Incredible, Unbeatable, 100%, Cheap, Discount, Free Shipping, One Size, High Quality, Pullover Closure, Fitted Fit. Output ONLY valid JSON. No markdown."""
 
 _PROMPT_DE = """Du bist ein deutscher Google-Shopping-Spezialist.
 
@@ -251,7 +280,7 @@ Beginnen Sie NIEMALS mit Füllwörtern wie "Neu", "Hot", "Hohe Qualität", "Einh
 KRITISCHE DREISTUFIGE LONG-TAIL-STRATEGIE:
 Stufe 1 — front_70 (≤66 Zeichen STRENGES LIMIT):
   Packe: [Farbe/Zielgruppe] + [Material] + [Kernfunktion] + [Kategorie] + [1-2 Nutzungsszenen]
-  Die Szenen-Schlüsselwörter MÜSSEN aus den cultural_context-Anlässen oben stammen. Szenen haben PRIORITÄT #1.
+  Die Szenen-Schlüsselwörter MÜSSEN aus den cultural_context-Anlässen oben stammen. Szene optional (有则加): nur einbauen wenn vollständig passt; drop scene first bei Platzmangel.
   BEISPIELE:
     GUT  (63ch): "Damen Grau Mesh Laufschuhe Stoßdämpfend für Park Joggen"
     GUT  (66ch): "iPhone 15 Pro Stoßfest MagSafe Hülle für Schulanfang" ← Elektronik: Modell+Funktion+Szene
@@ -260,8 +289,8 @@ Stufe 1 — front_70 (≤66 Zeichen STRENGES LIMIT):
   REGELN:
   - front_70 MUSS ≤66 Zeichen sein. ZÄHLE vor der Ausgabe.
   - MUSS mit einem vollständigen SINNWORT enden (Nomen, Szenenwort). NIEMALS mit Präposition (für/zur/im/am/mit/und).
-  - Wenn die Szene nicht vollständig reinpasst, WIRF nebensächliche Attribute raus — BEHALTE die Szene.
-    Priorität: SZENE > Kategorie > Kernfunktion > Farbe > Material.
+  - Wenn die Szene nicht vollständig reinpasst, WIRF die Szene zuerst raus — BEHALTE Kategorie und Kernfunktion.
+    Priorität: Kategorie > Kernfunktion > Farbe/Material > Szene optional.
   - Nur echte Attribute DIESES Produkts. Kein Vokabular aus anderen Kategorien.
   - Szene IMMER mit Präposition einleiten: "für [Szene]" (nicht nacktes Szenenwort). Das hilft dem Google-Parser, den Titel korrekt zu segmentieren.
   - Null chinesische Zeichen. ALLES auf Deutsch.
@@ -300,7 +329,7 @@ Ne commencez JAMAIS par des mots remplisseurs comme "Nouveau", "Hot", "Haute Qua
 STRATÉGIE LONGUE TRAÎNE À TROIS NIVEAUX:
 Niveau 1 — front_70 (≤66 caractères LIMITE DURE):
   Structure: [Couleur/Genre] + [Matière] + [Fonction principale] + [Catégorie] + [1-2 Scènes d'usage]
-  Les mots-clés de scène DOIVENT provenir des occasions cultural_context. Les scènes sont PRIORITÉ #1.
+  Les mots-clés de scène DOIVENT provenir des occasions cultural_context. Scène optionnelle (有则加): inclure seulement si la phrase entière tient; drop scene first si trop long.
   EXEMPLES:
     BON  (66ch): "Blanc Fer Lampe Bureau Scandinave Gradation pour Cadeau de"
     MAUVAIS (55ch): "Blanc Fer Lampe Bureau Scandinave pour Crémaillère" ← "Crémaillère" seul = trop court
@@ -310,8 +339,8 @@ Niveau 1 — front_70 (≤66 caractères LIMITE DURE):
   - Ordre des mots NATUREL en français: Adjectif de couleur AVANT le nom.
     Le nom principal (catégorie) vient AVANT les compléments de scène.
   - DOIT finir par un mot complet — un NOM ou le dernier mot de votre scène. JAMAIS finir par "de", "du", "pour", "avec", "et".
-  - Si la scène ne tient pas entièrement, SUPPRIMEZ les attributs secondaires — GARDEZ la scène intacte.
-    Priorité: SCÈNE > Catégorie > Fonction > Couleur > Matière.
+  - Si la scène ne tient pas entièrement, SUPPRIMEZ d'abord la scène — GARDEZ catégorie et fonction.
+    Priorité: Catégorie > Fonction > Couleur/Matière > scène optionnelle.
   - Uniquement les attributs de CE produit. Zéro caractère chinois. 100% français.
   - Scène TOUJOURS introduite par une préposition: "pour [Scène]". Cela aide le parser Google.
 Niveau 2 — rest: UNIQUEMENT spécifications (taille, lot). Jamais de synonyme de catégorie.
@@ -348,7 +377,7 @@ NUNCA empieces con palabras de relleno como "Nuevo", "Hot", "Alta Calidad", "Tal
 ESTRATEGIA LONG-TAIL DE TRES NIVELES:
 Nivel 1 — front_70 (≤66 caracteres LÍMITE DURO):
   Estructura: [Color/Género] + [Material] + [Función principal] + [Categoría] + [1-2 Escenas de uso]
-  Las palabras clave de escena DEBEN venir de las ocasiones cultural_context. Las escenas son PRIORIDAD #1.
+  Las palabras clave de escena DEBEN venir de las ocasiones cultural_context. Escena opcional (有则加): solo si cabe completa; drop scene first si no cabe.
   EJEMPLOS:
     BUENO (62ch): "Mascarilla Ácido Hialurónico Hidratante para Rutina Diaria"
     MALO: "Mascarilla Hidratante Ácido Hialurónico Rutina Diaria Piel" ← sin "para", suena forzado
@@ -357,8 +386,8 @@ Nivel 1 — front_70 (≤66 caracteres LÍMITE DURO):
   REGLAS:
   - front_70 DEBE ser ≤66 caracteres. CUENTA.
   - DEBE terminar con palabra completa con sentido. NUNCA preposición o conjunción al final.
-  - Si la escena no cabe entera, ELIMINA atributos secundarios — CONSERVA la escena.
-    Prioridad: ESCENA > Categoría > Función > Color > Material.
+  - Si la escena no cabe entera, ELIMINA primero la escena — CONSERVA categoría y función.
+    Prioridad: Categoría > Función > Color/Material > escena opcional.
   - Solo atributos reales de ESTE producto. Cero caracteres chinos. 100% español.
   - Escena SIEMPRE introducida por preposición: "para [Escena]". Ayuda al parser de Google.
 Nivel 2 — rest: SOLO especificaciones (talla, lote). Sin sinónimos de categoría.
@@ -395,7 +424,7 @@ Non iniziare MAI con parole riempitive come "Nuovo", "Hot", "Alta Qualità", "Ta
 STRATEGIA LONG-TAIL A TRE LIVELLI:
 Livello 1 — front_70 (≤66 caratteri LIMITE RIGIDO):
   Struttura: [Colore/Genere] + [Materiale] + [Funzione principale] + [Categoria] + [1-2 Scene d'uso]
-  Le parole chiave di scena DEVONO provenire dalle occasioni cultural_context. Le scene sono PRIORITÀ #1.
+  Le parole chiave di scena DEVONO provenire dalle occasioni cultural_context. Scena opzionale (有则加): solo se entra intera; drop scene first se non entra.
   ESEMPI:
     BUONO (65ch): "Donna Rosa Mesh Scarpe Running Ammortizzate per Palestra"
     CATTIVO (58ch): "Donna Rosa Mesh Scarpe Running Ammortizzate Traspiranti Palestra" ← "Palestra" senza preposizione
@@ -404,8 +433,8 @@ Livello 1 — front_70 (≤66 caratteri LIMITE RIGIDO):
   REGOLE:
   - front_70 DEVE essere ≤66 caratteri. CONTA.
   - DEVE finire con una parola di senso compiuto. MAI preposizione o congiunzione finale.
-  - Se la scena non ci sta per intero, ELIMINA attributi secondari — CONSERVA la scena.
-    Priorità: SCENA > Categoria > Funzione > Colore > Materiale.
+  - Se la scena non ci sta per intero, ELIMINA prima la scena — CONSERVA categoria e funzione.
+    Priorità: Categoria > Funzione > Colore/Materiale > scena opzionale.
   - Solo attributi reali di QUESTO prodotto. Zero caratteri cinesi. 100% italiano.
   - Scena SEMPRE introdotta da preposizione: "per [Scena]". Aiuta il parser di Google.
 Livello 2 — rest: SOLO specifiche (taglia, confezione). Nessun sinonimo di categoria.
@@ -759,7 +788,7 @@ def optimize(
                     gpc_path=gpc_path or "N/A", attributes=attr_str,
                 )
             elif "scene_truncated" in err_msg:
-                last_err_hint = "CRITICAL: Your front_70 was TOO LONG. Shrink to ≤60 chars. Drop secondary attributes (color/material) — KEEP the USAGE SCENE word(s) at the END. Scene words are your #1 priority. NEVER end on a preposition."
+                last_err_hint = "CRITICAL: Your front_70 was TOO LONG. Shrink to ≤60 chars. Drop SCENE first if present, then color/material — KEEP CORE CATEGORY + key function. NEVER end on a preposition."
                 prompt = _build_prompt(  # rebuild with tighter budget
                     country=country, formula_instruction=formula_instruction,
                     cultural_context=f"LOCAL CULTURAL & SEO CONTEXT:\n{cultural_context}\n\nRETRY RULE: front_70 budget is now ≤60 chars. Scene words MUST fit. Drop filler words.",
@@ -859,6 +888,10 @@ def rewrite_for_platform(
     platform: str = "google",
     language: str = "US",
     tags: list = None,
+    gpc_path: str = "",
+    gpc_code: str = "",
+    color: str = "",
+    size: str = "",
 ) -> dict:
     """Rewrite language-skeleton copy into a platform asset.
 
@@ -869,10 +902,21 @@ def rewrite_for_platform(
     Pure transform by default (no LLM) so layered pipeline stays billable
     and testable; set ADFEED_PLATFORM_LLM=1 to call the model later.
     """
+    from .title_guard import polish_feed_title
+
     plat = (platform or "google").lower()
     base_title = (title or "").strip()
     base_desc = (description or "").strip()
     tags = list(tags or [])
+
+    # 品类卖点纪律 + 轻量变体差异（完整变体色在 Feed 层再增强）
+    base_title = polish_feed_title(
+        base_title,
+        color=color,
+        size=size,
+        gpc_path=gpc_path,
+        gpc_code=gpc_code,
+    )
 
     if plat == "meta":
         # Commerce: punchy, under ~100 chars preferred

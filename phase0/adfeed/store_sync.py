@@ -10,7 +10,7 @@ import httpx
 
 from . import config
 from . import store_db
-from .config import SHOPIFY_API_VERSION, SHOPIFY_CLIENT_ID, SHOPIFY_CLIENT_SECRET
+from .config import SHOPIFY_CLIENT_ID, SHOPIFY_CLIENT_SECRET
 
 logger = logging.getLogger("adfeed-store-sync")
 
@@ -87,10 +87,33 @@ async def exchange_session_for_offline_token(
 async def ensure_store_access_token(
     store: store_db.Store,
     session_token: str,
+    *,
+    force: bool = False,
 ) -> store_db.Store:
-    """If store has no access_token, exchange session JWT and persist it."""
-    if store.access_token:
-        return store
+    """Ensure store has a working offline Admin API token.
+
+    By default skips exchange if a token already exists. Pass ``force=True``
+    (App bootstrap) to re-exchange from the session JWT — stale seeded
+    tokens otherwise cause GraphQL 401 and empty/broken App UX.
+    """
+    if store.access_token and not force:
+        try:
+            from .shopify_admin_gql import fetch_shop
+
+            info = fetch_shop(store.shopify_domain, store.access_token)
+            # graphql() returns {} on HTTP 401 — treat empty shop as stale token
+            if info and (info.get("name") or info.get("myshopify_domain") or info.get("domain")):
+                return store
+            logger.warning(
+                "Stored access_token appears stale for %s; re-exchanging",
+                store.shopify_domain,
+            )
+        except Exception as e:
+            logger.warning(
+                "Stored access_token invalid for %s (%s); re-exchanging",
+                store.shopify_domain,
+                e,
+            )
 
     exchanged = await exchange_session_for_offline_token(
         store.shopify_domain, session_token,
@@ -100,21 +123,18 @@ async def ensure_store_access_token(
 
     shop_name = store.shop_name
     site_url = store.site_url
+    default_currency = store.default_currency
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            shop = store.shopify_domain.replace(".myshopify.com", "")
-            resp = await client.get(
-                f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/shop.json",
-                headers={"X-Shopify-Access-Token": exchanged["access_token"]},
-            )
-            if resp.status_code == 200:
-                info = resp.json().get("shop", {})
-                shop_name = info.get("name") or shop_name
-                domain = info.get("domain") or info.get("myshopify_domain")
-                if domain and not str(domain).startswith("http"):
-                    site_url = f"https://{domain}"
-                elif domain:
-                    site_url = str(domain)
+        from .shopify_admin_gql import fetch_shop
+        info = fetch_shop(store.shopify_domain, exchanged["access_token"])
+        shop_name = info.get("name") or shop_name
+        domain = info.get("domain") or info.get("myshopify_domain")
+        if domain and not str(domain).startswith("http"):
+            site_url = f"https://{domain}"
+        elif domain:
+            site_url = str(domain)
+        if info.get("currency"):
+            default_currency = str(info["currency"]).strip().upper()
     except Exception as e:
         logger.warning("Shop info after exchange failed: %s", e)
 
@@ -123,9 +143,29 @@ async def ensure_store_access_token(
         access_token=exchanged["access_token"],
         shop_name=shop_name,
         site_url=site_url,
+        default_currency=default_currency,
         status="active",
     )
     return store_db.get_store(store.id) or store
+
+
+def refresh_store_currency_from_shopify(store: store_db.Store) -> store_db.Store:
+    """Sync shop.json currency into stores.default_currency (sync helper for feed gen)."""
+    if not store.access_token or not store.shopify_domain:
+        return store
+    try:
+        from .shopify_admin_gql import fetch_shop
+        info = fetch_shop(store.shopify_domain, store.access_token)
+        currency = str(info.get("currency") or "").strip().upper()
+        if not currency:
+            return store
+        if currency != (store.default_currency or "").upper():
+            store_db.update_store(store.id, default_currency=currency)
+            logger.info("Updated store %s default_currency → %s", store.id[:8], currency)
+        return store_db.get_store(store.id) or store
+    except Exception as e:
+        logger.warning("refresh_store_currency failed: %s", e)
+        return store
 
 
 def _option_maps(product: dict) -> tuple[dict, dict]:
@@ -185,6 +225,14 @@ def upsert_raw_shopify_product(store_id: str, product: dict) -> store_db.Product
         ai_status="raw",
         feed_enabled=0,
     )
+    # Only overwrite brand when merchant confirmed default_brand (field contract).
+    # Never silent-inject eprolo / DEFAULT_STORE_BRAND.
+    store = store_db.get_store(store_id)
+    confirmed = (store.default_brand if store else None) or ""
+    confirmed = confirmed.strip()
+    if confirmed and (saved.brand or "").strip().lower() != confirmed.lower():
+        store_db.update_product(saved.id, brand=confirmed)
+        saved = store_db.get_product(saved.id)
 
     pos_to_name, _ = _option_maps(product)
     variants = product.get("variants") or []
@@ -216,7 +264,13 @@ def upsert_raw_shopify_product(store_id: str, product: dict) -> store_db.Product
 
 
 def _strip_html(html: str) -> str:
-    return re.sub(r"<[^>]+>", "", html or "").strip()
+    text = re.sub(r"<[^>]+>", "\n", html or "")
+    text = text.replace("\xa0", " ").replace("&nbsp;", " ").strip()
+    try:
+        from .desc_formatter import format_product_description
+        return format_product_description(text)
+    except Exception:
+        return re.sub(r"\s+", " ", text).strip()
 
 
 async def fetch_raw_product(
@@ -224,20 +278,12 @@ async def fetch_raw_product(
     access_token: str,
     product_id: str,
 ) -> Optional[dict]:
-    shop = normalize_shop_domain(shop_domain).replace(".myshopify.com", "")
     pid = normalize_shopify_product_id(product_id)
     if not pid:
         return None
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(
-                f"https://{shop}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/products/{pid}.json",
-                headers={"X-Shopify-Access-Token": access_token},
-            )
-            if resp.status_code != 200:
-                logger.warning("Fetch product %s failed: %s", pid, resp.status_code)
-                return None
-            return resp.json().get("product")
+        from .shopify_admin_gql import fetch_product
+        return fetch_product(shop_domain, access_token, pid)
     except Exception as e:
         logger.error("Fetch product %s error: %s", pid, e)
         return None

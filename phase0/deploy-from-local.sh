@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────
-#  AdFeed AI — 本地构建 + rsync 推送到服务器（解决服务器内存不足无法构建）
+#  AdFeed AI — 本地构建 + rsync 推送到服务器
 #  ──────────────────────────────────────────────────────────────
 #
 #  配置（修改下面这行）：
@@ -11,9 +11,15 @@ SSH_USER="admin"             # SSH 用户名
 REMOTE_DIR="/opt/adfeed"     # 服务器上项目目录
 #
 #  用法（在本机 Mac 上执行）：
-#    ./deploy-from-local.sh                        # 完整部署
+#    ./deploy-from-local.sh                        # 完整部署（旧 Next.js web）
 #    ./deploy-from-local.sh --no-build             # 跳过本地构建（.next 已存在）
 #    ./deploy-from-local.sh --backend-only         # 只更新后端 Python 代码
+#
+#  2026-08 iframe 说明：
+#  - 商家入口已改为 add-feed-ai/web（React Router），不再依赖 phase0/web Next.js。
+#  - 生产还需在服务器上跑 React Router（`npm run start` / systemd），并把
+#    shopify.app.toml application_url 指到该进程（见 shopify.app.toml.prod-backup）。
+#  - FastAPI 仍用本脚本 --backend-only 即可；若 SSH 超时，先修网络/密钥再部署。
 #  ──────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -31,6 +37,13 @@ echo "┌───────────────────────�
 echo "│  AdFeed AI — Local Build & Deploy     │"
 echo "│  Target: ${SSH_USER}@${SERVER}:${REMOTE_DIR}  │"
 echo "└────────────────────────────────────────┘"
+
+# Fail fast if SSH is unreachable (common: firewall / wrong key)
+if ! ssh -o BatchMode=yes -o ConnectTimeout=12 "${SSH_USER}@${SERVER}" 'echo ssh-ok' >/dev/null 2>&1; then
+    echo "ERROR: cannot SSH to ${SSH_USER}@${SERVER} (timeout or auth)."
+    echo "Fix network/SSH key before deploy. Backend-only and React Router cutover blocked until then."
+    exit 1
+fi
 
 # ── Step 1: 本地构建 Next.js ──
 if [ "$BACKEND_ONLY" = false ] && [ "$NO_BUILD" = false ]; then

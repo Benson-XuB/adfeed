@@ -69,15 +69,14 @@ def generate_meta_feed(rows: list[dict], shop_name: str = "",
         rows: pipeline 构建的行数据（与 Google Feed 相同的 dict 列表）
         shop_name: 店铺名称
         site_link: 网站链接
-        country: 目标国家（用于汇率转换）
+        country: 目标国家（币种以 row `_feed_currency` 为准）
 
     Returns:
         XML 字符串
     """
-    from .feed_generator import CURRENCY_MAP, EXCHANGE_RATES
+    from .market_pricing import expected_currency_for_country
 
-    target_currency = CURRENCY_MAP.get(country.upper(), "USD")
-    rate = EXCHANGE_RATES.get(target_currency, 1.0)
+    target_currency = expected_currency_for_country(country)
 
     products = []
     for row in rows:
@@ -98,9 +97,13 @@ def generate_meta_feed(rows: list[dict], shop_name: str = "",
             except (json.JSONDecodeError, TypeError):
                 additional_links = [unesc(u.strip()) for u in additional_images_raw.split(",") if u.strip()]
 
-        # 汇率转换
-        orig_price = float(row.get('价格', 0))
-        converted_price = round(orig_price * rate, 2)
+        # Pipeline-resolved amount/currency — no FX multiply
+        try:
+            price_amount = float(row.get("价格", 0) or 0)
+        except (TypeError, ValueError):
+            price_amount = 0.0
+        row_ccy = str(row.get("_feed_currency") or row.get("currency") or "").strip().upper()
+        currency = row_ccy or target_currency
 
         products.append({
             "id": unesc(row.get("SKU", "")),
@@ -109,8 +112,8 @@ def generate_meta_feed(rows: list[dict], shop_name: str = "",
             "link": unesc(row.get("链接", "")),
             "image_link": unesc(row.get("图片链接", "")),
             "additional_image_links": additional_links,
-            "price": f"{converted_price:.2f}",
-            "currency": target_currency,
+            "price": f"{price_amount:.2f}",
+            "currency": currency,
             "sale_price": f"{float(row.get('sale_price', 0)):.2f}" if float(row.get("sale_price", 0) or 0) > 0 else "",
             "availability": "in stock" if int(row.get("库存", 0) or 0) > 0 else "out of stock",
             "condition": "new",

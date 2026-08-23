@@ -31,8 +31,8 @@ def assert_quota_available(store: store_db.Store, cost: int) -> None:
             detail={
                 "error": "insufficient_quota",
                 "message": (
-                    f"需要 {cost} 配额，当前剩余 {remaining}。"
-                    "请升级套餐后再生成。"
+                    f"Need {cost} quota units; {remaining} remaining. "
+                    "Upgrade your plan to generate more."
                 ),
                 "estimate": cost,
                 "quota_remaining": remaining,

@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS users (
     plan          TEXT DEFAULT 'free',
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
-    quota_total   INTEGER DEFAULT 10,
+    quota_total   INTEGER DEFAULT 20,
     quota_used    INTEGER DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -100,7 +100,7 @@ class User:
     name: Optional[str] = None
     avatar_url: Optional[str] = None
     plan: str = "free"
-    quota_total: int = 10
+    quota_total: int = 20
     quota_used: int = 0
     stripe_customer_id: Optional[str] = None
     stripe_subscription_id: Optional[str] = None

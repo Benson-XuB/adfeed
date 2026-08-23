@@ -113,10 +113,13 @@ _PRODUCT_TYPE_WORDS = {
     "dress": ["dress", "dresses", "gown"],
     "skirt": ["skirt", "skirts"],
     "pants": ["pants", "trousers", "leggings"],
-    "shorts": ["shorts"],
+    "shorts": ["shorts"],  # 不含 short（形容词，会误伤 jacket）
     "shirt": ["shirt", "shirts", "blouse", "tee", "t-shirt"],
     "socks": ["socks", "sock", "hosiery"],
-    "jacket": ["jacket", "coat", "outerwear"],
+    "jacket": ["jacket", "jackets", "coat", "coats", "outerwear"],
+    "jumpsuit": ["jumpsuit", "jumpsuits", "romper", "rompers", "one-piece", "onesie"],
+    "vest": ["vest", "vests"],
+    "top": ["top", "tops", "camisole", "tank"],
     "sweater": ["sweater", "hoodie", "cardigan"],
     "shoes": ["shoes", "sneakers", "boots", "sandals"],
     "bag": ["handbag", "backpack", "tote", "purse"],
@@ -148,24 +151,88 @@ _PRODUCT_TYPE_GPC_ALIAS = {
         "confidence": 0.94,
         "source": "product_type_alias",
     },
+    "jacket": {
+        "gpc_code": "5598",
+        "gpc_path": "Apparel & Accessories > Clothing > Outerwear > Coats & Jackets",
+        "confidence": 0.96,
+        "source": "product_type_alias",
+    },
+    "jumpsuit": {
+        "gpc_code": "5250",
+        "gpc_path": "Apparel & Accessories > Clothing > One-Pieces > Jumpsuits & Rompers",
+        "confidence": 0.96,
+        "source": "product_type_alias",
+    },
+    "vest": {
+        "gpc_code": "1831",
+        "gpc_path": "Apparel & Accessories > Clothing > Outerwear > Vests",
+        "confidence": 0.95,
+        "source": "product_type_alias",
+    },
+    "top": {
+        "gpc_code": "212",
+        "gpc_path": "Apparel & Accessories > Clothing > Shirts & Tops",
+        "confidence": 0.94,
+        "source": "product_type_alias",
+    },
+    "shirt": {
+        "gpc_code": "212",
+        "gpc_path": "Apparel & Accessories > Clothing > Shirts & Tops",
+        "confidence": 0.94,
+        "source": "product_type_alias",
+    },
+    "shorts": {
+        "gpc_code": "207",
+        "gpc_path": "Apparel & Accessories > Clothing > Shorts",
+        "confidence": 0.94,
+        "source": "product_type_alias",
+    },
+    "skirt": {
+        "gpc_code": "1581",
+        "gpc_path": "Apparel & Accessories > Clothing > Skirts",
+        "confidence": 0.94,
+        "source": "product_type_alias",
+    },
 }
 
-# 服饰部件/修饰词：有强品类词时不当作品类关键词
+# 服饰部件/修饰词：不当作品类关键词（形容词 short≠shorts）
 _FEATURE_NOISE = {
     "zipper", "zippered", "zip", "button", "buttons", "lace", "tied", "tie",
-    "high", "waisted", "waist", "leg", "legs", "sleeve", "sleeveless",
+    "high", "waisted", "waist", "leg", "legs", "sleeve", "sleeveless", "sleeved",
     "printed", "print", "solid", "plain", "casual", "sexy", "slim",
     "loose", "tight", "stretch", "elastic", "women", "woman", "men", "man",
     "for", "with", "and", "the", "low", "cut", "boat", "ankle", "crew",
+    "short", "long", "hollow", "slanted", "irregular", "patchwork", "metal",
+    "buckle", "strap", "slit", "shoulder", "hanging", "wave", "point",
+    "v-neck", "aline", "a-line", "fit", "trim", "detail", "details",
 }
+
+# 多品类同时出现时的优先级（越靠前越优先直达）
+_PRODUCT_TYPE_PRIORITY = [
+    "jeans", "jumpsuit", "dress", "jacket", "vest", "shorts", "skirt",
+    "pants", "socks", "sweater", "shirt", "top", "shoes", "bag",
+]
 
 
 def _detect_product_types(title: str) -> list[str]:
-    """从标题检测强品类词（英文）。"""
+    """从标题检测强品类词（英文），按优先级排序。"""
     t = (title or "").lower()
     found = []
-    for canon, variants in _PRODUCT_TYPE_WORDS.items():
+    for canon in _PRODUCT_TYPE_PRIORITY:
+        variants = _PRODUCT_TYPE_WORDS.get(canon, [canon])
         if any(re.search(rf"(?<![a-z]){re.escape(v)}(?![a-z])", t) for v in variants):
+            # top 过泛：需服饰语境，避免 table top 等
+            if canon == "top":
+                apparel_ctx = any(
+                    re.search(rf"(?<![a-z]){w}(?![a-z])", t)
+                    for w in (
+                        "women", "woman", "ladies", "men", "man", "girl",
+                        "sleeveless", "sleeve", "v-neck", "neck", "lace",
+                        "crop", "halter", "camisole", "tank", "blouse",
+                    )
+                )
+                if not apparel_ctx:
+                    continue
             found.append(canon)
     return found
 
@@ -218,8 +285,8 @@ def _extract_keywords(title: str, category: str, material: str) -> list[str]:
             continue
         if part in _MATERIAL_WORDS:
             continue
-        # 有强品类时跳过 zipper/tied 等部件词
-        if product_types and part in _FEATURE_NOISE:
+        # 始终跳过服饰修饰/部件噪声（short≠shorts）
+        if part in _FEATURE_NOISE:
             continue
         keywords.append(part)
         if len(keywords) >= 18:
@@ -254,17 +321,28 @@ def _rerank_candidates(title: str, candidates: list[dict]) -> list[dict]:
         path = (c.get("gpc_path") or "").lower()
         base = float(c.get("confidence") or c.get("score") or 0)
         if path.startswith("apparel & accessories"):
-            # jeans → prefer Jeans/Pants leaf
-            if "jeans" in product_types and "jean" in path:
+            if "jeans" in product_types and ("jean" in path or "pants" in path):
                 return base + 5.0
             if "dress" in product_types and "dress" in path:
                 return base + 5.0
             if "socks" in product_types and "sock" in path:
                 return base + 5.0
+            if "jacket" in product_types and ("jacket" in path or "outerwear" in path):
+                return base + 5.0
+            if "jumpsuit" in product_types and ("jumpsuit" in path or "romper" in path or "one-piece" in path):
+                return base + 5.0
+            if "vest" in product_types and "vest" in path:
+                return base + 5.0
+            if "top" in product_types and ("shirt" in path or "top" in path) and "baby" not in path:
+                return base + 5.0
             return base + 2.0
         # craft zippers / stationery when title is clearly clothing
         if "arts & crafts" in path or "craft fasteners" in path or "zippers" == path.split(">")[-1].strip():
             return base - 5.0
+        if "baby & toddler" in path and "socks" not in product_types:
+            return base - 4.0
+        if "belt buckle" in path or "hardware" in path:
+            return base - 4.0
         return base
 
     return sorted(candidates, key=score_boost, reverse=True)

@@ -39,22 +39,26 @@ PRODUCT_POOL = [
     {
         "title": "夏季韩版宽松T恤女短袖纯棉ins风",
         "description": "2024新款韩版宽松短袖t恤女夏季纯棉半袖体恤ins潮牌百搭",
-        "category": "女装>T恤", "price": 39.90, "material": "纯棉", "color": "白色",
+        "category": "女装>T恤", "price": 39.90, "material": "纯棉",
+        "color": "白色", "specs": "颜色:白色,黑色,粉色;尺码:S,M,L,XL",
     },
     {
         "title": "No.1 爆款运动鞋女透气网面轻便跑步鞋",
         "description": "No.1爆款运动鞋女款夏季透气网面轻便跑步鞋百搭",
-        "category": "鞋类>运动鞋", "price": 129.00, "material": "网面+橡胶", "color": "粉色",
+        "category": "鞋类>运动鞋", "price": 129.00, "material": "网面+橡胶",
+        "color": "粉色", "specs": "颜色:粉色,白色,黑色;尺码:36,37,38,39,40",
     },
     {
         "title": "男士商务休闲长袖衬衫纯色免烫修身",
         "description": "春秋季男士长袖衬衫商务正装纯色修身免烫抗皱",
-        "category": "男装>衬衫", "price": 79.00, "material": "棉涤混纺", "color": "蓝色",
+        "category": "男装>衬衫", "price": 79.00, "material": "棉涤混纺",
+        "color": "蓝色", "specs": "颜色:蓝色,白色,灰色;尺码:M,L,XL,XXL",
     },
     {
         "title": "全球首发冬季加厚羽绒服女中长款连帽Best Seller",
         "description": "全球首发2024冬季新款羽绒服女中长款加厚连帽保暖",
-        "category": "女装>外套", "price": 259.00, "material": "白鸭绒", "color": "黑色",
+        "category": "女装>外套", "price": 259.00, "material": "白鸭绒",
+        "color": "黑色", "specs": "颜色:黑色,白色,酒红色;尺码:S,M,L,XL",
     },
     {
         "title": "Top quality denim jacket men vintage washed",
@@ -64,7 +68,8 @@ PRODUCT_POOL = [
     {
         "title": "女士高腰阔腿裤垂感宽松直筒拖地裤显瘦",
         "description": "秋冬季女士高腰阔腿裤垂感西装裤宽松直筒拖地裤百搭显瘦",
-        "category": "女装>裤子", "price": 89.00, "material": "聚酯纤维", "color": "黑色",
+        "category": "女装>裤子", "price": 89.00, "material": "聚酯纤维",
+        "color": "黑色", "specs": "颜色:黑色,灰色,卡其色;尺码:S,M,L,XL",
     },
     {
         "title": "Adidas风格运动套装男春秋季卫衣长裤两件套",
@@ -366,6 +371,7 @@ def generate(seed: int = 42, count: int = 50) -> pd.DataFrame:
             "材质": material,
             "颜色": color,
             "尺码": size,
+            "规格": p.get("specs", ""),  # 1688 多变体规格字段
             "品牌": "" if random.random() > 0.30 else random.choice(
                 ["自主品牌", "OEM", "厂牌直供", "无品牌"]
             ),

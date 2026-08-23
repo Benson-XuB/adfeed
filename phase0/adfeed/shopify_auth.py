@@ -42,11 +42,14 @@ def decode_session_token(token: str) -> dict:
     if not secret:
         raise jwt.InvalidTokenError("SHOPIFY_CLIENT_SECRET not configured")
 
+    # Session tokens are short-lived (~60s). Allow skew so local/tunnel clocks
+    # and multi-request bursts don't spuriously fail with "Signature has expired".
     payload = jwt.decode(
         token,
         secret,
         algorithms=["HS256"],
         audience=client_id or None,
+        leeway=120,
         options={
             "verify_aud": bool(client_id),
             "require": ["dest", "exp", "nbf"],
@@ -73,6 +76,11 @@ async def require_store(
 
     try:
         payload = decode_session_token(credentials.credentials)
+    except jwt.ExpiredSignatureError as e:
+        raise HTTPException(
+            401,
+            "Shopify session expired — hard-refresh Admin (Cmd+Shift+R) and reopen the app.",
+        ) from e
     except jwt.PyJWTError as e:
         raise HTTPException(401, f"Invalid Shopify session: {e}") from e
 

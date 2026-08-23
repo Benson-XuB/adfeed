@@ -48,6 +48,7 @@ FEED_XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
       {% if p.gender %}<g:gender>{{ p.gender }}</g:gender>{% endif %}
       {% if p.age_group %}<g:age_group>{{ p.age_group }}</g:age_group>{% endif %}
       {% if p.color %}<g:color>{{ p.color | e }}</g:color>{% endif %}
+      {% if p.pattern %}<g:pattern>{{ p.pattern | e }}</g:pattern>{% endif %}
       {% if p.material %}<g:material>{{ p.material | e }}</g:material>{% endif %}
       {% if p.custom_label_0 %}<g:custom_label_0>{{ p.custom_label_0 | e }}</g:custom_label_0>{% endif %}
       {% if p.custom_label_1 %}<g:custom_label_1>{{ p.custom_label_1 | e }}</g:custom_label_1>{% endif %}
@@ -71,9 +72,17 @@ FEED_XML_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 </rss>
 """
 
-CURRENCY_MAP = {"US": "USD", "DE": "EUR", "FR": "EUR", "ES": "EUR", "IT": "EUR"}
-_USD_EUR_RATE = float(os.getenv("ADFEED_USD_EUR",  "0.92"))
+_USD_EUR_RATE = float(os.getenv("ADFEED_USD_EUR", "0.92"))
 EXCHANGE_RATES = {"USD": 1.0, "EUR": _USD_EUR_RATE}
+
+
+def _deprecated_currency_for_country(country: str) -> str:
+    from .market_pricing import expected_currency_for_country
+    return expected_currency_for_country(country)
+
+
+# Deprecated for feed submit: GMC requires landing-page currency match.
+# Use market_pricing.resolve_market_price + row `_feed_currency` instead.
 
 # ─────────────────────────────────────────────
 # v4.0: 中文 → 英文颜色/材质翻译字典（GMC 合规）
@@ -148,7 +157,7 @@ def _extract_dominant_color(color_val: str) -> str:
         "Yellow", "Pink", "Purple", "Orange", "Brown", "Grey",
         "Gray", "Beige", "Khaki", "Navy", "Camel", "Burgundy",
         "Gold", "Silver", "Clear", "Multicolor", "Apricot",
-        "Transparent", "Colorful",
+        "Transparent",
     ]
 
     val_lower = val.lower()
@@ -227,26 +236,44 @@ def _translate_material(val: str) -> str:
     return _format_material_value(result)
 
 
-TITLE_MAX_CHARS = 70  # Google Shopping 黄金展示区
+from .config import DESCRIPTION_MAX_LENGTH
+
+TITLE_MAX_CHARS = 150  # Google Shopping 标题上限（不再用 70 强制截断）
+DESCRIPTION_MAX_CHARS = DESCRIPTION_MAX_LENGTH  # Google Shopping 描述上限 5000
 
 
-def _enhance_title(base_title: str, color: str, gender: str = "", brand: str = "", material: str = "") -> str:
-    """标题增强：追加品牌 + 颜色 + 核心卖点（Google Shopping 最佳实践）
+def _soft_truncate(text: str, max_chars: int) -> str:
+    """仅当超过平台硬上限时按词边界截断；否则原样返回。"""
+    if not text or len(text) <= max_chars:
+        return text or ""
+    truncated = text[:max_chars]
+    last_space = truncated.rfind(" ")
+    if last_space > max_chars // 2:
+        return truncated[:last_space].rstrip()
+    return truncated.rstrip()
 
-    模板: [Brand ]Base Title, Color | Material
-    例: GESHILA Men's Ice Silk Quick-Dry T-Shirt, Grey | 92% Polyester
-    最终截断至 TITLE_MAX_CHARS（70字符），保证 Google Shopping 完整展示。
+
+def _enhance_title(base_title: str, color: str, gender: str = "", brand: str = "",
+                   material: str = "", size: str = "", gpc_path: str = "",
+                   gpc_code: str = "", pattern: str = "") -> str:
+    """Field contract: skeleton + brand? + this-row pattern/color/size once.
+
+    Pattern is a variant differentiator for ALL product types (not dress-only).
+    No material wall, no Plus Size injection, no Style N.
     """
     if not base_title:
         return ""
-    en_color = _translate_color(color)
-    en_material = _translate_material(material)
+    from .title_guard import polish_feed_title
 
-    # 跳过店铺 handle / 空品牌，避免 "qx2kd5-s7 Women Dress..." 污染
+    en_color = _translate_color(color)
+
+    # Skip handles / placeholder supplier brands in the title string
     brand_ok = bool(brand) and brand not in ("No Brand", "Unbranded", "Store", "")
     if brand_ok:
         b = brand.strip()
         if ".myshopify" in b.lower() or b.lower().endswith(".com"):
+            brand_ok = False
+        elif b.lower() in ("eprolo", "oem", "厂牌直供", "自主品牌"):
             brand_ok = False
         elif re.search(r"\d", b) and "-" in b and " " not in b:
             brand_ok = False  # qx2kd5-s7 style handle
@@ -256,37 +283,18 @@ def _enhance_title(base_title: str, color: str, gender: str = "", brand: str = "
     else:
         title_with_brand = base_title
 
-    # 后缀部分：颜色 + 材质
-    suffix_parts = []
-    if en_color and en_color.lower() not in base_title.lower():
-        suffix_parts.append(en_color)
-
-    # 材质追加（服饰类追加材质关键词）
-    if en_material and en_material.lower() not in base_title.lower():
-        core_material = en_material.split(',')[0].split('+')[0].strip()
-        if len(core_material) > 3 and core_material.lower() not in base_title.lower():
-            suffix_parts.append(core_material)
-
-    if suffix_parts:
-        full_title = f"{title_with_brand}, {' | '.join(suffix_parts)}"
-    else:
-        full_title = title_with_brand
-
-    # 截断至 TITLE_MAX_CHARS，保证词边界完整
-    if len(full_title) > TITLE_MAX_CHARS:
-        truncated = full_title[:TITLE_MAX_CHARS]
-        last_space = truncated.rfind(" ")
-        if last_space > 30:  # 至少保留30字符的有意义内容
-            full_title = truncated[:last_space]
-        else:
-            full_title = truncated.rstrip()
-
-    # 清理截断后残留的分隔符尾部（如 ", |" / "|" / ","）
-    full_title = re.sub(r'\s*\|\s*$', '', full_title)
-    full_title = re.sub(r'\s*,\s*$', '', full_title)
-    full_title = full_title.rstrip()
-
-    return full_title
+    full_title = polish_feed_title(
+        title_with_brand,
+        color=en_color or color,
+        size=size,
+        pattern=pattern,
+        gpc_path=gpc_path,
+        gpc_code=gpc_code,
+    )
+    full_title = _soft_truncate(full_title, TITLE_MAX_CHARS)
+    full_title = re.sub(r"\s*\|\s*$", "", full_title)
+    full_title = re.sub(r"\s*,\s*$", "", full_title)
+    return full_title.rstrip()
 
 
 def _auto_description(title: str, brand: str, material: str, color: str,
@@ -426,9 +434,39 @@ DEFAULT_SHIPPING = {
 
 
 def _convert_price(price_usd: float, country: str):
-    currency = CURRENCY_MAP.get(country.upper(), "USD")
+    """DEPRECATED — do not use for GMC/Meta/TikTok submit feeds.
+
+    Kept only for legacy memory-path callers until migrated. Prefer
+    ``market_pricing.resolve_market_price`` (no invented FX).
+    """
+    currency = _deprecated_currency_for_country(country)
     rate = EXCHANGE_RATES.get(currency, 1.0)
     return round(price_usd * rate, 2), currency
+
+
+def _feed_price_and_currency(row, country: str) -> tuple[float, str]:
+    """Use row amount as-is; currency from `_feed_currency` / `currency` / country map.
+
+    Never multiplies by EXCHANGE_RATES.
+    """
+    price_str = str(row.get("价格", "0.00"))
+    try:
+        price_val = float(
+            price_str.replace("USD", "").replace("EUR", "").replace("CNY", "").strip()
+        )
+    except (ValueError, AttributeError):
+        price_val = 0.0
+
+    currency = ""
+    for key in ("_feed_currency", "currency", "币种"):
+        raw = row.get(key, "")
+        if raw is not None and str(raw).strip() and str(raw).strip().lower() != "nan":
+            currency = str(raw).strip().upper()
+            break
+    if not currency:
+        from .market_pricing import expected_currency_for_country
+        currency = expected_currency_for_country(country)
+    return round(price_val, 2), currency
 
 
 def _price_label(price_usd: float) -> str:
@@ -492,12 +530,8 @@ def generate(df: pd.DataFrame, country: str = "US", site_link: str = "https://ad
     """
     products = []
     for _, row in df.iterrows():
-        price_str = str(row.get("价格", "0.00"))
-        try:
-            price_val = float(price_str.replace("USD", "").replace("EUR", "").strip())
-        except (ValueError, AttributeError):
-            price_val = 0.0
-        price, currency = _convert_price(price_val, country)
+        price, currency = _feed_price_and_currency(row, country)
+        price_val = price
         raw_inv = row.get("库存", row.get("inventory", 0))
         inv = int(raw_inv) if raw_inv is not None and raw_inv != "" else 0
 
@@ -528,32 +562,67 @@ def generate(df: pd.DataFrame, country: str = "US", site_link: str = "https://ad
         condition = str(row.get("condition", "new")).strip() or "new"
         availability = str(row.get("availability", "")).strip()
         if not availability:
-            availability = "out_of_stock" if inv <= 0 else ("limited_availability" if inv < 5 else "in_stock")
+            availability = "out_of_stock" if inv <= 0 else "in_stock"
         identifier_exists = str(row.get("identifier_exists", "no")).strip() or "no"
 
         # v4.0: 中文颜色/材质自动翻译英文（GMC 合规）
+        # P0: Style/脏后缀 → 基础色（结合描述 Color: 列表）
+        from .attribute_normalizer import resolve_gmc_color
         raw_color = str(row.get("颜色", "")) if pd.notna(row.get("颜色")) else ""
         raw_material = str(row.get("材质", "")) if pd.notna(row.get("材质")) else ""
-        en_color = _translate_color(raw_color)
-        # v4.1: 从图案描述中提取主色名（GMC 合规）
-        en_color = _extract_dominant_color(en_color)
+        ctx_desc = str(row.get("描述", "") or "")
+        ctx_title = str(row.get("标题", "") or row.get("优化后标题", "") or "")
+        en_color = resolve_gmc_color(raw_color, description=ctx_desc, title=ctx_title)
+        if not en_color:
+            en_color = _extract_dominant_color(_translate_color(raw_color))
         en_material = _translate_material(raw_material)
 
-        # v4.0: title 增强 — 追加品牌 + 颜色 + 材质卖点
+        # v4.0: title 增强 — 追加品牌 + 颜色 + 材质卖点 + 品类纪律
         base_title = str(row.get("优化后标题", row.get("标题", "")))
         brand_val = str(row.get("品牌", "")) if pd.notna(row.get("品牌")) else ""
-        enhanced_title = _enhance_title(base_title, raw_color, str(row.get("gender", "")), brand_val, raw_material)
+        raw_size = str(row.get("尺码", "")) if pd.notna(row.get("尺码")) else ""
+        gpc_path_val = str(row.get("GPC路径", "") or "")
+        gpc_code_val = str(row.get("GPC代码", "") or "")
+        enhanced_title = _enhance_title(
+            base_title, en_color or raw_color, str(row.get("gender", "")), brand_val,
+            raw_material, size=raw_size, gpc_path=gpc_path_val, gpc_code=gpc_code_val,
+            pattern=str(row.get("pattern") or row.get("custom_label_0") or ""),
+        )
+        from .attribute_normalizer import normalize_gender
+        gender_now = str(row.get("gender", "") or "").strip()
+        gender_seed = "" if gender_now.lower() in ("", "nan", "unisex") else gender_now
+        gender_now = normalize_gender(
+            gender_seed, f"{enhanced_title} {base_title}"
+        ) or gender_now or "unisex"
 
-        # v4.0: description 自动摘要（空 description 时生成）
-        raw_desc = str(row.get("description_snippet", row.get("描述", "")))
-        if not raw_desc or len(raw_desc.strip()) < 10:
+        # description：优先保留 Shopify/库内完整文案，格式化属性粘连；硬上限 5000
+        from .desc_formatter import format_product_description
+        raw_desc = str(row.get("描述", "") or "")
+        if not raw_desc.strip() or len(raw_desc.strip()) < 10:
+            # 其次用 AI snippet
+            snip = str(row.get("description_snippet", "") or "")
+            if snip.strip() and len(snip.strip()) >= 10:
+                raw_desc = snip
+            else:
+                raw_desc = _auto_description(
+                    base_title, brand_val,
+                    raw_material, raw_color,
+                    str(row.get("gender", "")),
+                    str(row.get("GPC路径", "")),
+                    size=str(row.get("尺码", "")) if pd.notna(row.get("尺码")) else "",
+                )
+        raw_desc = format_product_description(raw_desc.strip(), max_chars=DESCRIPTION_MAX_CHARS)
+        if not raw_desc:
             raw_desc = _auto_description(
-                base_title, str(row.get("品牌", "")),
+                base_title, brand_val,
                 raw_material, raw_color,
                 str(row.get("gender", "")),
                 str(row.get("GPC路径", "")),
                 size=str(row.get("尺码", "")) if pd.notna(row.get("尺码")) else "",
             )
+            raw_desc = format_product_description(raw_desc, max_chars=DESCRIPTION_MAX_CHARS)
+        # soft truncate already applied inside formatter; keep as safety
+        raw_desc = _soft_truncate(raw_desc.strip(), DESCRIPTION_MAX_CHARS)
 
         # v4.0: size_system 自动填充（智能检测尺码体系）
         raw_size_system = str(row.get("size_system", ""))
@@ -634,18 +703,18 @@ def generate(df: pd.DataFrame, country: str = "US", site_link: str = "https://ad
             "availability": availability,
             "identifier_exists": identifier_exists,
             "gtin": str(row.get("gtin", "")),
-            # v3.1: 无 GTIN 时自动用 SKU 填充 MPN（降低 GMC 人工审核概率）
-            "mpn": str(row.get("mpn", "")) or (sku_val if identifier_exists == "no" else ""),
+            "mpn": str(row.get("mpn", "") or "").strip(),
             "gpc_code": str(row.get("GPC代码", "")),
             "gpc_path": str(row.get("GPC路径", "")),
             "brand": str(row.get("品牌", "")) if pd.notna(row.get("品牌")) else "",
             "item_group_id": str(row.get("item_group_id", "")),
             "color": en_color,
+            "pattern": str(row.get("pattern") or row.get("custom_label_0") or ""),
             "material": en_material,
             "size": str(row.get("尺码", "")) if pd.notna(row.get("尺码")) else "",
             "size_system": raw_size_system,
             "size_type": str(row.get("size_type", "")),
-            "gender": str(row.get("gender", "")),
+            "gender": gender_now,
             "age_group": str(row.get("age_group", "adult")),
             "custom_label_0": custom_label_0,
             "custom_label_1": custom_label_1,
@@ -707,12 +776,14 @@ def generate_from_memory(
 
     for p in all_products:
         inventory = int(p.get("inventory", 0))
-        price_usd = float(p.get("price_usd", 0))
-        price, currency = _convert_price(price_usd, target_country)
+        # Prefer explicit feed currency; do not FX-convert for submit
+        from .market_pricing import expected_currency_for_country
+        price = round(float(p.get("price_usd", 0) or 0), 2)
+        currency = str(p.get("currency") or p.get("_feed_currency") or "").strip().upper()
+        if not currency:
+            currency = expected_currency_for_country(target_country)
 
-        availability = ("out_of_stock" if inventory <= 0
-                        else "limited_availability" if inventory < 5
-                        else "in_stock")
+        availability = "out_of_stock" if inventory <= 0 else "in_stock"
 
         if inventory <= 0:
             out_of_stock_count += 1
@@ -752,10 +823,14 @@ def generate_from_memory(
         en_material = _translate_material(raw_material)
         base_title = _safe_str(optimized_title, "Product")
         enhanced_title = _enhance_title(
-            base_title, raw_color,
+            base_title, en_color or raw_color,
             _safe_str(p.get("gender", ""), ""),
             _safe_str(p.get("brand", ""), ""),
             raw_material,
+            size=_safe_str(p.get("size", ""), ""),
+            gpc_path=_safe_str(p.get("gpc_path", ""), ""),
+            gpc_code=_safe_str(p.get("gpc_code", ""), ""),
+            pattern=_safe_str(p.get("pattern", ""), "") or _safe_str(p.get("custom_label_0", ""), ""),
         )
 
         # v4.1: shipping_weight 默认值

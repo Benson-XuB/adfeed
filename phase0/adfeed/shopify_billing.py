@@ -15,17 +15,22 @@ logger = logging.getLogger("adfeed-billing")
 
 # Plan name → monthly quota (env-configurable)
 PLAN_QUOTAS = {
-    "free": int(os.getenv("ADFEED_QUOTA_FREE", "10")),
-    "starter": int(os.getenv("ADFEED_QUOTA_STARTER", "400")),
-    "growth": int(os.getenv("ADFEED_QUOTA_GROWTH", "2000")),
+    "free": int(os.getenv("ADFEED_QUOTA_FREE", "20")),
+    "starter": int(os.getenv("ADFEED_QUOTA_STARTER", "150")),
+    "growth": int(os.getenv("ADFEED_QUOTA_GROWTH", "400")),
 }
 
 PLAN_PRICES_USD = {
-    "starter": float(os.getenv("ADFEED_PRICE_STARTER", "29.0")),
-    "growth": float(os.getenv("ADFEED_PRICE_GROWTH", "99.0")),
+    "starter": float(os.getenv("ADFEED_PRICE_STARTER", "14.99")),
+    "growth": float(os.getenv("ADFEED_PRICE_GROWTH", "39.0")),
 }
 
 VALID_PAID_PLANS = ("starter", "growth")
+
+
+def billing_test_charges() -> bool:
+    """Production App Store charges must be live (test=false)."""
+    return os.getenv("ADFEED_BILLING_TEST", "false").lower() in ("1", "true", "yes")
 
 
 def normalize_plan_name(name: str) -> str:
@@ -121,7 +126,7 @@ async def create_app_subscription(
     store: store_db.Store,
     plan: str,
     return_url: str,
-    test: bool = True,
+    test: Optional[bool] = None,
 ) -> dict:
     """Create Shopify recurring application charge via GraphQL.
 
@@ -131,6 +136,8 @@ async def create_app_subscription(
     plan_key = normalize_plan_name(plan)
     if plan_key not in VALID_PAID_PLANS:
         raise ValueError(f"Unsupported plan '{plan}'. Use starter or growth.")
+    if test is None:
+        test = billing_test_charges()
 
     price = PLAN_PRICES_USD[plan_key]
     quota = quota_for_plan(plan_key)

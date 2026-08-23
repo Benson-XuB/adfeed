@@ -302,41 +302,146 @@ def batch_process_images(image_urls: list[str], store_id: str = "",
 # 检测函数：判断图片是否需要 AI 处理
 # ─────────────────────────────────────────────────
 
-def needs_image_processing(image_url: str) -> bool:
-    """检测图片是否需要 AI 处理
+# 批发/阿里系 CDN — 大概率含水印或中文贴纸
+_RISKY_IMG_DOMAINS = (
+    "alicdn.com",
+    "1688.com",
+    "taobao.com",
+    "tmall.com",
+    "img.alibaba.com",
+    "cdn.temu.com",
+    "img.dhgate.com",
+    "cjdropshipping.com",
+)
+_RISKY_IMG_KEYWORDS = ("watermark", "水印")
 
-    判断逻辑：
-    - 1688/淘宝/天猫 CDN 图片 → 大概率有水印
-    - URL 含水印关键词 → 需要处理
-    - Shopify CDN 图片 → 通常干净，跳过
 
-    Args:
-        image_url: 图片 URL
+def classify_image_risk(url: str) -> dict:
+    """Domain/heuristic risk flag for feed main images.
 
     Returns:
-        True = 建议处理
+        {"risky": bool, "reason": str}
     """
-    if not image_url:
-        return False
+    if not url or not str(url).strip():
+        return {"risky": False, "reason": "empty"}
 
-    url_lower = image_url.lower()
+    url_lower = str(url).lower()
 
-    # 1688/阿里系 CDN → 需要处理
-    cn_domains = ["1688.com", "alicdn.com", "taobao.com", "tmall.com",
-                   "cbu01.alicdn", "img.alicdn"]
-    if any(d in url_lower for d in cn_domains):
-        return True
+    for d in _RISKY_IMG_DOMAINS:
+        if d in url_lower:
+            return {"risky": True, "reason": f"domain:{d}"}
 
-    # URL 含水印关键词
-    wm_keywords = ["watermark", "w_", "水印"]
-    if any(kw in url_lower for kw in wm_keywords):
-        return True
+    for kw in _RISKY_IMG_KEYWORDS:
+        if kw in url_lower:
+            return {"risky": True, "reason": f"keyword:{kw}"}
 
-    # Shopify CDN 通常干净
+    # Shopify CDN is usually clean — never auto-risky
     if "cdn.shopify.com" in url_lower:
-        return False
+        return {"risky": False, "reason": "shopify_cdn"}
 
-    return False
+    return {"risky": False, "reason": ""}
+
+
+def try_clean_main_image(
+    image_url: str,
+    *,
+    sku: str = "",
+    store_id: str = "",
+    product_id: str = "",
+) -> dict:
+    """Attempt watermark removal; emit AUTOFIX IMG01 or WARN IMG02 (never FATAL).
+
+    Monkeypatch ``process_product_image`` / ``remove_watermark`` in tests to
+    avoid live DashScope calls.
+
+    Returns:
+        {"ok": bool, "url": str, "events": list[QualityEvent]}
+    """
+    from .feed_quality import QualityEvent
+
+    events = []
+    original = image_url or ""
+    if not original:
+        events.append(QualityEvent(
+            "WARN", "IMG02", "g:image_link", sku or "",
+            "Main image is empty — cannot remove watermark",
+            suggestion="Upload at least one product image",
+            before="", after="",
+        ))
+        return {"ok": False, "url": original, "events": events}
+
+    try:
+        result = process_product_image(
+            original,
+            store_id=store_id,
+            product_id=product_id,
+            remove_wm=True,
+            white_bg=False,
+        )
+        if not result:
+            # Fallback to remove_watermark alone (also monkeypatch target)
+            result = remove_watermark(original, store_id=store_id, product_id=product_id)
+
+        if result and result != original:
+            # Prefer R2 public URL when configured
+            try:
+                from .config import R2_ENABLED
+                if R2_ENABLED:
+                    r2_url = upload_to_r2(result, store_id=store_id, product_id=product_id)
+                    if r2_url:
+                        result = r2_url
+            except Exception:
+                pass
+
+            # Only accept public http(s) URLs — never AUTOFIX with local filesystem paths
+            if not str(result).startswith("http"):
+                events.append(QualityEvent(
+                    "WARN", "IMG02", "g:image_link", sku or "",
+                    "Main image may contain watermark — processing failed, replace manually",
+                    suggestion="Replace with a clean product photo",
+                    before=original, after=original,
+                ))
+                return {"ok": False, "url": original, "events": events}
+
+            events.append(QualityEvent(
+                "AUTOFIX", "IMG01", "g:image_link", sku or "",
+                "Watermark removed and main image replaced",
+                before=original, after=str(result),
+            ))
+            return {"ok": True, "url": str(result), "events": events}
+
+        events.append(QualityEvent(
+            "WARN", "IMG02", "g:image_link", sku or "",
+            "Main image may contain watermark — processing failed, replace manually",
+            suggestion="Replace with a clean product photo",
+            before=original, after=original,
+        ))
+        return {"ok": False, "url": original, "events": events}
+
+    except Exception as e:
+        events.append(QualityEvent(
+            "WARN", "IMG02", "g:image_link", sku or "",
+            f"Main image may contain watermark — processing failed, replace manually ({e})",
+            suggestion="Replace with a clean product photo",
+            before=original, after=original,
+        ))
+        return {"ok": False, "url": original, "events": events}
+
+
+def image_clean_quota_skip_event(sku: str = "", image_url: str = ""):
+    """WARN when job image-clean quota is exhausted."""
+    from .feed_quality import QualityEvent
+    return QualityEvent(
+        "WARN", "IMG02", "g:image_link", sku or "",
+        "Skipped image processing (quota)",
+        suggestion="Raise IMAGE_CLEAN_MAX_PER_JOB or generate in batches",
+        before=image_url or "", after=image_url or "",
+    )
+
+
+def needs_image_processing(image_url: str) -> bool:
+    """检测图片是否需要 AI 处理（委托 classify_image_risk）。"""
+    return bool(classify_image_risk(image_url).get("risky"))
 
 
 def get_processed_image_url(local_path: str, cdn_base_url: str = "") -> str:

@@ -62,7 +62,8 @@ SIZE_MAP: dict[str, str] = {
     # 中文尺码
     "均码": "One Size", "自由码": "One Size", "通用": "One Size", "通用款": "One Size",
     "XS": "XS", "S": "S", "M": "M", "L": "L", "XL": "XL",
-    "XXL": "XXL", "2XL": "XXL", "3XL": "XXXL", "4XL": "XXXXL", "5XL": "XXXXL",
+    "XXL": "XXL", "XXXL": "XXXL", "XXXXL": "XXXXL", "XXXXXL": "XXXXXL",
+    "2XL": "2XL", "3XL": "3XL", "4XL": "4XL", "5XL": "5XL",
     "大码": "XL", "加大": "XL", "加大码": "XL", "特大": "XXL", "特大码": "XXL",
     "小码": "S", "小": "S", "中码": "M", "中": "M", "大": "L",
     # 数字尺码（鞋类）
@@ -161,26 +162,314 @@ def normalize_color(cn_color: str, country: str = "US") -> str:
     return color
 
 
+# GMC 标准色（多词在前，便于从描述中抽取）
+# Colorful is NOT a hue — it belongs in _MULTICOLOR_PHRASES.
+_GMC_KNOWN_COLORS = [
+    "Light Blue", "Dark Blue", "Sky Blue", "Navy Blue",
+    "Dark Green", "Army Green", "Light Grey", "Dark Grey",
+    "Light Gray", "Dark Gray", "Rose Gold",
+    "Black", "White", "Red", "Blue", "Green", "Yellow", "Pink",
+    "Purple", "Orange", "Brown", "Grey", "Gray", "Beige", "Khaki",
+    "Navy", "Camel", "Burgundy", "Gold", "Silver", "Clear",
+    "Multicolor", "Apricot", "Transparent", "Nude",
+]
+
+# Phrases meaning "unnameable many colors" → Multicolor (not GMC hues).
+_MULTICOLOR_PHRASES = (
+    "mixed color", "mixed colours", "mixed colors",
+    "multi color", "multi colour", "multicolor",
+    "colorful", "colourful",
+    "assorted",
+)
+_MULTICOLOR_CJK = ("花色", "多彩", "多色", "混色")
+_GMC_HUE_COLORS = tuple(
+    c for c in _GMC_KNOWN_COLORS if c.lower() != "multicolor"
+)
+
+_STYLE_LABEL_RE = re.compile(
+    r"^(style|pattern|color|colour|款式|花色|颜色)\s*[-_]?\s*\d+$",
+    re.I,
+)
+_COLOR_LINE_RE = re.compile(
+    r"(?:^|\n|<[^>]+>)\s*color\s*[:：]\s*([^\n<#]+)",
+    re.I,
+)
+
+
+def _strip_color_noise(raw: str) -> str:
+    """去掉营销括号/方括号等噪音，保留色名。"""
+    if not raw:
+        return ""
+    s = raw.strip()
+    s = re.sub(r"\[.*?\]", " ", s)
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = re.sub(r"[*【】]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip(" ,;/|-")
+    return s
+
+
+def _named_hue(cleaned: str) -> str:
+    """Extract a real GMC hue (never Multicolor / Colorful)."""
+    if not cleaned:
+        return ""
+    low = cleaned.lower()
+    for name in _GMC_HUE_COLORS:
+        if low == name.lower():
+            return name
+    mapped = normalize_color(cleaned, "US")
+    if mapped:
+        for name in _GMC_HUE_COLORS:
+            if mapped.lower() == name.lower():
+                return name
+    best, best_pos = None, len(cleaned) + 1
+    for name in _GMC_HUE_COLORS:
+        pos = low.find(name.lower())
+        if pos >= 0 and pos < best_pos:
+            best, best_pos = name, pos
+            if pos == 0:
+                break
+    return best or ""
+
+
+def _is_multicolor_synonym(cleaned: str) -> bool:
+    """True when the token is a many-colors phrase, not a hue name."""
+    if not cleaned:
+        return False
+    if any(k in cleaned for k in _MULTICOLOR_CJK):
+        return True
+    norm = re.sub(r"[-_]+", " ", cleaned.lower())
+    norm = re.sub(r"\s+", " ", norm).strip()
+    for phrase in _MULTICOLOR_PHRASES:
+        if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", norm):
+            return True
+    return False
+
+
+def _canonical_color_token(token: str) -> str:
+    """单段色名 → GMC 标准写法；无法识别则空。
+
+    Named hue wins; only if none, many-color synonyms → Multicolor.
+    """
+    if not token:
+        return ""
+    cleaned = _strip_color_noise(token)
+    if not cleaned:
+        return ""
+    hue = _named_hue(cleaned)
+    if hue:
+        return hue
+    if _is_multicolor_synonym(cleaned):
+        return "Multicolor"
+    return ""
+
+
+def parse_listed_colors(description: str) -> list[str]:
+    """从商品描述 `Color: Black, Khaki` / `Color: brown` 解析色列表。"""
+    if not description:
+        return []
+    # 去 HTML 标签便于匹配
+    text = re.sub(r"<[^>]+>", "\n", description)
+    text = text.replace("&nbsp;", " ")
+    m = _COLOR_LINE_RE.search(text)
+    if not m:
+        return []
+    raw_list = m.group(1)
+    parts = re.split(r"[,，/;|]+", raw_list)
+    out = []
+    seen = set()
+    for part in parts:
+        c = _canonical_color_token(part.strip())
+        if c and c.lower() not in seen:
+            seen.add(c.lower())
+            out.append(c)
+    return out
+
+
+def _is_style_label(raw: str) -> bool:
+    if not raw:
+        return False
+    return bool(_STYLE_LABEL_RE.match(_strip_color_noise(raw) or raw.strip()))
+
+
+def _style_index(raw: str) -> int:
+    """Style 1 → 0, Style 2 → 1；无法解析 → -1。"""
+    m = re.search(r"(\d+)", raw or "")
+    if not m:
+        return -1
+    return max(0, int(m.group(1)) - 1)
+
+
+# Opaque non-color / non-size axes (any catalog — not product-specific)
+_OPAQUE_AXIS_RE = re.compile(
+    r"^(?:style|design|type|model|version|edition|款式|型号|款)\s*[-_]?\s*([a-z0-9]+)$",
+    re.I,
+)
+
+
+def opaque_style_axis_key(raw: str) -> str:
+    """Stable slug for opaque style/design options (Style 1, Design A, 款式2…).
+
+    High-quality Shopping: these are often different garments sharing one Shopify
+    product. Caller should split item_group_id by this key — never dump into
+    title or pretend they are print patterns.
+    """
+    cleaned = (_strip_color_noise(raw) or (raw or "")).strip()
+    if not cleaned:
+        return ""
+    if _is_style_label(cleaned):
+        m = re.search(r"([a-z0-9]+)\s*$", cleaned, re.I)
+        token = (m.group(1) if m else "x").lower()
+        return f"style-{token}"
+    m = _OPAQUE_AXIS_RE.match(cleaned)
+    if m:
+        head = re.match(r"^[a-z\u4e00-\u9fff]+", cleaned, re.I)
+        prefix = (head.group(0) if head else "style").lower()
+        # normalize Chinese prefixes
+        prefix = {
+            "款式": "style", "型号": "model", "款": "style",
+        }.get(prefix, prefix)
+        return f"{prefix}-{m.group(1).lower()}"
+    return ""
+
+
+_COLOR_STOPWORDS = {
+    "with", "and", "the", "a", "an", "base", "background", "color", "colour",
+}
+
+
+def _title_case_color_words(text: str) -> str:
+    parts = []
+    for w in text.split():
+        if w.isupper() and len(w) <= 3:
+            parts.append(w)
+        else:
+            parts.append(w[:1].upper() + w[1:].lower() if w else w)
+    return " ".join(parts)
+
+
+def extract_pattern_from_color_raw(raw: str, hue: str = "") -> str:
+    """Non-hue tokens from option text → GMC pattern (not merged into color)."""
+    cleaned = _strip_color_noise(raw or "")
+    if not cleaned:
+        return ""
+    if _is_style_label(cleaned):
+        return ""  # Style N is not a searchable pattern (field contract)
+    rest = cleaned
+    if hue:
+        for part in sorted(hue.split(), key=len, reverse=True):
+            rest = re.sub(rf"\b{re.escape(part)}\b", " ", rest, flags=re.I)
+    tokens = []
+    for tok in re.split(r"[^A-Za-z0-9]+", rest):
+        if not tok or tok.lower() in _COLOR_STOPWORDS:
+            continue
+        if _is_multicolor_synonym(tok):
+            continue
+        if _canonical_color_token(tok):
+            continue
+        tokens.append(tok)
+    if not tokens:
+        return ""
+    low = " ".join(tokens).lower()
+    if "flower" in low or "floral" in low:
+        return "Floral"
+    if "stripe" in low or "striped" in low:
+        if "vertical" in low:
+            return "Vertical Stripe"
+        if "curved" in low:
+            return "Curved Stripe"
+        return "Stripe"
+    if "dot" in low or "polka" in low:
+        return "Polka Dot"
+    # Style-only already returned above; bare style words are not patterns
+    if _is_style_label(cleaned) or re.match(r"^style\s*\d+$", cleaned, re.I):
+        return ""
+    return _title_case_color_words(" ".join(tokens))[:40]
+
+
+def resolve_gmc_color(
+    raw_color: str,
+    *,
+    description: str = "",
+    title: str = "",
+) -> str:
+    """GMC hue only — never merge Style/print into color (field contract)."""
+    color, _pattern = resolve_gmc_color_and_pattern(
+        raw_color, description=description, title=title,
+    )
+    return color
+
+
+def resolve_gmc_color_and_pattern(
+    raw_color: str,
+    *,
+    description: str = "",
+    title: str = "",
+) -> tuple[str, str]:
+    """Return (gmc_color, pattern). Pattern empty when none."""
+    raw = (raw_color or "").strip()
+    listed = parse_listed_colors(description)
+    context_blob = f"{title or ''} {re.sub(r'<[^>]+>', ' ', description or '')}"[:500]
+
+    def _from_context() -> str:
+        if listed:
+            return listed[0]
+        return _canonical_color_token(context_blob) or "Multicolor"
+
+    hue = ""
+    if raw and not _is_style_label(raw):
+        hit = _canonical_color_token(raw)
+        if hit:
+            hue = hit
+        else:
+            hue = _from_context()
+    elif listed:
+        idx = _style_index(raw) if raw else 0
+        if idx < 0:
+            idx = 0
+        if len(listed) == 1:
+            hue = listed[0]
+        else:
+            hue = listed[min(idx, len(listed) - 1)]
+    else:
+        hue = _from_context()
+
+    pattern = extract_pattern_from_color_raw(raw, hue=hue if hue != "Multicolor" else "")
+    return hue, pattern
+
+
+_LETTER_SIZE_RE = re.compile(
+    r"^(XXXXXL|XXXXL|XXXL|XXL|5XL|4XL|3XL|2XL|XL|XS|S|M|L)(?:\s*码)?$",
+    re.I,
+)
+
+
 def normalize_size(cn_size: str) -> str:
-    """中文尺码 → GMC 标准尺码"""
+    """中文/字母尺码 → GMC 尺码。禁止把 XXXL 收成 L、把 4XL 与 5XL 收成同一个值。"""
     if not cn_size:
         return ""
 
     size = cn_size.strip()
+    letter = _LETTER_SIZE_RE.match(size)
+    if letter:
+        return letter.group(1).upper()
 
-    # 精确匹配
     if size in SIZE_MAP:
         return SIZE_MAP[size]
+    for key, std in SIZE_MAP.items():
+        if key.lower() == size.lower():
+            return std
 
-    # 模糊匹配（处理 "XL码", "加大XL" 等）
+    # 仅用长度≥2 的中文别名做包含匹配，避免 "L" in "XL"
     for cn_key, std_size in SIZE_MAP.items():
-        if cn_key in size or size in cn_key:
+        if not re.search(r"[\u4e00-\u9fff]", cn_key):
+            continue
+        if len(cn_key) >= 2 and cn_key in size:
             return std_size
 
-    # 已经是标准尺码格式
-    if re.match(r'^(XS|S|M|L|XL|XXL|XXXL|XXXXL|One Size|\d{2,3})$', size, re.IGNORECASE):
+    if re.match(r"^(One Size)$", size, re.I):
+        return "One Size"
+    if re.match(r"^\d{2,3}$", size):
         return size
-
     return size
 
 

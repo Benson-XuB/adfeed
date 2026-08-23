@@ -10,39 +10,39 @@ import re
 # ============================================
 SUPERLATIVE_RULES = [
     # 英文极限词
-    (r'\bbest\b', '', '极限词'),
-    (r'\bno\.?\s*1\b', '', '极限词'),
-    (r'\b#\s*1\b', '', '极限词'),
-    (r'\btop\s*1\b', '', '极限词'),
-    (r'\bnumber\s*one\b', '', '极限词'),
-    (r'\bworld[\s-]?class\b', 'High Quality', '极限词'),
-    (r'\bguaranteed\b', '', '极限词'),
-    (r'\bperfect\b', 'Great', '极限词'),
-    (r'\bamazing\b', 'Great', '极限词'),
-    (r'\bincredible\b', 'Great', '极限词'),
-    (r'\bunbeatable\b', 'Competitive', '极限词'),
-    (r'\blockdown\s*price', 'affordable', '极限词'),
-    (r'\bcheapest\b', 'affordable', '极限词'),
-    (r'\b100%\s*(natural|pure|organic|safe|effective|guarantee)', r'\1', '虚假100%宣称'),
-    # 中文极限词
-    (r'业界第一', '', '极限词'),
-    (r'全球首发', '', '极限词'),
-    (r'独家', '', '极限词'),
-    (r'全网最低', '', '极限词'),
-    (r'第一品牌', '', '极限词'),
-    (r'顶级', '高端', '极限词'),
-    (r'国家级', '', '极限词'),
-    (r'世界级', '', '极限词'),
-    (r'全网独家', '', '极限词'),
-    (r'极致', '优质', '极限词'),
-    (r'万能', '多功能', '极限词'),
-    (r'最佳', '', '极限词'),
-    (r'史上最', '', '极限词'),
-    (r'销量第一', '', '极限词'),
-    (r'排名第一', '', '极限词'),
-    (r'榜首', '', '极限词'),
-    (r'全网第一', '', '极限词'),
-    (r'第一', '', '极限词'),
+    (r'\bbest\b', '', 'superlative'),
+    (r'\bno\.?\s*1\b', '', 'superlative'),
+    (r'\b#\s*1\b', '', 'superlative'),
+    (r'\btop\s*1\b', '', 'superlative'),
+    (r'\bnumber\s*one\b', '', 'superlative'),
+    (r'\bworld[\s-]?class\b', 'High Quality', 'superlative'),
+    (r'\bguaranteed\b', '', 'superlative'),
+    (r'\bperfect\b', 'Great', 'superlative'),
+    (r'\bamazing\b', 'Great', 'superlative'),
+    (r'\bincredible\b', 'Great', 'superlative'),
+    (r'\bunbeatable\b', 'Competitive', 'superlative'),
+    (r'\blockdown\s*price', 'affordable', 'superlative'),
+    (r'\bcheapest\b', 'affordable', 'superlative'),
+    (r'\b100%\s*(natural|pure|organic|safe|effective|guarantee)', r'\1', 'false 100% claim'),
+    # Chinese superlatives (patterns kept for matching)
+    (r'业界第一', '', 'superlative'),
+    (r'全球首发', '', 'superlative'),
+    (r'独家', '', 'superlative'),
+    (r'全网最低', '', 'superlative'),
+    (r'第一品牌', '', 'superlative'),
+    (r'顶级', '高端', 'superlative'),
+    (r'国家级', '', 'superlative'),
+    (r'世界级', '', 'superlative'),
+    (r'全网独家', '', 'superlative'),
+    (r'极致', '优质', 'superlative'),
+    (r'万能', '多功能', 'superlative'),
+    (r'最佳', '', 'superlative'),
+    (r'史上最', '', 'superlative'),
+    (r'销量第一', '', 'superlative'),
+    (r'排名第一', '', 'superlative'),
+    (r'榜首', '', 'superlative'),
+    (r'全网第一', '', 'superlative'),
+    (r'第一', '', 'superlative'),
 ]
 
 # ============================================
@@ -61,25 +61,19 @@ TRADEMARK_KEYWORDS = [
 # Layer 3: 敏感描述词（全局 — 标记警告）
 # ============================================
 SENSITIVE_RULES = [
-    # 医疗宣称
-    (r'\b(cure|cures|cured|curing)\b', '禁止医疗宣称 (cure)'),
-    (r'\b(heal|heals|healing|healed)\b', '禁止医疗宣称 (heal)'),
-    (r'\b(treat|treats|treatment|therapy|therapeutic)\b', '禁止医疗宣称'),
-    (r'\b(antibacterial|antimicrobial|杀菌|抑菌|消毒|抗菌)\b', '禁止抗菌宣称'),
-    # 减肥 / 虚假功效
-    (r'\b(weight\s*loss|lose\s*weight|fat\s*burning|slimming|减肥|燃脂|瘦身)\b', '禁止减肥功效宣称'),
-    (r'\b(anti[\s-]?aging|抗衰老|抗皱)\b', '禁止未经证实的抗衰宣称'),
-    # 成人内容
-    (r'\b(sex|sexy|erotic|成人|情趣)\b', '成人内容风险'),
+    (r'\b(cure|cures|cured|curing)\b', 'prohibited medical claim (cure)'),
+    (r'\b(heal|heals|healing|healed)\b', 'prohibited medical claim (heal)'),
+    (r'\b(treat|treats|treatment|therapy|therapeutic)\b', 'prohibited medical claim'),
+    (r'\b(antibacterial|antimicrobial|杀菌|抑菌|消毒|抗菌)\b', 'prohibited antibacterial claim'),
+    (r'\b(weight\s*loss|lose\s*weight|fat\s*burning|slimming|减肥|燃脂|瘦身)\b', 'prohibited weight-loss claim'),
+    (r'\b(anti[\s-]?aging|抗衰老|抗皱)\b', 'unverified anti-aging claim'),
+    (r'\b(sex|sexy|erotic|成人|情趣)\b', 'adult content risk'),
 ]
 
-# ============================================
-# Layer 3b: 欧盟特有规则
-# ============================================
 EU_SENSITIVE_RULES = [
-    (r'\b(eco[\s-]?friendly|environmentally\s*friendly)\b', '欧盟: 禁止无依据环保宣称'),
-    (r'\b(biodegradable|compostable)\b', '欧盟: 需提供可降解认证'),
-    (r'\b(organic|bio)\b', '欧盟: 有机宣称需认证编号'),
+    (r'\b(eco[\s-]?friendly|environmentally\s*friendly)\b', 'EU: unsubstantiated eco claim'),
+    (r'\b(biodegradable|compostable)\b', 'EU: biodegradability certification required'),
+    (r'\b(organic|bio)\b', 'EU: organic claim requires certification ID'),
 ]
 
 
@@ -111,7 +105,7 @@ def check_and_clean(text: str, country: str = "US") -> dict:
                 "rule": category,
                 "word": word,
                 "action": "removed" if not replacement else f"replaced → '{replacement}'",
-                "suggestion": replacement if replacement else "已删除",
+                "suggestion": replacement if replacement else "removed",
             })
             cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE if pattern.startswith(r'\b') else 0)
 
@@ -121,10 +115,10 @@ def check_and_clean(text: str, country: str = "US") -> dict:
         if pattern.search(cleaned):
             violations.append({
                 "layer": "trademark",
-                "rule": "侵权品牌词",
+                "rule": "trademark",
                 "word": brand,
                 "action": "warning",
-                "suggestion": f"请确认是否获得 {brand} 品牌授权，否则建议移除",
+                "suggestion": f"Confirm you are authorized to sell {brand}; otherwise remove it",
             })
 
     # Layer 3: 敏感描述 — 标记警告
@@ -135,7 +129,7 @@ def check_and_clean(text: str, country: str = "US") -> dict:
                 "rule": desc,
                 "word": re.search(pattern, cleaned, re.IGNORECASE).group(),
                 "action": "warning",
-                "suggestion": f"建议修改: {desc}",
+                "suggestion": f"Revise wording: {desc}",
             })
 
     # Layer 3b: 欧盟特有
@@ -147,7 +141,7 @@ def check_and_clean(text: str, country: str = "US") -> dict:
                     "rule": desc,
                     "word": re.search(pattern, cleaned, re.IGNORECASE).group(),
                     "action": "warning",
-                    "suggestion": f"建议修改或提供认证: {desc}",
+                    "suggestion": f"Revise wording or provide certification: {desc}",
                 })
 
     # 清理多余空格
@@ -285,6 +279,13 @@ def infer_product_attributes(
     if any(k in title_lower for k in ["baby", "infant", "toddler", "newborn", "kids", "child"]):
         age_group = "kids"
 
+    # 2.1 成人信号覆盖 — 标题含明确成人性别词时，GPC 路径可能误匹配到 Baby 分类
+    #     例如 "jumpsuit for women" 被 GPC 匹配到 Baby & Toddler Clothing
+    adult_signals = ["for women", "for men", "women's", "men's", "ladies", "lady",
+                     "for girls", "for boys", "womens", "mens", "herren", "damen"]
+    if any(sig in title_lower for sig in adult_signals):
+        age_group = "adult"
+
     # 3. item_group_id — 同款不同 size/color 共用（hash 剔除已知尺码词）
     import hashlib, re
     stem_title = re.sub(r'\b(XS|S|M|L|XL|XXL|2XL|3XL|4XL|5XL|\d+)\b', '', original_title, flags=re.IGNORECASE)
@@ -325,7 +326,7 @@ def scan_image_watermarks(image_urls: list[str]) -> dict:
             "clean": True/False,
             "flagged_urls": ["url1", "url2"],
             "signals_found": ["1688", "水印"],
-            "suggestion": "建议替换或裁剪以下图片: ..."
+            "suggestion": "Replace or crop the flagged images below",
         }
     """
     if not image_urls:
@@ -346,7 +347,7 @@ def scan_image_watermarks(image_urls: list[str]) -> dict:
             "clean": False,
             "flagged_urls": flagged,
             "signals_found": sorted(signals_found),
-            "suggestion": f"检测到 {len(flagged)} 张图片含中文电商水印关键词，GMC 可能拒审。建议替换或裁剪图片。",
+            "suggestion": f"{len(flagged)} image(s) contain wholesale/watermark keywords — GMC may disapprove. Replace or crop them.",
         }
 
     return {"clean": True, "flagged_urls": [], "signals_found": [], "suggestion": ""}

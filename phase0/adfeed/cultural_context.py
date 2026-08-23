@@ -2022,6 +2022,15 @@ def get_context(country: str, cn_category: str = "", gpc_path: str = "",
         k in leaf_l or k in path_l
         for k in ("sock", "hosiery", "underwear", "bra", "panty", "brief", "tights")
     )
+    outerwear = any(
+        k in leaf_l or k in path_l
+        for k in ("outerwear", "jacket", "coat", "vest")
+    )
+    is_dress = "dress" in leaf_l or "bridal" in leaf_l
+    is_shape = any(k in leaf_l or k in path_l for k in (
+        "dress", "pant", "jean", "skirt", "jumpsuit", "romper", "legging",
+    ))
+
     if basic_apparel:
         occasions = [
             "Everyday Comfort",
@@ -2035,26 +2044,45 @@ def get_context(country: str, cn_category: str = "", gpc_path: str = "",
         ][:3]
         slang = ["True to Size", "Soft & Stretchy"][:2]
 
+    elif outerwear:
+        # 外套：禁塑身话术 + 禁 brunch 堆砌
+        occasions = ["Everyday Casual", "Layering", "Streetwear"]
+        pain_points = [p for p in pain_points if "tummy" not in p.lower() and "slimming" not in p.lower()]
+        if not pain_points:
+            pain_points = ["Lightweight Layer", "Easy Layering", "True to Size"]
+        slang = [s for s in slang if "slimming" not in s.lower()][:2] or ["Streetwear Fit", "Effortless Style"]
+        seasonal = [s for s in seasonal if "friday" not in s.lower() and "brunch" not in s.lower()][:2]
+
     # 连衣裙/礼服以外的服饰：过滤婚礼场景（避免袜子/牛仔裤套 Wedding Guest）
-    elif cat_key == "apparel" and "dress" not in leaf_l and "bridal" not in leaf_l:
+    elif cat_key == "apparel" and not is_dress:
         blocked = ("wedding", "bridal", "baby shower", "country club", "opera")
         occasions = [o for o in occasions if not any(b in o.lower() for b in blocked)]
         if not occasions:
-            occasions = ["Weekend Brunch", "Business Casual Office", "Everyday Wear"]
+            occasions = ["Everyday Wear", "Business Casual Office", "Weekend Casual"]
+        # 非裙/裤/连体：去掉 tummy
+        if not is_shape:
+            pain_points = [p for p in pain_points if "tummy" not in p.lower() and "slimming" not in p.lower()]
+            if not pain_points:
+                pain_points = ["True to Size", "Soft Stretch", "Easy Care"]
 
+    # 提示模型：最多 1 个场景词，优先品类名词
     parts = []
     if occasions:
-        parts.append(f"Target occasions: {', '.join(occasions)}")
+        parts.append(f"Target occasions (pick AT MOST ONE, optional): {', '.join(occasions[:3])}")
     if pain_points:
-        parts.append(f"Customer pain points: {', '.join(pain_points)}")
+        parts.append(f"Customer pain points (only if relevant to this subcategory): {', '.join(pain_points[:3])}")
     if slang:
         parts.append(f"Local consumer slang: {', '.join(slang)}")
     if seasonal:
-        parts.append(f"Seasonal trends ({season}): {', '.join(seasonal)}")
+        parts.append(f"Seasonal trends ({season}): {', '.join(seasonal[:2])}")
 
     # L2: GPC 叶节点补充 — 告诉 AI 具体子品类
     if leaf and len(leaf) >= 3:
         parts.append(f"Product subcategory: {leaf}")
+        parts.append(
+            "RULE: Core category noun first. Do NOT use Tummy Control unless subcategory is "
+            "Dress/Pants/Jumpsuit/Skirt. Prefer Everyday/Casual over Brunch/Summer Friday for tops and outerwear."
+        )
 
     return "\n".join(parts)
 

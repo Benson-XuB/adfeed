@@ -732,14 +732,12 @@ def optimize_layered(
     product_ids: list[str],
     platforms: list[str] = None,
     languages: list[str] = None,
-    remove_watermarks: bool = False,
     job_id: str = None,
     progress_callback=None,
 ) -> dict:
     """Approach-3: shared GPC/attrs → per-language skeleton → per-platform rewrite.
 
     Writes `product_assets` rows and returns debit units for successful combos.
-    Watermark processing runs only when remove_watermarks=True.
     """
     from . import store_db
     from . import quota as quota_mod
@@ -807,20 +805,6 @@ def optimize_layered(
             )
             store_db.update_product(product.id, feed_enabled=1, ai_status="ready")
 
-            # Optional watermark path
-            if remove_watermarks and product.image_url:
-                try:
-                    from .image_processor import process_and_upload_image
-                    process_and_upload_image(
-                        product.image_url,
-                        store_id=store_id,
-                        product_id=product.id,
-                        remove_wm=True,
-                        white_bg=False,
-                    )
-                except Exception as e:
-                    print(f"  [WARN] watermark skip {product.id[:12]}: {e}")
-
             # ── Layer 2: per language skeleton ──
             try:
                 multi = optimize_multi_country(
@@ -841,19 +825,24 @@ def optimize_layered(
                 }
 
             # ── Layer 3: per platform × language ──
+            # 描述优先保留 Shopify 完整文案；仅空时才用 AI snippet
+            full_desc = desc if (desc and len(desc.strip()) >= 10) else ""
             sku = product.shopify_product_id or product.id
             for lang in languages:
                 skel_title = multi["optimized_titles"].get(lang, title)
                 skel_desc = multi["description_snippets"].get(lang, desc)
+                asset_desc = full_desc or skel_desc or desc
                 tags = multi.get("ai_tags_by_lang", {}).get(lang, [])
                 for plat in platforms:
                     try:
                         rewritten = rewrite_for_platform(
                             title=skel_title,
-                            description=skel_desc,
+                            description=asset_desc,
                             platform=plat,
                             language=lang,
                             tags=tags,
+                            gpc_path=gpc.get("gpc_path", "") or product.gpc_path or "",
+                            gpc_code=gpc.get("gpc_code", "") or product.gpc_code or "",
                         )
                         store_db.upsert_product_asset(
                             store_id=store_id,
@@ -920,10 +909,21 @@ _TITLE_MATERIAL_KEYWORDS = {
 }
 
 
-def _infer_material(gpc_code: str, title: str, existing_material: str) -> str:
-    """推断材质：已有值 > 标题关键词 > GPC 默认值"""
+def _infer_material(gpc_code: str, title: str, existing_material: str, description: str = "") -> str:
+    """推断材质：已有值 > 面料栏 > 标题关键词 > GPC 默认值"""
     if existing_material:
         return existing_material
+    blob = f"{title or ''}\n{description or ''}"
+    m = re.search(
+        r"(?:Fabric(?:\s+name)?|Material)\s*[:：]\s*([^\n<]+)",
+        blob,
+        re.I,
+    )
+    if m:
+        line_l = m.group(1).lower()
+        for kw, mat in _TITLE_MATERIAL_KEYWORDS.items():
+            if kw in line_l:
+                return mat
     title_lower = title.lower()
     for kw, mat in _TITLE_MATERIAL_KEYWORDS.items():
         if kw in title_lower:
@@ -1030,46 +1030,90 @@ def _is_shop_handle_brand(name: str) -> bool:
     return False
 
 
-def _normalize_brand(brand: str, shop_name: str, default_brand: str = None) -> tuple[str, str]:
-    """品牌规范化。
+_SUPPLIER_PLACEHOLDER_BRANDS = frozenset({
+    "eprolo", "oem", "odm", "no brand", "unbranded", "厂牌直供", "自主品牌", "无品牌",
+})
 
-    Returns:
-        (clean_brand, status) — status: "ok" | "replaced" | "sensitive_warning"
+
+def _is_placeholder_brand(name: str) -> bool:
+    n = (name or "").strip().lower()
+    return not n or n in _SUPPLIER_PLACEHOLDER_BRANDS
+
+
+def _store_brand_fallback(shop_name: str, default_brand: str = None) -> str:
+    """Merchant-confirmed default_brand first, else readable shop_name. No silent eprolo."""
+    db = (default_brand or "").strip()
+    if db and not _is_shop_handle_brand(db):
+        return db  # App 确认过的广告品牌（含商家主动写的 eprolo）
+    sn = (shop_name or "").strip()
+    if sn and not _is_shop_handle_brand(sn) and not _is_placeholder_brand(sn):
+        return sn
+    if sn and not _is_shop_handle_brand(sn):
+        return sn
+    return ""
+
+
+def _resolve_store_brand(store) -> str:
+    """Resolve feed brand: confirmed default_brand > readable shop_name > site label.
+
+    Never silently inject supplier placeholder eprolo (field contract).
     """
-    # 可用的店铺展示名：排除 myshopify handle
-    clean_shop = ""
-    if default_brand and not _is_shop_handle_brand(default_brand):
-        clean_shop = default_brand.strip()
-    elif shop_name and not _is_shop_handle_brand(shop_name):
-        clean_shop = shop_name.strip()
+    primary = _store_brand_fallback(
+        getattr(store, "shop_name", None) or "",
+        getattr(store, "default_brand", None) or None,
+    )
+    if primary:
+        return primary
+    site = (getattr(store, "site_url", None) or "").strip()
+    if site:
+        try:
+            from urllib.parse import urlparse
+            host = (urlparse(site if "://" in site else f"https://{site}").hostname or "")
+            if host and "myshopify.com" not in host.lower():
+                host = host[4:] if host.lower().startswith("www.") else host
+                label = host.split(".")[0].replace("-", " ").strip()
+                if label and not _is_shop_handle_brand(label) and not _is_placeholder_brand(label):
+                    return label
+        except Exception:
+            pass
+    return ""
+
+
+def _normalize_brand(brand: str, shop_name: str, default_brand: str = None) -> tuple[str, str]:
+    """Brand for feed: store default (confirmed) > readable shop > cleaned product brand.
+
+    Does not invent supplier eprolo. Empty brand → status missing (UI should prompt).
+    Returns (clean_brand, status) — status: ok | replaced | sensitive_warning | missing
+    """
+    clean_shop = _store_brand_fallback(shop_name, default_brand)
 
     if not brand or not brand.strip():
-        return clean_shop, "replaced" if clean_shop else "replaced"
+        if clean_shop:
+            return clean_shop, "replaced"
+        return "", "missing"
 
     brand_stripped = brand.strip()
     brand_lower = brand_stripped.lower()
 
-    # 1. 大牌敏感词检测 — 保留原值但警告
     if brand_lower in _SENSITIVE_BRANDS:
         return brand_stripped, "sensitive_warning"
 
-    # 2. 中文厂名检测（含中文汉字）→ 替换
     if any(ord(c) > 0x4e00 for c in brand_stripped):
-        return clean_shop, "replaced"
+        return (clean_shop, "replaced") if clean_shop else (brand_stripped, "ok")
 
-    # 3. 拼音/英文厂名检测 → 替换
     if any(kw in brand_lower for kw in _FACTORY_KEYWORDS_EN):
+        return (clean_shop, "replaced") if clean_shop else (brand_stripped, "ok")
+
+    if _is_shop_handle_brand(brand_stripped) or _is_placeholder_brand(brand_stripped):
+        if clean_shop:
+            return clean_shop, "replaced"
+        return "", "missing"
+
+    # Prefer store brand when configured; else keep product brand
+    if clean_shop and clean_shop.lower() != brand_lower:
         return clean_shop, "replaced"
 
-    # 4. 品牌本身就是店铺 handle → 清空，避免标题前缀污染
-    if _is_shop_handle_brand(brand_stripped):
-        return clean_shop, "replaced"
-
-    # 5. 保留看起来像真实品牌的英文名（含空格或纯字母品牌）
-    if re.search(r"[A-Za-z]", brand_stripped) and not _is_shop_handle_brand(brand_stripped):
-        return brand_stripped, "ok"
-
-    return clean_shop, "replaced"
+    return brand_stripped, "ok"
 
 
 # ─────────────────────────────────────────────────
@@ -1079,17 +1123,11 @@ def _normalize_brand(brand: str, shop_name: str, default_brand: str = None) -> t
 def _fetch_shopify_product_images(shopify_domain: str, access_token: str,
                                    shopify_product_id: str) -> list[str]:
     """从 Shopify API 拉取产品的所有图片 URL（按上传顺序）"""
-    import requests
     if not shopify_domain or not access_token or not shopify_product_id:
         return []
     try:
-        url = f"https://{shopify_domain}/admin/api/2024-10/products/{shopify_product_id}.json"
-        headers = {"X-Shopify-Access-Token": access_token}
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            images = data.get("product", {}).get("images", [])
-            return [img["src"] for img in images if img.get("src")]
+        from .shopify_admin_gql import fetch_product_image_urls
+        return fetch_product_image_urls(shopify_domain, access_token, shopify_product_id)
     except Exception as e:
         print(f"  [Warn] 拉取 Shopify 图片失败: {e}")
     return []
@@ -1119,7 +1157,7 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                             product_ids: list[str] = None) -> dict:
     """段3: Feed XML 生成 — 只读 feed_enabled=1 且 ai_status=ready 的产品
 
-    不调用任何 AI，纯静态数据拼装，毫秒级完成。
+    默认不调用标题/GPC AI。
 
     Args:
         store_id: 店铺 ID
@@ -1142,6 +1180,13 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
     if not store:
         raise ValueError(f"Store not found: {store_id}")
 
+    # Keep shop currency in sync so preflight sees CNY vs USD correctly
+    try:
+        from .store_sync import refresh_store_currency_from_shopify
+        store = refresh_store_currency_from_shopify(store)
+    except Exception:
+        pass
+
     # 确定目标国家
     if not countries:
         configs = store_db.get_store_feed_configs(store_id)
@@ -1163,18 +1208,89 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
         products = [p for p in products if p.id in allow]
     if not products:
         print(f"[FeedGen] No feed-enabled products for store {store_id}")
-        return {"feed_urls": [], "total_items": 0, "message": "No feed-enabled products"}
+        return {
+            "feed_urls": [],
+            "total_items": 0,
+            "message": "No feed-enabled products",
+            "blocked_countries": [],
+        }
 
     print(f"\n[FeedGen] Generating feed for {store.shop_name} — {len(products)} products, {len(countries)} countries, platforms: {', '.join(platforms)}")
 
     feed_urls = []
+    blocked_countries = []
+    quality_acc = None
+    title_compare_rows: list = []
     site_url = store.site_url or PUBLIC_BASE_URL
     public_base = PUBLIC_BASE_URL
     total_items = 0
+    shop_currency = (store.default_currency or "USD").strip().upper()
+
+    from .feed_link import build_product_link, resolve_shopify_variant_id
+    from .feed_quality import (
+        QualityEvent,
+        QualityReport,
+        build_title_compare_samples,
+        merge_reports,
+    )
+    from .market_pricing import (
+        PreflightStatus,
+        preflight_country,
+        resolve_market_price,
+    )
+    from .feed_image import effective_feed_image
+
+    from .shopify_markets import fetch_contextual_pricing
+
+    shop_token = store.access_token or os.environ.get("SHOPIFY_ACCESS_TOKEN", "")
+    # Collect numeric Shopify variant ids once for Markets presentment lookups
+    all_variant_ids: list[str] = []
+    for p in products:
+        for v in store_db.get_product_variants(p.id):
+            vid = (v.shopify_variant_id or "").strip()
+            if vid.isdigit():
+                all_variant_ids.append(vid)
 
     for country in countries:
         cu = country.upper()
+        pricing_by_variant: dict = {}
+        sample_presentment = None
+        if shop_token and store.shopify_domain and all_variant_ids:
+            fetched = fetch_contextual_pricing(
+                store.shopify_domain,
+                shop_token,
+                all_variant_ids,
+                cu,
+            )
+            if fetched:
+                pricing_by_variant = fetched
+                # Any successful price as preflight sample for this country
+                first = next(iter(fetched.values()))
+                sample_presentment = {cu: first}
+                print(
+                    f"  [Markets/{cu}] contextualPricing for "
+                    f"{len({k for k in fetched if k.isdigit()})} variants"
+                )
+
+        pf = preflight_country(
+            shop_currency=shop_currency,
+            country=cu,
+            sample_presentment=sample_presentment,
+        )
+        if pf.status == PreflightStatus.RED:
+            blocked_countries.append({
+                "country": cu,
+                "code": pf.code,
+                "message": pf.message,
+                "shop_currency": shop_currency,
+                "expected_currency": pf.expected_currency,
+            })
+            print(f"  [Preflight RED/{cu}] {pf.code}: {pf.message}")
+            continue
+
         rows = []
+        missing_variant_id_events: list = []
+        variant_attr_events: list = []
 
         for p in products:
             # 获取变体
@@ -1192,18 +1308,26 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                 }]
                 additional_imgs = []
             else:
-                variants_data = [
-                    {
+                variants_data = []
+                for v in variants:
+                    vd = {
                         "sku": v.sku,
+                        "shopify_variant_id": v.shopify_variant_id or "",
                         "title": v.title or "",
                         "color": v.color or "",
                         "size": v.size or "",
                         "price": v.price,
                         "inventory": v.inventory,
                         "image_url": v.image_url or p.image_url or "",
+                        "feed_image_url": getattr(v, "feed_image_url", None) or "",
+                        "feed_title": getattr(v, "feed_title", None) or "",
+                        "barcode": getattr(v, "barcode", None) or "",
                     }
-                    for v in variants
-                ]
+                    vid = (v.shopify_variant_id or "").strip()
+                    entry = pricing_by_variant.get(vid) if vid else None
+                    if entry:
+                        vd["presentment"] = {cu: entry}
+                    variants_data.append(vd)
 
                 # ── 变体图片补救：检测是否需要从 Shopify 拉取完整图片并映射 ──
                 unique_imgs = set(vd["image_url"] for vd in variants_data if vd["image_url"])
@@ -1233,40 +1357,6 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                         additional_imgs = all_imgs[color_count:] if len(all_imgs) > color_count else []
                         print(f"  [ImageMap] {p.title[:30]}: {len(colors)}色 → {len(all_imgs)}图, 映射成功")
 
-            # ── 图片 AI 处理：去水印/换白底 + R2 上传 ──
-            from .config import IMAGE_AI_ENABLED, IMAGE_AI_REMOVE_WATERMARK, IMAGE_AI_WHITE_BACKGROUND, R2_ENABLED
-            from .image_processor import needs_image_processing, process_and_upload_image
-
-            if IMAGE_AI_ENABLED:
-                # 收集需要处理的图片 URL
-                urls_to_process = set()
-                for vd in variants_data:
-                    img_url = vd.get("image_url", "")
-                    if img_url and needs_image_processing(img_url):
-                        urls_to_process.add(img_url)
-
-                # 批量处理 + 上传 R2
-                processed_map = {}  # 原始URL → 处理后URL
-                for img_url in urls_to_process:
-                    result_url = process_and_upload_image(
-                        img_url,
-                        store_id=store_id,
-                        product_id=p.id,
-                        remove_wm=IMAGE_AI_REMOVE_WATERMARK,
-                        white_bg=IMAGE_AI_WHITE_BACKGROUND,
-                    )
-                    if result_url:
-                        processed_map[img_url] = result_url
-
-                # 更新变体图片 URL
-                if processed_map:
-                    for vd in variants_data:
-                        img_url = vd.get("image_url", "")
-                        if img_url in processed_map:
-                            vd["image_url"] = processed_map[img_url]
-                    r2_status = " + R2" if R2_ENABLED else ""
-                    print(f"  [ImageAI{r2_status}] {p.title[:30]}: 处理了 {len(processed_map)} 张图片")
-
             # 解析多语种标题（fallback）；platform assets applied below
             cleaned_title_dict = {}
             if p.cleaned_title:
@@ -1276,44 +1366,150 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                     pass
             opt_title = cleaned_title_dict.get(cu, p.optimized_title or p.title)
 
-            # 构建绝对 URL
+            # Opaque style/design axis → distinct shopping skeletons (any product)
+            style_skeletons: dict[str, str] = {}
+            try:
+                from .style_axis_title import (
+                    collect_style_axis_profiles,
+                    infer_style_title_skeletons,
+                    apply_style_skeleton,
+                )
+                profiles = collect_style_axis_profiles(
+                    variants_data,
+                    description=p.description or "",
+                    title=p.title or "",
+                )
+                if len(profiles) >= 2:
+                    style_skeletons = infer_style_title_skeletons(
+                        product_title=p.title or "",
+                        description=p.description or "",
+                        gpc_path=p.gpc_path or "",
+                        profiles=profiles,
+                        base_skeleton=opt_title or "",
+                    )
+            except Exception as e:
+                print(f"  [StyleTitle] skip {getattr(p, 'id', '')[:12]}: {e}")
+
+            # 构建绝对 URL（currency 在变体循环中钉死）
             product_link = f"{site_url}/products/{p.handle}" if p.handle else f"{site_url}/products/{p.id}"
 
             for v_data in variants_data:
                 variant_sku = v_data["sku"]
-                # URL 参数中 SKU 不能含空格
-                safe_sku = variant_sku.replace(" ", "-")
-                variant_link = f"{product_link}?variant={safe_sku}"
-                variant_image = v_data.get("image_url") or p.image_url or ""
+                # Only real Shopify numeric IDs in ?variant= — never internal hex SKU
+                variant_param = resolve_shopify_variant_id(
+                    v_data.get("shopify_variant_id") or v_data.get("variant_id"),
+                    candidates=[variant_sku],
+                )
+                variant_image = effective_feed_image(
+                    v_data.get("feed_image_url"),
+                    v_data.get("image_url"),
+                    p.image_url,
+                )
+
+                priced = resolve_market_price(
+                    amount=float(v_data.get("price", 0) or 0),
+                    shop_currency=shop_currency,
+                    country=cu,
+                    presentment=v_data.get("presentment"),
+                )
+                if not priced.ok:
+                    print(
+                        f"  [PriceSkip/{cu}] {variant_sku}: {priced.code} — {priced.message}"
+                    )
+                    continue
+
+                variant_link = build_product_link(
+                    product_link,
+                    variant_id=variant_param,
+                    currency=priced.currency,
+                )
+                if not variant_param:
+                    print(
+                        f"  [VariantWarn/{cu}] {variant_sku}: missing Shopify variant id "
+                        f"— link has no ?variant= (do not ad-spend until re-synced)"
+                    )
+                    missing_variant_id_events.append(QualityEvent(
+                        level="WARN",
+                        rule_id="VA04",
+                        field="g:link",
+                        sku=str(variant_sku),
+                        message="Missing Shopify variant ID — link cannot target color/size; re-sync before advertising",
+                        suggestion="Re-sync this product in Shopify, confirm variants exist, then regenerate Feed",
+                        before=str(variant_sku),
+                        after="",
+                    ))
 
                 # 材质推断：已有值 > 标题关键词 > GPC 默认
-                inferred_material = _infer_material(p.gpc_code or "", p.title or "", p.material or "")
+                inferred_material = _infer_material(
+                    p.gpc_code or "", p.title or "", p.material or "",
+                    p.description or "",
+                )
                 # 品牌规范化：中文厂名/拼音厂名/空品牌 → 店铺名，大牌检测警告
                 clean_brand, brand_status = _normalize_brand(
-                    p.brand, store.shop_name, store.default_brand
+                    p.brand, store.shop_name, store.default_brand or None
                 )
                 if brand_status == "sensitive_warning":
                     print(f"  [BrandWarn] 敏感品牌: {clean_brand} — 产品 {p.title[:30]}")
                 elif brand_status == "replaced":
                     pass  # 静默替换，不输出日志
 
+                from .variant_attributes import clean_variant_attributes
+                cleaned = clean_variant_attributes(
+                    shopify_variant_id=str(v_data.get("shopify_variant_id") or ""),
+                    color_raw=str(v_data.get("color") or ""),
+                    size_raw=str(v_data.get("size") or ""),
+                    title=opt_title or p.title or "",
+                    description=p.description or "",
+                    gpc_path=p.gpc_path or "",
+                    gpc_code=p.gpc_code or "",
+                    sku=str(variant_sku),
+                )
+                variant_attr_events.extend(cleaned.get("events") or [])
+
+                from .attribute_normalizer import normalize_gender
+                row_gender = normalize_gender(
+                    p.gender or "",
+                    f"{opt_title or ''} {p.title or ''}",
+                )
+                barcode = str(v_data.get("barcode") or "").strip()
+                digits = re.sub(r"\D", "", barcode)
+                gtin = digits if len(digits) in (8, 12, 13, 14) else ""
+
+                base_gid = str(p.shopify_product_id or p.id)
+                style_key = (cleaned.get("style_axis_key") or "").strip()
+                # Opaque style/design axis → separate Shopping item groups (any product)
+                item_group_id = f"{base_gid}-{style_key}" if style_key else base_gid
+
+                row_title = opt_title
+                style_skel = ""
+                if style_key and style_skeletons.get(style_key):
+                    from .style_axis_title import apply_style_skeleton
+                    style_skel = style_skeletons[style_key]
+                    row_title = apply_style_skeleton(opt_title or "", style_skel)
+
                 rows.append({
                     "SKU": variant_sku,
-                    "优化后标题": opt_title,
+                    "优化后标题": row_title,
+                    # Opaque style axis: keep skeleton so platform assets cannot clobber diffs
+                    "_style_title_skeleton": style_skel,
                     "标题": p.title or "",
                     "描述": p.description or "",
                     "GPC代码": p.gpc_code or "",
                     "GPC路径": p.gpc_path or "",
                     "材质": inferred_material,
-                    "颜色": _normalize_color(v_data.get("color", "")),
-                    "尺码": _normalize_size(v_data.get("size", "")),
+                    "颜色": cleaned.get("g_color") or "",
+                    "pattern": cleaned.get("g_pattern") or "",
+                    "尺码": cleaned.get("g_size") or "",
+                    "size_system": cleaned.get("g_size_system") or "",
+                    "size_type": cleaned.get("g_size_type") or "",
                     "品牌": clean_brand,
-                    "item_group_id": p.shopify_product_id or p.id,
-                    "gender": p.gender or "unisex",
+                    "item_group_id": item_group_id,
+                    "gender": row_gender or "unisex",
                     "age_group": p.age_group or "adult",
-                    "identifier_exists": "no",
-                    "gtin": "",
-                    "价格": v_data.get("price", 0),
+                    "identifier_exists": "yes" if gtin else "no",
+                    "gtin": gtin,
+                    "价格": priced.amount,
+                    "_feed_currency": priced.currency,
                     "库存": v_data.get("inventory", 0),
                     "图片链接": variant_image,
                     "附加图片": json.dumps(additional_imgs) if additional_imgs else (p.additional_images or ""),
@@ -1324,38 +1520,96 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                     "ai_tags": "",
                     "description_snippet": "",
                     "水印检测": "OK",
-                    "custom_label_0": "",
+                    "custom_label_0": cleaned.get("g_pattern") or "",
                     "custom_label_1": "",
                     "custom_label_2": "",
                     "custom_label_3": "",
                     "custom_label_4": "",
                     "_product_id": p.id,
+                    "_feed_title": (v_data.get("feed_title") or "").strip(),
                 })
 
         if not rows:
             continue
 
+        from .feed_quality import process_feed_rows, merge_reports
+        store_brand = _resolve_store_brand(store)
+        country_quality = process_feed_rows(rows, brand_fallback=store_brand)
+        for ev in missing_variant_id_events:
+            country_quality.warnings.append(ev)
+        for ev in variant_attr_events:
+            if ev.level == "FATAL":
+                country_quality.fatals.append(ev)
+            elif ev.level == "WARN":
+                country_quality.warnings.append(ev)
+            else:
+                country_quality.autofixed.append(ev)
+        quality_acc = merge_reports(quality_acc, country_quality)
+        # Prefer US rows for title compare; else first country with rows
+        if cu == "US" or not title_compare_rows:
+            title_compare_rows = list(rows)
+        print(
+            f"  [Quality/{cu}] autofix={len(country_quality.autofixed)} "
+            f"warn={len(country_quality.warnings)} fatal={len(country_quality.fatals)}"
+        )
+
         # Durable feeds: FEEDS_DIR/{store_id}/{platform}/{lang}.{xml|csv}
         for plat in platforms:
+            excluded = store_db.get_feed_excluded_skus(store_id, cu, plat)
             plat_rows = []
             for row in rows:
                 r = dict(row)
+                sku_key = str(r.get("SKU") or r.get("sku") or "").strip()
+                if sku_key and sku_key in excluded:
+                    continue
                 asset = store_db.get_product_asset_by_key(
                     r.get("_product_id", ""), plat, cu,
                 )
                 if asset and asset.title:
-                    r["优化后标题"] = asset.title
-                    if asset.description:
-                        r["描述"] = asset.description
+                    from .title_guard import sanitize_shopping_title
+
+                    clean_asset_title = sanitize_shopping_title(
+                        asset.title,
+                        gpc_path=str(r.get("GPC路径") or ""),
+                        gpc_code=str(r.get("GPC代码") or ""),
+                    )
+                    # Shared product asset must not wipe per-style shopping skeletons
+                    if r.get("_style_title_skeleton"):
+                        from .style_axis_title import apply_style_skeleton
+                        r["优化后标题"] = apply_style_skeleton(
+                            clean_asset_title, r["_style_title_skeleton"],
+                        )
+                    else:
+                        r["优化后标题"] = clean_asset_title
+                # 描述：优先 Shopify 完整文案（row 已带 p.description），
+                # 仅当库内描述为空时才用 asset 短文案补齐
+                base_desc = (r.get("描述") or "").strip()
+                if (not base_desc or len(base_desc) < 10) and asset and asset.description:
+                    r["描述"] = asset.description
+                # Asset title/desc can reintroduce sensitive phrasing after quality gate
+                from .sensitive_compliance import apply_sensitive_compliance
+                apply_sensitive_compliance(r)
+                ft = (r.get("_feed_title") or "").strip()
+                if ft:
+                    r["优化后标题"] = ft
+                r.pop("_style_title_skeleton", None)
+                r.pop("_feed_title", None)
                 plat_rows.append(r)
 
             feed_path = durable_feed_path(FEEDS_DIR, store_id, plat, cu)
+            from .feed_snapshots import maybe_snapshot_current
+            maybe_snapshot_current(store_id, plat, cu, feed_path)
             if plat == "google":
                 country_df = pd.DataFrame(plat_rows)
                 xml = generate_feed_xml(country_df, cu, skip_out_of_stock=skip_out_of_stock)
                 feed_path.parent.mkdir(parents=True, exist_ok=True)
                 feed_path.write_text(xml, encoding="utf-8")
                 item_count = xml.count("<item>")
+                try:
+                    from .feed_preview import write_google_tsv_from_xml
+                    write_google_tsv_from_xml(feed_path, feed_path.with_suffix(".csv"))
+                except Exception as e:
+                    print(f"  [CSV] skip: {e}")
             elif plat == "meta":
                 item_count = save_meta_feed(
                     plat_rows, feed_path, store.shop_name or "", site_url, cu,
@@ -1381,12 +1635,30 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
             })
             print(f"  [{plat}/{cu}] Feed: {item_count} items → {feed_url}")
 
-    print(f"[FeedGen] Total: {total_items} items across {len(feed_urls)} feeds\n")
-    return {
+    print(
+        f"[FeedGen] Total: {total_items} items across {len(feed_urls)} feeds"
+        f" (blocked: {len(blocked_countries)})\n"
+    )
+    from .feed_quality import QualityReport
+    quality_report = (quality_acc or QualityReport()).to_dict()
+    quality_report["title_compare"] = build_title_compare_samples(
+        title_compare_rows, limit=5,
+    )
+    result = {
         "feed_urls": feed_urls,
         "total_items": total_items,
         "products_used": len(products),
+        "blocked_countries": blocked_countries,
+        "quality_report": quality_report,
     }
+    if blocked_countries and not feed_urls:
+        result["message"] = blocked_countries[0].get("message", "Currency preflight blocked feed generation")
+    elif quality_report.get("summary", {}).get("fatals"):
+        result["message"] = (
+            f"Feed generated with {quality_report['summary']['fatals']} high-risk issues still in the file; "
+            f"review quality_report.fatals before uploading to Google."
+        )
+    return result
 
 
 # ─────────────────────────────────────────────────

@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS stores (
     default_brand TEXT,
     default_currency TEXT DEFAULT 'USD',
     plan TEXT DEFAULT 'free',
-    quota_total INTEGER DEFAULT 10,
+    quota_total INTEGER DEFAULT 20,
     quota_used INTEGER DEFAULT 0,
     subscription_id TEXT,
     billing_status TEXT DEFAULT 'none',   -- none / active / cancelled / frozen
@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
     weight REAL,
     weight_unit TEXT DEFAULT 'kg',
     image_url TEXT,
+    feed_image_url TEXT,                  -- Feed override (not written back to Shopify)
     barcode TEXT,                         -- UPC/EAN（如有）
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -129,6 +130,16 @@ CREATE TABLE IF NOT EXISTS feed_files (
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Merchant-removed SKUs (stay out of feed on regenerate until re-added)
+CREATE TABLE IF NOT EXISTS feed_excluded_skus (
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    platform TEXT NOT NULL DEFAULT 'google',
+    country TEXT NOT NULL,
+    sku TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (store_id, platform, country, sku)
 );
 
 -- 平台×语言 优化资产（计费单元）
@@ -201,11 +212,13 @@ def init_store_schema():
             "ALTER TABLE products ADD COLUMN feed_enabled INTEGER DEFAULT 0",
             "ALTER TABLE products ADD COLUMN ai_status TEXT DEFAULT 'raw'",
             "ALTER TABLE stores ADD COLUMN plan TEXT DEFAULT 'free'",
-            "ALTER TABLE stores ADD COLUMN quota_total INTEGER DEFAULT 10",
+            "ALTER TABLE stores ADD COLUMN quota_total INTEGER DEFAULT 20",
             "ALTER TABLE stores ADD COLUMN quota_used INTEGER DEFAULT 0",
             "ALTER TABLE stores ADD COLUMN subscription_id TEXT",
             "ALTER TABLE stores ADD COLUMN billing_status TEXT DEFAULT 'none'",
             "ALTER TABLE feed_files ADD COLUMN platform TEXT DEFAULT 'google'",
+            "ALTER TABLE product_variants ADD COLUMN feed_image_url TEXT",
+            "ALTER TABLE product_variants ADD COLUMN feed_title TEXT",
         ]
         for sql in migrations:
             try:
@@ -242,7 +255,7 @@ class Store:
     default_brand: Optional[str] = None
     default_currency: str = "USD"
     plan: str = "free"
-    quota_total: int = 10
+    quota_total: int = 20
     quota_used: int = 0
     subscription_id: Optional[str] = None
     billing_status: str = "none"
@@ -300,6 +313,8 @@ class ProductVariant:
     weight: Optional[float] = None
     weight_unit: str = "kg"
     image_url: Optional[str] = None
+    feed_image_url: Optional[str] = None
+    feed_title: Optional[str] = None
     barcode: Optional[str] = None
     status: str = "active"
     created_at: str = ""
@@ -377,7 +392,7 @@ def _row_to_store(row) -> Store:
         site_url=row["site_url"], default_brand=row["default_brand"],
         default_currency=row["default_currency"] or "USD",
         plan=row["plan"] if "plan" in keys else "free",
-        quota_total=row["quota_total"] if "quota_total" in keys else 10,
+        quota_total=row["quota_total"] if "quota_total" in keys else 20,
         quota_used=row["quota_used"] if "quota_used" in keys else 0,
         subscription_id=row["subscription_id"] if "subscription_id" in keys else None,
         billing_status=row["billing_status"] if "billing_status" in keys else "none",
@@ -392,7 +407,7 @@ def _row_to_store(row) -> Store:
 
 def create_store(user_id: str, shopify_domain: str, shop_name: str = None,
                  access_token: str = None, site_url: str = None,
-                 plan: str = "free", quota_total: int = 10) -> Store:
+                 plan: str = "free", quota_total: int = 20) -> Store:
     """创建新店铺"""
     sid = str(uuid.uuid4())
     with _conn() as c:
@@ -527,6 +542,24 @@ def get_store_products(store_id: str, status: str = "active") -> list[Product]:
     return [Product(**{k: r[k] for k in Product.__dataclass_fields__}) for r in rows]
 
 
+def get_store_product_by_shopify_id(
+    store_id: str,
+    shopify_product_id: str,
+) -> Optional[Product]:
+    """Lookup store product by Shopify numeric product id."""
+    pid = str(shopify_product_id or "").strip()
+    if not store_id or not pid:
+        return None
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM products WHERE store_id = ? AND shopify_product_id = ?",
+            (store_id, pid),
+        ).fetchone()
+    if not row:
+        return None
+    return Product(**{k: row[k] for k in Product.__dataclass_fields__})
+
+
 def update_product(product_id: str, **kwargs) -> bool:
     """Update product fields (catalog sync / soft-delete)."""
     allowed = {
@@ -566,30 +599,48 @@ def update_product_gpc(product_id: str, gpc_code: str, gpc_path: str,
 # Variant CRUD
 # ─────────────────────────────────────────────
 
+def _variant_from_row(row) -> ProductVariant:
+    keys = set(row.keys())
+    data = {}
+    for name, field in ProductVariant.__dataclass_fields__.items():
+        if name in keys:
+            data[name] = row[name]
+        else:
+            data[name] = field.default
+    return ProductVariant(**data)
+
+
 def save_variant(product_id: str, sku: str, **kwargs) -> ProductVariant:
     """保存或更新变体（按 SKU 去重）"""
     vid = kwargs.get("id") or str(uuid.uuid4())
 
     with _conn() as c:
-        # 按 SKU 去重
         existing = c.execute(
-            "SELECT id FROM product_variants WHERE sku = ?", (sku,),
+            "SELECT id, feed_image_url, feed_title FROM product_variants WHERE sku = ?", (sku,),
         ).fetchone()
         if existing:
             vid = existing["id"]
+
+        feed_image_url = kwargs.get("feed_image_url")
+        if feed_image_url is None and existing:
+            feed_image_url = existing["feed_image_url"] if "feed_image_url" in existing.keys() else None
+
+        feed_title = kwargs.get("feed_title")
+        if feed_title is None and existing and "feed_title" in existing.keys():
+            feed_title = existing["feed_title"]
 
         c.execute(
             """INSERT OR REPLACE INTO product_variants
                (id, product_id, shopify_variant_id, sku, title, color, size,
                 price, compare_at_price, inventory, weight, weight_unit,
-                image_url, barcode, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                image_url, feed_image_url, feed_title, barcode, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (vid, product_id, kwargs.get("shopify_variant_id"), sku,
              kwargs.get("title"), kwargs.get("color"), kwargs.get("size"),
              kwargs.get("price", 0), kwargs.get("compare_at_price"),
              kwargs.get("inventory", 0), kwargs.get("weight"),
              kwargs.get("weight_unit", "kg"), kwargs.get("image_url"),
-             kwargs.get("barcode"), kwargs.get("status", "active")),
+             feed_image_url, feed_title, kwargs.get("barcode"), kwargs.get("status", "active")),
         )
         c.commit()
     return get_variant(vid)
@@ -601,7 +652,218 @@ def get_variant(variant_id: str) -> Optional[ProductVariant]:
         row = c.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,)).fetchone()
     if not row:
         return None
-    return ProductVariant(**{k: row[k] for k in ProductVariant.__dataclass_fields__})
+    return _variant_from_row(row)
+
+
+def get_variant_by_sku_for_store(store_id: str, sku: str) -> Optional[ProductVariant]:
+    """Fetch variant by SKU scoped to a store (join products)."""
+    if not sku or not store_id:
+        return None
+    with _conn() as c:
+        row = c.execute(
+            """SELECT v.* FROM product_variants v
+               JOIN products p ON p.id = v.product_id
+               WHERE v.sku = ? AND p.store_id = ?
+               LIMIT 1""",
+            (sku, store_id),
+        ).fetchone()
+    if not row:
+        return None
+    return _variant_from_row(row)
+
+
+def update_variant_attrs_for_store(
+    store_id: str,
+    sku: str,
+    *,
+    color: Optional[str] = None,
+    size: Optional[str] = None,
+) -> Optional[ProductVariant]:
+    """Update color and/or size for a store-owned variant; preserve other columns."""
+    if color is None and size is None:
+        return get_variant_by_sku_for_store(store_id, sku)
+    existing = get_variant_by_sku_for_store(store_id, sku)
+    if not existing:
+        return None
+    return save_variant(
+        existing.product_id,
+        sku,
+        id=existing.id,
+        shopify_variant_id=existing.shopify_variant_id,
+        title=existing.title,
+        color=color if color is not None else existing.color,
+        size=size if size is not None else existing.size,
+        price=existing.price,
+        compare_at_price=existing.compare_at_price,
+        inventory=existing.inventory,
+        weight=existing.weight,
+        weight_unit=existing.weight_unit,
+        image_url=existing.image_url,
+        feed_image_url=existing.feed_image_url,
+        feed_title=getattr(existing, "feed_title", None),
+        barcode=existing.barcode,
+        status=existing.status,
+    )
+
+
+def update_variant_feed_image_for_store(
+    store_id: str,
+    sku: str,
+    image_url: str,
+) -> Optional[ProductVariant]:
+    """Set feed_image_url override for a store-owned variant."""
+    existing = get_variant_by_sku_for_store(store_id, sku)
+    if not existing:
+        return None
+    url = (image_url or "").strip()
+    if not url.startswith("http"):
+        return None
+    return save_variant(
+        existing.product_id,
+        sku,
+        id=existing.id,
+        shopify_variant_id=existing.shopify_variant_id,
+        title=existing.title,
+        color=existing.color,
+        size=existing.size,
+        price=existing.price,
+        compare_at_price=existing.compare_at_price,
+        inventory=existing.inventory,
+        weight=existing.weight,
+        weight_unit=existing.weight_unit,
+        image_url=existing.image_url,
+        feed_image_url=url,
+        feed_title=existing.feed_title,
+        barcode=existing.barcode,
+        status=existing.status,
+    )
+
+
+def update_variant_feed_title_for_store(
+    store_id: str,
+    sku: str,
+    title: str,
+) -> Optional[ProductVariant]:
+    """Set per-SKU advertising title override (feed_title owner layer)."""
+    existing = get_variant_by_sku_for_store(store_id, sku)
+    if not existing:
+        return None
+    t = (title or "").strip()
+    if not t:
+        return None
+    return save_variant(
+        existing.product_id,
+        sku,
+        id=existing.id,
+        shopify_variant_id=existing.shopify_variant_id,
+        title=existing.title,
+        color=existing.color,
+        size=existing.size,
+        price=existing.price,
+        compare_at_price=existing.compare_at_price,
+        inventory=existing.inventory,
+        weight=existing.weight,
+        weight_unit=existing.weight_unit,
+        image_url=existing.image_url,
+        feed_image_url=existing.feed_image_url,
+        feed_title=t,
+        barcode=existing.barcode,
+        status=existing.status,
+    )
+
+
+def apply_feed_image_patches(store_id: str, patches: list[dict]) -> dict:
+    """Apply [{sku, image_url}, ...] feed main-image overrides."""
+    updated: list[str] = []
+    missing: list[str] = []
+    invalid: list[str] = []
+    for item in patches or []:
+        sku = (item.get("sku") or "").strip()
+        image_url = (item.get("image_url") or "").strip()
+        if not sku:
+            continue
+        if not image_url.startswith("http"):
+            invalid.append(sku)
+            continue
+        result = update_variant_feed_image_for_store(store_id, sku, image_url)
+        if result is None:
+            missing.append(sku)
+        else:
+            updated.append(sku)
+    return {"updated": updated, "missing": missing, "invalid": invalid}
+
+
+def get_variant_by_sku_for_product(
+    product_id: str,
+    sku: str,
+) -> Optional[ProductVariant]:
+    if not product_id or not sku:
+        return None
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM product_variants WHERE product_id = ? AND sku = ? LIMIT 1",
+            (product_id, sku),
+        ).fetchone()
+    if not row:
+        return None
+    return _variant_from_row(row)
+
+
+def apply_variant_attr_patches(
+    store_id: str,
+    patches: list[dict],
+    *,
+    shopify_product_id: Optional[str] = None,
+) -> dict:
+    """Apply [{sku, color?, size?}, ...] for one store. Returns updated/missing SKUs."""
+    updated: list[str] = []
+    missing: list[str] = []
+    scoped_product = (
+        get_store_product_by_shopify_id(store_id, shopify_product_id)
+        if shopify_product_id
+        else None
+    )
+    for item in patches or []:
+        sku = (item.get("sku") or "").strip()
+        if not sku:
+            continue
+        color = item.get("color")
+        size = item.get("size")
+        if color is not None:
+            color = str(color).strip() or None
+        if size is not None:
+            size = str(size).strip() or None
+        if color is None and size is None:
+            continue
+        result: Optional[ProductVariant] = None
+        if scoped_product is not None:
+            existing = get_variant_by_sku_for_product(scoped_product.id, sku)
+            result = save_variant(
+                scoped_product.id,
+                sku,
+                id=existing.id if existing else None,
+                shopify_variant_id=existing.shopify_variant_id if existing else None,
+                title=existing.title if existing else sku,
+                color=color if color is not None else (existing.color if existing else ""),
+                size=size if size is not None else (existing.size if existing else ""),
+                price=existing.price if existing else 0,
+                compare_at_price=existing.compare_at_price if existing else None,
+                inventory=existing.inventory if existing else 0,
+                weight=existing.weight if existing else None,
+                weight_unit=existing.weight_unit if existing else None,
+                image_url=existing.image_url if existing else None,
+                feed_image_url=getattr(existing, "feed_image_url", None) if existing else None,
+                feed_title=getattr(existing, "feed_title", None) if existing else None,
+                barcode=existing.barcode if existing else None,
+                status=existing.status if existing else "active",
+            )
+        else:
+            result = update_variant_attrs_for_store(store_id, sku, color=color, size=size)
+        if result is None:
+            missing.append(sku)
+        else:
+            updated.append(sku)
+    return {"updated": updated, "missing": missing}
 
 
 def get_product_variants(product_id: str) -> list[ProductVariant]:
@@ -611,7 +873,7 @@ def get_product_variants(product_id: str) -> list[ProductVariant]:
             "SELECT * FROM product_variants WHERE product_id = ? AND status = 'active' ORDER BY color, size",
             (product_id,),
         ).fetchall()
-    return [ProductVariant(**{k: r[k] for k in ProductVariant.__dataclass_fields__}) for r in rows]
+    return [_variant_from_row(r) for r in rows]
 
 
 def bulk_save_variants(product_id: str, variants: list[dict]) -> int:
@@ -692,6 +954,53 @@ def _row_to_feed_file(row) -> FeedFile:
         platform=row["platform"] if "platform" in keys and row["platform"] else "google",
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
+
+
+def get_feed_excluded_skus(
+    store_id: str,
+    country: str,
+    platform: str = "google",
+) -> set[str]:
+    """SKUs the merchant removed from the durable feed (excluded on regen)."""
+    init_store_schema()
+    plat = (platform or "google").lower()
+    cu = (country or "US").upper()
+    with _conn() as c:
+        rows = c.execute(
+            """SELECT sku FROM feed_excluded_skus
+               WHERE store_id = ? AND platform = ? AND country = ?""",
+            (store_id, plat, cu),
+        ).fetchall()
+    return {str(r["sku"]).strip() for r in rows if r["sku"]}
+
+
+def add_feed_excluded_skus(
+    store_id: str,
+    skus: list[str],
+    country: str,
+    platform: str = "google",
+) -> int:
+    """Record SKUs removed from feed so regenerate does not add them back."""
+    init_store_schema()
+    plat = (platform or "google").lower()
+    cu = (country or "US").upper()
+    now = datetime.now(timezone.utc).isoformat()
+    added = 0
+    with _conn() as c:
+        for raw in skus or []:
+            sku = str(raw or "").strip()
+            if not sku:
+                continue
+            c.execute(
+                """INSERT OR IGNORE INTO feed_excluded_skus
+                   (store_id, platform, country, sku, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (store_id, plat, cu, sku, now),
+            )
+            if c.total_changes:
+                added += 1
+        c.commit()
+    return added
 
 
 def save_feed_file(store_id: str, country: str, file_path: str,
@@ -1042,6 +1351,28 @@ def get_store_job(job_id: str) -> Optional[StoreJob]:
     )
 
 
+def get_latest_completed_store_job(store_id: str) -> Optional[StoreJob]:
+    """Most recent successful generate job for App Home KPI reload."""
+    with _conn() as c:
+        row = c.execute(
+            """SELECT * FROM store_jobs
+               WHERE store_id = ? AND status = 'completed'
+               ORDER BY updated_at DESC LIMIT 1""",
+            (store_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return StoreJob(
+        id=row["id"], store_id=row["store_id"], status=row["status"],
+        platforms=row["platforms"], languages=row["languages"],
+        product_ids=row["product_ids"], total_units=row["total_units"],
+        done_units=row["done_units"], ok_units=row["ok_units"],
+        fail_units=row["fail_units"], result_json=row["result_json"],
+        error_msg=row["error_msg"],
+        created_at=row["created_at"], updated_at=row["updated_at"],
+    )
+
+
 def update_store_job(job_id: str, **kwargs) -> bool:
     allowed = {"status", "total_units", "done_units", "ok_units", "fail_units",
                "result_json", "error_msg", "platforms", "languages", "product_ids"}
@@ -1057,6 +1388,60 @@ def update_store_job(job_id: str, **kwargs) -> bool:
     with _conn() as c:
         c.execute(f"UPDATE store_jobs SET {', '.join(sets)} WHERE id = ?", vals)
         c.commit()
+    return True
+
+
+def purge_store_data(store_id: str) -> bool:
+    """Hard-delete one shop's catalog, jobs, feeds, and store row (shop/redact)."""
+    import shutil
+
+    if not store_id:
+        return False
+    store = get_store(store_id)
+    if not store:
+        return False
+
+    feed_paths: list[str] = []
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT file_path FROM feed_files WHERE store_id = ?",
+            (store_id,),
+        ).fetchall()
+        feed_paths = [r["file_path"] for r in rows if r["file_path"]]
+        c.execute(
+            """DELETE FROM product_variants WHERE product_id IN
+               (SELECT id FROM products WHERE store_id = ?)""",
+            (store_id,),
+        )
+        c.execute("DELETE FROM product_assets WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM usage_ledger WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM store_jobs WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM feed_files WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM feed_excluded_skus WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM feed_configs WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM products WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM stores WHERE id = ?", (store_id,))
+        c.commit()
+
+    for p in feed_paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+        parent = Path(p).parent
+        if parent.exists():
+            try:
+                if not any(parent.iterdir()):
+                    parent.rmdir()
+            except OSError:
+                pass
+
+    try:
+        from .config import FEEDS_DIR
+        shutil.rmtree(FEEDS_DIR / store_id, ignore_errors=True)
+    except Exception:
+        pass
+    shutil.rmtree(DATA_DIR / "processed_images" / store_id, ignore_errors=True)
     return True
 
 
