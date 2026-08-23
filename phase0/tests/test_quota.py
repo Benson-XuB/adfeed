@@ -98,6 +98,7 @@ def test_generate_rejects_over_quota(monkeypatch, tmp_path):
     client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
     store = store_db.get_store_by_domain("quota.myshopify.com")
     store_db.update_store(store.id, quota_total=2, quota_used=0, access_token="shpat_test")
+    store_db.update_store(store.id, default_brand="Test Brand")
 
     from unittest.mock import AsyncMock, patch
     with patch(

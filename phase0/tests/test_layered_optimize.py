@@ -55,7 +55,6 @@ def test_layered_writes_assets_and_debits(store_env):
             product_ids=[products[0].id, products[1].id],
             platforms=["google", "meta"],
             languages=["US", "DE"],
-            remove_watermarks=False,
         )
 
     # 2 SKU × 2 platforms × 2 langs = 8
@@ -69,7 +68,7 @@ def test_layered_writes_assets_and_debits(store_env):
     assert asset.title  # platform rewrite applied
 
 
-def test_watermark_off_skips_image_processor(store_env):
+def test_optimize_does_not_call_image_processor(store_env):
     store_db, store, products = store_env
     from adfeed.pipeline import optimize_layered
 
@@ -91,6 +90,5 @@ def test_watermark_off_skips_image_processor(store_env):
             product_ids=[products[0].id],
             platforms=["google"],
             languages=["US"],
-            remove_watermarks=False,
         )
         img.assert_not_called()

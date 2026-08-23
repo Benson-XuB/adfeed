@@ -42,6 +42,8 @@ def client_env(monkeypatch, tmp_path):
         quota_total=100,
         access_token="shpat_test",
     )
+    store_db.update_store(store.id, default_brand="E2E Brand")
+    store = store_db.get_store(store.id)
     pids = []
     for i in range(3):
         p = store_db.save_product(

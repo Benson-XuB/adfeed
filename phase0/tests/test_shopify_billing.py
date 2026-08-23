@@ -17,8 +17,9 @@ def app_client(monkeypatch, tmp_path):
     monkeypatch.setenv("ADFEED_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SHOPIFY_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("SHOPIFY_CLIENT_SECRET", "test-client-secret")
-    monkeypatch.setenv("ADFEED_QUOTA_STARTER", "400")
-    monkeypatch.setenv("ADFEED_QUOTA_GROWTH", "2000")
+    monkeypatch.setenv("ADFEED_QUOTA_FREE", "20")
+    monkeypatch.setenv("ADFEED_QUOTA_STARTER", "150")
+    monkeypatch.setenv("ADFEED_QUOTA_GROWTH", "400")
 
     for name in list(sys.modules):
         if name == "adfeed" or name.startswith("adfeed."):
@@ -62,8 +63,9 @@ def _token(shop="demo.myshopify.com"):
 
 def test_plan_quota_mapping(app_client):
     _, _, billing = app_client
-    assert billing.quota_for_plan("starter") == 400
-    assert billing.quota_for_plan("growth") == 2000
+    assert billing.quota_for_plan("free") == 20
+    assert billing.quota_for_plan("starter") == 150
+    assert billing.quota_for_plan("growth") == 400
     assert billing.normalize_plan_name("AdFeed Starter") == "starter"
 
 
@@ -79,7 +81,7 @@ def test_subscribe_returns_confirmation_url(app_client):
     data = res.json()
     assert "confirmation_url" in data
     assert data["plan"] == "starter"
-    assert data["quota_total"] == 400
+    assert data["quota_total"] == 150
 
 
 def test_subscription_webhook_updates_quota(app_client):
@@ -102,7 +104,7 @@ def test_subscription_webhook_updates_quota(app_client):
     })
     assert updated is not None
     assert updated.plan == "growth"
-    assert updated.quota_total == 2000
+    assert updated.quota_total == 400
     assert updated.billing_status == "active"
 
 
@@ -110,3 +112,22 @@ def test_subscribe_requires_session(app_client):
     client, _, _ = app_client
     res = client.post("/api/app/billing/subscribe", json={"plan": "starter"})
     assert res.status_code == 401
+
+
+def test_billing_test_charges_off_by_default(app_client, monkeypatch):
+    _, _, billing = app_client
+    monkeypatch.delenv("ADFEED_BILLING_TEST", raising=False)
+    assert billing.billing_test_charges() is False
+
+
+def test_billing_return_redirects_to_admin(app_client):
+    client, _, _ = app_client
+    res = client.get(
+        "/api/app/billing/return",
+        params={"shop": "demo.myshopify.com"},
+        follow_redirects=False,
+    )
+    assert res.status_code in (302, 303, 307, 308)
+    loc = res.headers.get("location") or ""
+    assert "admin.shopify.com" in loc
+    assert "demo" in loc
