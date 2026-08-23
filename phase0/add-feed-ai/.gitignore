@@ -33,4 +33,12 @@ shared/types/graphql
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+
+# Local dev backend override (use local-backend.example.js)
+shared/local-backend.json
+shared/local-backend.js
+web/.cache
+web/build
+web/.react-router
+web/prisma/dev.sqlite
+web/prisma/dev.sqlite-journal

@@ -1,0 +1,757 @@
+/* Force left | right like the Feed Center mockup. Do NOT collapse in Admin iframe widths. */
+.shell {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 280px !important;
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.main {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--p-color-border, #e3e3e3);
+  border-radius: 12px;
+  background: var(--p-color-bg-surface, #fff);
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.tablePane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Slide-over drawer: overlays the workbench, does NOT reflow page columns. */
+.drawerBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  z-index: 20;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.drawerPanel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(380px, 92%);
+  z-index: 21;
+  background: var(--p-color-bg-surface, #fff);
+  border-left: 1px solid var(--p-color-border, #e3e3e3);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 8px;
+  min-width: 0;
+}
+
+.sideCard {
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  background: #f7f8fa;
+  padding: 14px 14px 10px;
+  box-sizing: border-box;
+}
+
+.sideCardLive {
+  background: #fff;
+}
+
+.setupCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.feedCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.editingFeedBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.editingFeedLabel {
+  font-size: 12px;
+  font-weight: 650;
+  color: #1a1a1a;
+}
+
+.editingFeedHint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #616161;
+}
+
+.feedMarketTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.feedMarketTab {
+  appearance: none;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid #c9cccf;
+  border-radius: 999px;
+  background: #fff;
+  color: #1a1a1a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.feedMarketTab:hover {
+  border-color: #8c9196;
+  background: #f6f6f7;
+}
+
+.feedMarketTabActive {
+  background: #168059;
+  border-color: #168059;
+  color: #fff;
+}
+
+.feedMarketTabActive:hover {
+  background: #126b4a;
+  border-color: #126b4a;
+}
+
+.feedUrlBox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e3e5e8;
+  border-radius: 10px;
+  background: #f9fafb;
+  text-decoration: none;
+  min-width: 0;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.feedUrlBox:hover {
+  border-color: #c9cccf;
+  background: #f3f4f6;
+}
+
+.feedUrlLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.feedUrlText {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feedActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.feedActionPrimary {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid #168059;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1a8f63 0%, #168059 100%);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(22, 128, 89, 0.24);
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  box-sizing: border-box;
+}
+
+.feedActionPrimary:hover {
+  background: linear-gradient(180deg, #168059 0%, #126b4a 100%);
+  border-color: #126b4a;
+  box-shadow: 0 2px 6px rgba(22, 128, 89, 0.28);
+}
+
+.feedActionPrimary:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(22, 128, 89, 0.2);
+}
+
+.feedActionPrimary:focus-visible {
+  outline: 2px solid #168059;
+  outline-offset: 2px;
+}
+
+.feedActionRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.feedActionSecondary {
+  appearance: none;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.feedActionSecondary:hover {
+  border-color: #168059;
+  color: #126b4a;
+  background: #f6fbf8;
+}
+
+.feedActionSecondary:active {
+  background: #edf7f2;
+}
+
+.feedActionSecondary:focus-visible {
+  outline: 2px solid #168059;
+  outline-offset: 1px;
+}
+
+.setupChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.marketSelect {
+  position: relative;
+  width: 100%;
+}
+
+.marketSelectTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid #c9cccf;
+  border-radius: 8px;
+  background: #fff;
+  color: #1a1a1a;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.marketSelectTrigger:hover:not(:disabled) {
+  border-color: #8c9196;
+  background: #fafbfb;
+}
+
+.marketSelectTrigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.marketSelectSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketSelectChevron {
+  flex-shrink: 0;
+  color: #616161;
+  font-size: 12px;
+}
+
+.marketSelectPanel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #c9cccf;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.marketSelectSearch {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  border-bottom: 1px solid #e8e8e8;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.marketSelectList {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.marketSelectOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.marketSelectOption:hover {
+  background: #f6f6f7;
+}
+
+.marketSelectOption input {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.marketSelectLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.marketSelectCcy {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #616161;
+}
+
+.marketSelectEmpty {
+  padding: 10px;
+  font-size: 13px;
+  color: #616161;
+  text-align: center;
+}
+
+.generateCtaRow {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.generateCtaBtn {
+  appearance: none;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 1px solid #168059;
+  border-radius: 8px;
+  background: #168059;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.generateCtaBtn:hover:not(:disabled) {
+  background: #126b4a;
+  border-color: #126b4a;
+}
+
+.generateCtaBtn:active:not(:disabled) {
+  background: #0f5a3f;
+  border-color: #0f5a3f;
+}
+
+.generateCtaBtn:disabled {
+  background: #8ebdae;
+  border-color: #8ebdae;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: not-allowed;
+}
+
+.generateCtaBtn:focus-visible {
+  outline: 2px solid #168059;
+  outline-offset: 2px;
+}
+
+/* —— GMC Compliance Audit (match design) —— */
+.auditHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.auditTitle {
+  font-size: 14px;
+  font-weight: 650;
+  color: #1a1a1a;
+  letter-spacing: -0.01em;
+}
+
+.auditSummary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 10px;
+}
+
+.auditDot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #1e293b;
+}
+
+.auditDotOk {
+  background: #16a34a;
+}
+.auditDotWarn {
+  background: #ca8a04;
+}
+.auditDotBad {
+  background: #dc2626;
+}
+
+.auditSummaryText {
+  font-size: 16px;
+  font-weight: 650;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.auditList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.auditItem {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid #e5e7eb;
+}
+
+.auditItem:first-child {
+  border-top: none;
+}
+
+.auditIcon {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.auditIconPass {
+  border-radius: 50%;
+  background: #22c55e;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.auditIconWarn {
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 16px solid #eab308;
+  position: relative;
+  margin-top: 2px;
+}
+
+.auditIconWarn::after {
+  content: "!";
+  position: absolute;
+  top: 5px;
+  left: -3px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.auditIconFail {
+  border-radius: 50%;
+  background: #ef4444;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.auditLabel {
+  font-size: 13px;
+  color: #1f2937;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.auditLabel a {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 12px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.auditLabel a:hover {
+  text-decoration: underline;
+}
+
+.auditMuted {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+/* Product list cards (HTML prototype) */
+.productCard {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.checkboxWrap {
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.checkboxDisabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.cardContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cardMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.productTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #111827;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.statusAction {
+  flex-shrink: 0;
+  align-self: flex-start;
+  appearance: none;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.statusAction:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.statusAction:focus-visible {
+  outline: 2px solid #168059;
+  outline-offset: 2px;
+}
+
+.statusActionPending {
+  background: #f3f4f6;
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+.statusActionPending:hover:not(:disabled) {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.statusActionInFeed {
+  background: #eef6f2;
+  color: #126b4a;
+  border-color: #b8dcc8;
+}
+
+.statusActionInFeed:hover {
+  background: #dff0e8;
+  border-color: #168059;
+  color: #0f5a3f;
+}
+
+.statusActionFix {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.statusActionFix:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+.defectText {
+  font-size: 12px;
+  color: #dc2626;
+  line-height: 1.35;
+}
+
+.quickFixError {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  flex-shrink: 0;
+  background: #eee;
+}
+
+.thumbEmpty {
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--p-color-border, #e3e3e3);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: #eee;
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+@media (max-width: 520px) {
+  .shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sidebar {
+    position: static;
+  }
+
+  .drawerPanel {
+    width: 100%;
+  }
+}
