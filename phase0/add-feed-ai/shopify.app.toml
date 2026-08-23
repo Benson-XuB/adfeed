@@ -1,39 +1,58 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+#
+# iframe App Home = `web/` (React Router). Merchant entry is the embedded web app,
+# NOT FastAPI GET / and NOT the retired Preact App Home extension (_retired/app-home).
+#
+# Local:
+#   - `shopify app dev` (development store): CLI sets application_url + auth to the web tunnel
+#     because automatically_update_urls_on_dev = true.
+#   - FastAPI webhooks below must stay on the API tunnel (local_shopify_stack.sh rewrites them).
+# Production cutover (later): host React Router + point application_url/auth at that host;
+# keep GDPR/product/billing webhooks on FastAPI.
 
 client_id = "ac2bf432a87c7e12cb7c439556fe762b"
 name = "AdFeed AI"
-application_url = "https://deltfu.com"
+application_url = "https://polls-dont-capitol-honors.trycloudflare.com"
 embedded = true
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true
 
 [webhooks]
-api_version = "2026-10"
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "/api/webhooks/shopify/compliance"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/app_uninstalled"
+  uri = "/api/webhooks/shopify/app_uninstalled"
 
   [[webhooks.subscriptions]]
   topics = [ "products/update" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/products_update"
+  uri = "/api/webhooks/shopify/products_update"
 
   [[webhooks.subscriptions]]
   topics = [ "products/delete" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/products_delete"
+  uri = "/api/webhooks/shopify/products_delete"
 
   [[webhooks.subscriptions]]
   topics = [ "app_subscriptions/update" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/app_subscriptions_update"
+  uri = "/api/webhooks/shopify/app_subscriptions_update"
 
 [access.admin]
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
 
 [access_scopes]
-scopes = "read_products"
+scopes = "read_products,write_products,read_legal_policies"
 
 [auth]
-redirect_urls = [ "https://deltfu.com/api/shopify/callback" ]
+redirect_urls = [
+  "https://polls-dont-capitol-honors.trycloudflare.com/auth/callback",
+  "https://stars-illinois-half-subjective.trycloudflare.com/api/shopify/callback",
+]
+
+[sidekick]
+extensions_summary = "Generate Google Shopping feeds from the Shopify catalog"

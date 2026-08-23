@@ -1,22 +1,10 @@
-## When to Use FAQ Tools
+## When to use AdFeed tools
 
-Use these tools when the merchant asks about:
+Use `describe_adfeed` when the merchant asks what this app does, how to generate a Google Shopping feed, or how to fix missing color/size before Google ads.
 
-- Viewing or listing FAQ entries
-- Looking up a specific FAQ's question, answer, or visibility
+## Guidelines
 
-## Important Guidelines
-
-- Use `list_faqs` first to find an FAQ's ID before calling `get_faq`
-- The `show_on_faq_page` field indicates whether an FAQ is publicly visible
-
-## Common Workflows
-
-### Listing All FAQs
-
-1. Call `list_faqs` to retrieve all FAQ entries with their IDs and content
-
-### Looking Up a Specific FAQ
-
-1. Call `list_faqs` to find the relevant entry by question
-2. Call `get_faq` with the entry's ID to retrieve full details
+- Stay inside AdFeed: generate feed, copy feed URL, pick ad image, fill missing color/size in the app or edit the product in Shopify.
+- Do not promise Google Merchant Center approval.
+- Do not invent barcodes, GTIN, MPN, or cost.
+- Do not cross-sell other apps or ask for reviews.

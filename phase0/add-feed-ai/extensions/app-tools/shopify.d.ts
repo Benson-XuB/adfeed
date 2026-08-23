@@ -2,108 +2,27 @@ import '@shopify/ui-extensions';
 
 //@ts-ignore
 declare module './src/index.js' {
-  interface ListFaqsInput {
+  interface DescribeAdfeedInput {
     [k: string]: unknown;
   }
 
-  interface ListFaqsOutput {
-    results?: {
-      /**
-       * Always 'resource_link'
-       */
-      type: string;
-      /**
-       * GID URI of the FAQ metaobject
-       */
-      uri: string;
-      /**
-       * The FAQ question
-       */
-      name: string;
-      /**
-       * MIME type for this resource
-       */
-      mimeType: string;
-      /**
-       * Additional metadata for the FAQ entry
-       */
-      _meta?: {
-        /**
-         * The FAQ answer
-         */
-        answer?: string;
-        /**
-         * Whether this FAQ is publicly visible
-         */
-        show_on_faq_page?: boolean;
-        [k: string]: unknown;
-      };
-      [k: string]: unknown;
-    }[];
-    [k: string]: unknown;
-  }
-
-  interface GetFaqInput {
+  interface DescribeAdfeedOutput {
     /**
-     * The GID of the FAQ metaobject
+     * What the app does for the merchant
      */
-    id: string;
-    [k: string]: unknown;
-  }
-
-  interface GetFaqOutput {
-    results?: {
-      /**
-       * Always 'resource_link'
-       */
-      type: string;
-      /**
-       * GID URI of the FAQ metaobject
-       */
-      uri: string;
-      /**
-       * The FAQ question
-       */
-      name: string;
-      /**
-       * MIME type for this resource
-       */
-      mimeType: string;
-      /**
-       * Additional metadata for the FAQ entry
-       */
-      _meta?: {
-        /**
-         * The FAQ answer
-         */
-        answer?: string;
-        /**
-         * Whether this FAQ is publicly visible
-         */
-        show_on_faq_page?: boolean;
-        [k: string]: unknown;
-      };
-      [k: string]: unknown;
-    }[];
+    summary: string;
     [k: string]: unknown;
   }
 
   interface ShopifyTools {
     /**
-     * List all FAQ entries
+     * Explain how AdFeed AI generates Google, Meta, and TikTok shopping feeds from the Shopify catalog, including missing color/size fixes. Does not guarantee Merchant Center approval.
      */
     register(
-      name: 'list_faqs',
+      name: 'describe_adfeed',
       handler: (
-        input: ListFaqsInput,
-      ) => ListFaqsOutput | Promise<ListFaqsOutput>,
-    ): () => void;
-    /**
-     * Get a single FAQ entry by ID
-     */
-    register(
-      name: 'get_faq',
-      handler: (input: GetFaqInput) => GetFaqOutput | Promise<GetFaqOutput>,
+        input: DescribeAdfeedInput,
+      ) => DescribeAdfeedOutput | Promise<DescribeAdfeedOutput>,
     ): () => void;
   }
 

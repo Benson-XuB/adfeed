@@ -1,0 +1,607 @@
+{
+  "name": "AdFeed AI",
+  "welcome": "AdFeed AI — Google Shopping Feed",
+  "cta": {
+    "generate": "Generate feed",
+    "create": "Generate feed",
+    "updateWide": "Update feed",
+    "update": "Update feed",
+    "generating": "Working…",
+    "needBrand": "Confirm brand below first",
+    "selectVisible": "Select all in list"
+  },
+  "hub": {
+    "title": "Feed Generator Hub",
+    "panel": "HUB PANEL",
+    "subtitle": "Pick a product scope (with photos), choose markets, then create a Google-ready feed.",
+    "scopeHeading": "1. Product scope",
+    "scopeHelp": "Tap All, Uncategorized, or a product type to set the scope.",
+    "productsInScope": "In this scope: {{selected}} selected / {{total}}",
+    "emptyScope": "No products in this scope.",
+    "productListScroll": "{{n}} products — scroll the list to see all.",
+    "productListPrev": "Previous 5",
+    "productListNext": "Next 5",
+    "productListPage": "{{from}}–{{to}} of {{n}}",
+    "marketHeading": "2. Channels & markets",
+    "statsHeading": "At a glance",
+    "statsHint": "From your last generate — not Google approval status.",
+    "activeFeeds": "Active feeds",
+    "checklistHeading": "Store to-dos",
+    "checklistHelp": "Only open items. Fix in Shopify, then tap Check again.",
+    "feedsHeading": "Copy for Merchant Center",
+    "createHeading": "3. Create feed",
+    "createHint": "Full-width button.",
+    "scopeThenMarket": "Next: pick countries below, then tap Generate feed.",
+    "needProducts": "Select products below to include in the feed.",
+    "productListHeading": "Products in this scope (optional fine-tune)",
+    "setupCard": "Generate ad feed",
+    "productsCard": "Products in this feed"
+  },
+  "overview": {
+    "heading": "Feed status",
+    "needsAttention": "Needs attention · {{n}}",
+    "ready": "Ready to advertise · {{n}}",
+    "selected": "Selected in scope · {{n}}",
+    "panelNeeds": "Needs attention",
+    "panelReady": "Ready to advertise",
+    "panelSelected": "Selected",
+    "kpiNeeds": "To fix",
+    "kpiNeedsHint": "Color, size, image, or sensitive wording",
+    "kpiReady": "In this feed",
+    "kpiReadyHint": "Rows written for one market — not Google-approved",
+    "kpiReadyUnknown": "—",
+    "kpiReadyUnknownHint": "Available after generate",
+    "kpiFeeds": "Ad links",
+    "kpiFeedsHint": "Generated URLs to copy into the ads backend",
+    "kpiTapHint": "",
+    "kpiNeedsAction": "Fix these {{n}}",
+    "kpiNeedsActionEmpty": "Nothing to fix",
+    "kpiNeedsCollapse": "Hide",
+    "kpiNeedsStoreOnly": "No product fixes. Brand, currency, and site items are in Store to-dos below.",
+    "kpiReadyAction": "Details",
+    "kpiFeedsAction": "Copy links",
+    "kpiFeedsCollapse": "Hide",
+    "noneYet": "No ad links yet — select products, then generate.",
+    "emptyNeeds": "Nothing to fix right now.",
+    "showFeeds": "Feed links are below.",
+    "storeBrandGate": "Confirm your ad brand before generating.",
+    "storeCurrencyGate": "Currency blocks {{count}} market(s) — fix in Shopify or change markets.",
+    "adjustScope": "Adjust product scope & update",
+    "hideScope": "Hide product scope",
+    "storeTodos": "Store to-dos",
+    "storeTodosHelp": "Only open items. Fix in Shopify or confirm brand below."
+  },
+  "scope": {
+    "heading": "1. Which products",
+    "help": "Pick a type, then check the photos — you should recognize each item.",
+    "allActive": "All active ({{n}})",
+    "uncategorized": "Uncategorized ({{n}})",
+    "typeChip": "{{type}} ({{n}})",
+    "inScope": "{{selected}} selected · {{total}} in this scope",
+    "selectScope": "Select all in this scope",
+    "needsChip": "To fix ({{n}})"
+  },
+  "intro": {
+    "heading": "Before you advertise, run a feed check",
+    "body": "We do not promise Google approval. We first turn titles, color/size, the no-barcode path, and main images into a shopping-ready feed so you can see what changed, then hand the link to Merchant Center. We never invent barcodes or COGS — add real ones below if you have them.",
+    "note": "After submit, Google often shows Limited / Pending initial review. That is the first-review queue (a few business days), not an App failure."
+  },
+  "pipeline": {
+    "heading": "Generating",
+    "headingDone": "Generated",
+    "doneHint": "Fix color or size on the products listed under To fix.",
+    "stay": "Stay on this page. When finished we mark color/size changes so you can fix them in one click.",
+    "badgeDone": "Done",
+    "badgeActive": "Running",
+    "badgeWait": "Waiting",
+    "steps": {
+      "title": {
+        "label": "Title",
+        "copy": "Turning supplier-style titles into Google Shopping structure…"
+      },
+      "category": {
+        "label": "Category",
+        "copy": "Matching products to standard categories…"
+      },
+      "variant": {
+        "label": "Color / size",
+        "copy": "Checking each color and size; gaps get a smart fill you can edit…"
+      },
+      "id": {
+        "label": "Barcode / no-ID path",
+        "copy": "No real barcode → open the no-ID path (no fake codes). Add UPC/EAN on Shopify variants if you have them…"
+      },
+      "image": {
+        "label": "Ad image",
+        "copy": "Checking if the main image looks like wholesale stock so you can swap a clean store photo…"
+      }
+    },
+    "headingCollapsed": "Check finished",
+    "hideSteps": "Hide steps",
+    "showSteps": "Show five steps"
+  },
+  "quota": {
+    "heading": "Quota",
+    "remaining": "{{used}} / {{total}} ({{left}} left)",
+    "estimate": "Estimated use: {{skus}} SKUs × {{platforms}} platforms × {{markets}} markets =",
+    "insufficient": " — not enough quota, please upgrade"
+  },
+  "billing": {
+    "current": "Plan: {{plan}} · {{left}} / {{total}} generate units left",
+    "headerQuota": "{{plan}} · {{left}} / {{total}}",
+    "plan_free": "Free",
+    "plan_starter": "Starter ($14.99/mo, 150)",
+    "plan_growth": "Growth ($39/mo, 400)",
+    "chooseStarter": "Switch to Starter",
+    "chooseGrowth": "Switch to Growth",
+    "approveInShopify": "Approve charge in Shopify",
+    "approveHint": "Tap Approve charge in Shopify, then come back here.",
+    "subscribeFailed": "Could not start billing: {{detail}}",
+    "plans": {
+      "open": "Upgrade plan",
+      "back": "Back",
+      "pageTitle": "Choose a plan",
+      "pageIntro": "Compare Free, Starter, and Growth. Pick a paid plan to continue in Shopify checkout.",
+      "howQuota": "Quota = parent products × ad platforms × markets (not variants). One product with 5 colors × 5 sizes still counts as 1 unit for Google + US.",
+      "currentBadge": "Current",
+      "included": "Included",
+      "choose": "Choose {{plan}}",
+      "starting": "Starting…",
+      "free": {
+        "name": "Free",
+        "price": "$0 / month",
+        "quota": "20 generate units / month",
+        "blurb": "Try the flow on a small catalog."
+      },
+      "starter": {
+        "name": "Starter",
+        "price": "$14.99 / month",
+        "quota": "150 generate units / month",
+        "blurb": "For shops running Google Shopping regularly."
+      },
+      "growth": {
+        "name": "Growth",
+        "price": "$39 / month",
+        "quota": "400 generate units / month",
+        "blurb": "For multi-platform / multi-market catalogs."
+      }
+    }
+  },
+  "brand": {
+    "heading": "Ad brand (written to feed)",
+    "help": "This is the store-wide brand written to every feed item (g:brand). Shopify product Vendor is often a supplier name (e.g. eprolo) — we do not copy it automatically. Confirm once; only tap again if you change it.",
+    "warn": "Ad brand not confirmed. Enter it and tap Confirm brand, or feed generation stays blocked (avoids Missing brand disapprovals).",
+    "confirmed": "Ad brand: {{brand}}",
+    "label": "Ad brand",
+    "placeholder": "e.g. your store name or own brand",
+    "saving": "Saving…",
+    "confirm": "Confirm brand",
+    "update": "Update brand",
+    "change": "Change",
+    "cancelEdit": "Cancel"
+  },
+  "merchantData": {
+    "heading": "Barcode & cost (optional)",
+    "help": "Does not block feed generation. We never invent barcodes or COGS; real data improves matching and profit reports.",
+    "gtinTitle": "Barcode / GTIN",
+    "gtinBody": "No barcode is fine: we use the no-ID path and keep the ad brand above. If packaging has a real UPC/EAN, add it under Shopify → product → variant Barcode; the next generate writes g:gtin. Leave blank if you have no real code — do not invent digits.",
+    "cogsTitle": "Cost (COGS)",
+    "cogsBody": "Not required for free listings. If you know true cost, set Shopify variant Cost for profit reports later; otherwise leave blank — do not invent estimates.",
+    "gtinShort": "Optional — real UPC/EAN only.",
+    "cogsShort": "Optional — leave blank if unknown."
+  },
+  "compliance": {
+    "heading": "Is the site ready for ads?",
+    "help": "Checks policy pages, footer links, HTTPS, and selected-market currency. Google looks at these too; this does not block feed generation.",
+    "run": "Run check",
+    "running": "Checking…",
+    "summary": "Pass {{pass}} · Suggestions {{warn}} · Missing {{fail}}",
+    "colId": "Item",
+    "colStatus": "Status",
+    "colNote": "Notes",
+    "lightGreen": "Pass",
+    "lightYellow": "Suggestions",
+    "lightRed": "Gaps",
+    "statusWarn": "Suggestion",
+    "statusFail": "Missing",
+    "allPass": "No open store issues for this check.",
+    "needRun": "Tap Run check to scan policies, footer links, and HTTPS.",
+    "currencyOk": "Selected market currency matches the store (or is usable)",
+    "openHeading": "To fix ({{n}})",
+    "doneHeading": "Done ({{n}})",
+    "doneBadge": "Done",
+    "fixInShopify": "Open in Shopify",
+    "fixMenus": "Open footer menus",
+    "fixLegal": "Open legal / policies",
+    "fixMarkets": "Open Markets",
+    "fixPages": "Open pages"
+  },
+  "currency": {
+    "mismatchBanner": "Selected {{markets}}; store currency is {{shop}}. Align Shopify presentment currency before generating (App only detects — no auto FX).",
+    "blockedHeading": "Currency mismatch (blocked)",
+    "shopNeeds": "Store {{shop}} → needs {{expected}}",
+    "fixHint": "In Shopify, set presentment currency to match the selected market, then generate again."
+  },
+  "quality": {
+    "heading": "What to do next",
+    "lightGreen": "Ready to submit to Google",
+    "lightYellow": "We filled gaps — spot-check first",
+    "lightRed": "High risk — review before ads",
+    "bodyGreen": "Required fields look complete. Next: copy the feed link below into Google Merchant Center. Approval is still Google’s call; new stores often wait a few days for initial review.",
+    "bodyYellow": "Auto-fixed {{auto}} items (e.g. color/size fallbacks, no-barcode path). {{warn}} items need a spot-check. Missing barcode or COGS is not a disapproval reason; add real values in Shopify if you have them. This is not “approved” — it means “ok to submit, look first.”",
+    "bodyRed": "{{fatals}} high-risk items are still in the feed. Fix the red list below before treating this as ad-ready.",
+    "counts": "Auto-fixed {{auto}} · Spot-check {{warn}} · High risk {{fatals}}",
+    "missingVariantId": "{{count}} variants lack a Shopify Variant ID, so links cannot target color/size. Re-sync products, then regenerate; do not advertise those SKUs until fixed (no internal fake IDs).",
+    "logTitle": "Optimization log",
+    "collapse": "Collapse",
+    "expand": "Expand first {{n}}",
+    "logMore": "{{n}} more auto-fixes not shown",
+    "titleCompare": "How titles got clearer",
+    "titleCompareHelp": "Left is the store title; right is the shopping-style ad title (brand + type + this-row color/size).",
+    "titleBefore": "Store title: {{title}}",
+    "titleAfter": "Ad title: {{title}}",
+    "confirmHeading": "Needs your eye — fix in one go",
+    "confirmHelp": "We used Multicolor / One Size so Google isn’t blocked by empty fields. Select products, set the real color or size, apply once — regenerates the feed, no optimization quota.",
+    "sensitiveTitle": "Sensitive compliance · {{count}} (read-only)",
+    "sensitiveHelp": "Phrases softened or marked adult; update Shopify copy as suggested. FATAL items should not be advertised.",
+    "colSku": "SKU",
+    "colRule": "Rule",
+    "colNote": "Notes",
+    "colField": "Field",
+    "colResult": "Result",
+    "imageTitle": "Main image change suggested · {{count}}",
+    "imageHelp": "Main image may be wholesale stock. Pick a clean photo from the Shopify gallery as the ad image (does not write back to Shopify).",
+    "changeImage": "Change image",
+    "mcTitle": "Missing color · Multicolor · {{count}}",
+    "osTitle": "Missing size · One Size · {{count}}",
+    "selectBucket": "Select all",
+    "bulkTitle": "Fix {{count}} selected — one apply",
+    "color": "Color",
+    "colorPh": "e.g. Black",
+    "applyColor": "Apply color",
+    "oneSizeBtn": "Set One Size",
+    "size": "Size",
+    "sizePh": "e.g. M / L / XL",
+    "applySize": "Apply size",
+    "clearSelection": "Clear",
+    "checklist": {
+      "shipping": "Before uploading to Google, confirm shipping is configured in Merchant Center for the target country",
+      "claim": "Confirm the website is claimed and product pages are publicly reachable",
+      "fatal": "If red FATAL items remain, uploading is at your own disapproval risk"
+    },
+    "bodyGreenShort": "Looks submit-ready. Copy the link above into Merchant Center. Google’s review can take a few days.",
+    "bodyYellowShort": "Auto-fixed {{auto}} items. {{review}} need a real color/size or image — select them below and fix in one go (no quota).",
+    "bulkHelp": "Use Fix all variants for many rows. Tap Add size on one row to edit only that row.",
+    "bulkHint": "Tip: tap “Select all”, enter a real color or size, then Apply.",
+    "applying": "Applying…",
+    "detailsHeading": "Technical details",
+    "expandDetails": "Show details",
+    "colProduct": "Product"
+  },
+  "feeds": {
+    "heading": "Multilingual Google Shopping feed links",
+    "help": "Copy into Google Merchant Center. Limited after submit is usually first-review queue.",
+    "items": "{{count}} products",
+    "listedCount": "Feed items",
+    "synced": "Generated",
+    "preparing": "Not generated yet",
+    "urlLabel": "Feed URL",
+    "copy": "Copy link",
+    "copyShort": "Copy",
+    "copied": "URL copied",
+    "markets": {
+      "US": { "title": "United States (English) {{ccy}}", "subtitle": "United States (English)" },
+      "DE": { "title": "Germany (German) {{ccy}}", "subtitle": "Germany (German)" },
+      "FR": { "title": "France (French) {{ccy}}", "subtitle": "France (French)" },
+      "ES": { "title": "Spain (Spanish) {{ccy}}", "subtitle": "Spain (Spanish)" },
+      "IT": { "title": "Italy (Italian) {{ccy}}", "subtitle": "Italy (Italian)" }
+    }
+  },
+  "targets": {
+    "platforms": "Where to advertise",
+    "markets": "Target markets",
+    "marketsWithCcy": "Target markets (store {{ccy}})",
+    "marketsHelp": "Default US (USD). For each market, set Shopify presentment to that currency; mismatches are blocked."
+  },
+  "images": {
+    "heading": "Pick an ad main image",
+    "help": "Changes only the ad feed image, not your Shopify product page. “Recommended” is usually cleaner; “Not recommended” often means wholesale stock.",
+    "loading": "Loading product images…",
+    "empty": "No candidates found — upload product images in Shopify first.",
+    "recommended": "Recommended",
+    "risky": "Not recommended",
+    "save": "Use selected image & regenerate feed",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
+  "products": {
+    "heading": "Select products for the feed ({{selected}}/{{total}}, {{variants}} variants)",
+    "search": "Search title, type, brand…",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "colProduct": "Product",
+    "colType": "Type",
+    "colVariants": "Variants",
+    "colInventory": "Inventory",
+    "colStatus": "Status",
+    "colAdImage": "Ad image",
+    "colActions": "Actions",
+    "editInShopify": "Edit this in Shopify",
+    "noStock": "Out of stock",
+    "active": "Active",
+    "changeAdImage": "Change ad image",
+    "afterGenerate": "Pick after generate",
+    "selectA11y": "Select {{title}}",
+    "loading": "Loading products…",
+    "help": "This is the main step — check what goes into the feed.",
+    "colSelect": "Include",
+    "vendor": "Shopify vendor: {{vendor}}",
+    "variantCount": "{{n}} variants",
+    "hintColor": "Needs color",
+    "hintSize": "Needs size",
+    "hintImage": "Change ad image",
+    "hintWording": "Wording to review",
+    "needsInListHint": "{{n}} products need fixes — pinned to the top.",
+    "fixThis": "Fix all variants",
+    "fixThisHint": "“Fix all variants” checks every SKU below, then fill color/size once above.",
+    "fixColorBtn": "Add color",
+    "fixSizeBtn": "Add size",
+    "fixWordingBtn": "Edit wording in Shopify"
+  },
+  "tags": {
+    "colorMulti": "Color: Multicolor (smart fill)",
+    "sizeOne": "Size: One Size (smart fill)",
+    "colorExtracted": "Color: {{value}} (from copy)",
+    "colorAi": "Color: {{value}} (AI)",
+    "colorDone": "Color filled",
+    "sizeExtracted": "Size: {{value}} (from copy)",
+    "sizeDone": "Size filled",
+    "noGtin": "No-ID path (add real barcode in Shopify if you have one)",
+    "adult": "Marked adult (account safety)"
+  },
+  "msg": {
+    "bootIncomplete": "Store connection incomplete: {{detail}}",
+    "bootFailed": "Store connection failed: {{detail}}",
+    "loadProductsFailed": "Failed to load products: {{detail}}",
+    "needProduct": "Select at least one product",
+    "needPlatformMarket": "Select at least one platform and one market",
+    "needBrand": "Confirm an ad brand below first. Apparel Google needs brand; empty brand often fails as Missing brand.",
+    "quotaShort": "Not enough quota: need {{need}}, {{left}} left. Please upgrade.",
+    "checking": "Check in progress. We clean titles, fill color/size, and open the no-ID path.",
+    "genFailed": "Generation failed",
+    "blockedOnly": "Feed not generated: {{countries}} blocked for currency mismatch. Align Shopify presentment with the selected markets and retry.",
+    "doneFatal": "Check done: feed generated, but {{fatals}} high-risk items remain. Review the list below — not “approved” yet.",
+    "doneWarn": "Check done: auto-fixed {{auto}} items; {{warn}} still need a spot-check before Google.",
+    "doneOk": "Check done: fields look complete — add the feed link in Google Merchant Center.",
+    "alsoBlocked": " Also {{count}} market(s) blocked for currency.",
+    "noFeed": "Feed not generated: no writable country or products.",
+    "genFailedDetail": "Generation failed: {{detail}}",
+    "needSku": "Select SKUs to fix first",
+    "patchOk": "✅ Updated {{updated}} variants{{missing}}, feed refreshed",
+    "patchMissing": ", {{count}} SKUs not found",
+    "patchFailed": "Bulk update failed: {{detail}}",
+    "imagesLoadFailed": "Failed to load product images: {{detail}}",
+    "needImage": "Select a main image",
+    "imageSaved": "✅ {{sku}} ad image updated, feed refreshed",
+    "imageFailed": "Image update failed: {{detail}}",
+    "complianceDone": "Site check: {{light}} (pass {{pass}} · suggestions {{warn}} · missing {{fail}})",
+    "complianceFailed": "Site check failed: {{detail}}",
+    "brandEmpty": "Enter an ad brand before confirming. Apparel Google needs brand.",
+    "brandSaved": "Ad brand saved as “{{brand}}”. Feed generate will write g:brand.",
+    "brandFailed": "Failed to save ad brand: {{detail}}",
+    "lightGreen": "green",
+    "lightYellow": "yellow",
+    "lightRed": "red"
+  },
+  "rules": {
+    "C01": {
+      "msg": "Apparel missing color — filled Multicolor",
+      "sug": "If the product has a real color, set Color on the Shopify variant and regenerate"
+    },
+    "C02": {
+      "msg": "Extracted color from copy → {{after}}",
+      "sug": ""
+    },
+    "S01": {
+      "msg": "Apparel/footwear missing size — filled One Size",
+      "sug": "If there is a real size, add Size on the Shopify variant and regenerate"
+    },
+    "S05": {
+      "msg": "Size alias normalized to One Size (was: {{before}})",
+      "sug": ""
+    },
+    "S02": {
+      "msg": "Defaulted age_group=adult",
+      "sug": "For kidswear, set kids/toddler/infant in the store"
+    },
+    "S03": {
+      "msg": "Defaulted condition=new",
+      "sug": ""
+    },
+    "S04": {
+      "msg": "Aligned gender={{after}}",
+      "sug": "Adjust to female / male / unisex from category or title"
+    },
+    "ID01": {
+      "msg": "No barcode — opened no-ID path (identifier_exists=no)",
+      "sug": "Add GTIN if you have UPC/EAN; otherwise keep no-ID and a valid brand"
+    },
+    "ID02": {
+      "msgReplaced": "Brand contained myshopify.com — replaced with store brand {{after}}",
+      "msgWarn": "Brand contains myshopify.com ({{before}}) — set a real store brand",
+      "sug": "Set default_brand; do not use *.myshopify.com as brand"
+    },
+    "M01": {
+      "msg": "Material translated to English → {{after}}",
+      "sug": "Confirm it matches the product"
+    },
+    "M03": {
+      "msg": "Inferred material from title/fabric → {{after}}",
+      "sug": "Add accurate fabric in Shopify"
+    },
+    "M02": {
+      "msg": "Apparel missing material — GMC may warn about incomplete attributes",
+      "sug": "Add fabric in Shopify (e.g. Cotton / Polyester) and regenerate"
+    },
+    "D01": {
+      "msg": "Description was mostly Chinese — used English summary fallback",
+      "sug": "Add English product details to improve Shopping quality"
+    },
+    "D02": {
+      "msg": "Description formatted; attribute labels Anglicized where possible",
+      "sug": ""
+    },
+    "D03": {
+      "msg": "Description had heavy Chinese — replaced with English summary",
+      "sug": "Add English details in Shopify and regenerate"
+    },
+    "T01": {
+      "msg": "Title is empty",
+      "sug": "Add a valid product title and regenerate"
+    },
+    "I01": {
+      "msg": "Main image is empty",
+      "sug": "Upload a main image in Shopify and regenerate"
+    },
+    "I02": {
+      "msg": "Main image is not an absolute URL",
+      "sug": "Use an https image URL"
+    },
+    "I03": {
+      "msg": "Main image may be from a wholesale source ({{detail}})",
+      "sug": "Use “Change image” below to pick a clean photo from the product gallery"
+    },
+    "P02": {
+      "msg": "Price is invalid or zero",
+      "sug": "Set a valid price in Shopify and regenerate"
+    },
+    "L01": {
+      "msg": "Product link is invalid",
+      "sug": "Check storefront URL and product handle"
+    },
+    "V01": {
+      "msg": "Apparel should include a color",
+      "sug": "Set Color on the Shopify variant"
+    },
+    "VA01": {
+      "msgFallback": "Variant missing color — filled Multicolor",
+      "msgClean": "Color cleaned → {{after}}",
+      "sug": ""
+    },
+    "VA02": {
+      "msgFallback": "Apparel missing size — filled One Size",
+      "msgClean": "Size cleaned → {{after}}",
+      "sug": ""
+    },
+    "VA03": {
+      "msg": "Filled size_system=US, size_type=Regular",
+      "sug": ""
+    },
+    "VA04": {
+      "msg": "Missing Shopify Variant ID — link cannot target color/size; re-sync before advertising",
+      "sug": "Re-sync the product in Shopify, confirm the variant exists, then regenerate"
+    },
+    "IMG01": {
+      "msg": "Watermark removed and main image replaced",
+      "sug": ""
+    },
+    "IMG02": {
+      "msgEmpty": "Main image empty — cannot remove watermark",
+      "msgFail": "Main image may have a watermark; processing failed — please replace",
+      "sugEmpty": "Upload at least one product image",
+      "sugFail": "Replace with a clean product photo"
+    },
+    "AD01": {
+      "msg": "Set adult=yes for sensitive category (account safety)",
+      "sug": "Ads will show to adults only — protects the account"
+    },
+    "SEN": {
+      "soft": "Sensitive phrasing softened ({{id}})",
+      "flag": "Adult-oriented signal detected ({{id}})",
+      "block": "High-risk sensitive content ({{id}}) — do not advertise on GMC until reviewed",
+      "sug": "Update Shopify copy to match; avoid advertising FATAL items"
+    }
+  },
+  "complianceChecks": {
+    "policyLabel": {
+      "POL_REFUND": "Refund policy",
+      "POL_PRIVACY": "Privacy policy",
+      "POL_SHIPPING": "Shipping policy",
+      "POL_TERMS": "Terms of service"
+    },
+    "policyMissing": "Missing {{label}}",
+    "policyMissingSug": "Create and publish it in Shopify Settings → Policies",
+    "policyPresent": "{{label}} is present",
+    "policyPresentSug": "Make sure the footer menu links to this policy page",
+    "policyWeak": "{{label}} may be thin or placeholder-like",
+    "SITE_HTTPS": {
+      "pass": "Store URL uses HTTPS",
+      "fail": "Store URL is not HTTPS",
+      "failSug": "Use a custom domain with SSL in Shopify"
+    },
+    "SITE_REACHABLE": {
+      "pass": "Homepage is reachable",
+      "http": "Homepage returned HTTP {{code}}",
+      "httpSug": "Confirm the store is not password-protected and the domain is public",
+      "down": "Could not probe homepage (timeout or network error)",
+      "downSug": "Open the storefront in a browser to confirm"
+    },
+    "FOOT": {
+      "pass": "{{label}} is linked in the footer",
+      "warn": "{{label}} is linked on the page but not inside <footer>",
+      "warnSug": "Online Store → Navigation → Footer menu — add the policy link",
+      "fail": "{{label}} is configured but not linked on homepage/footer",
+      "failSug": "Add the policy page to the Footer menu (GMC expects it to be discoverable)"
+    },
+    "FOOT_CONTACT": {
+      "pass": "Contact is linked in the footer",
+      "warn": "Contact is linked on the page but not inside <footer>",
+      "warnSug": "Add the Contact page to the Footer menu"
+    },
+    "FOOT_SCAN": {
+      "warn": "Could not parse homepage HTML; skipped footer link checks"
+    },
+    "CONTACT_PAGE": {
+      "pass": "Found a contact page",
+      "warn": "No /pages/contact, but store has email/phone in admin",
+      "warnSug": "Create a Contact page and link it in the footer (GMC often checks visible contact info)",
+      "fail": "No Contact page and no visible contact details",
+      "failSug": "Add a Contact page with email + phone or address, and put it in the footer menu"
+    },
+    "CURR": {
+      "pass": "{{country}} market: store currency matches Feed target (or is usable)",
+      "warn": "{{country}} needs matching presentment currency — align Shopify Markets before generating",
+      "warnSug": "In Shopify Markets / presentment currency, match the target market, then regenerate"
+    }
+  },
+  "setup": {
+    "heading": "Where to advertise",
+    "platforms": "Ad platforms",
+    "markets": "Countries",
+    "marketsWithCcy": "Countries",
+    "storeCcy": "Store checkout is {{ccy}}. Feed uses the price buyers see on that country’s page — we never convert by exchange rate.",
+    "marketsHelp": "Each chip is the currency that market’s landing page must show. Pick DE only after Shopify Markets shows EUR there.",
+    "marketLocked": "Enable {{country}} in Shopify Markets and show {{expected}} first.",
+    "needOneMarket": "Keep at least one country selected.",
+    "checkingMarket": "Checking that market’s storefront currency…",
+    "country": {
+      "US": "United States",
+      "DE": "Germany",
+      "FR": "France",
+      "ES": "Spain",
+      "IT": "Italy"
+    },
+    "ccy": {
+      "USD": "US dollars",
+      "EUR": "euros"
+    },
+    "needOneMarket": "Keep at least one country selected.",
+    "checkingMarket": "Checking that market’s storefront currency…",
+    "pickPlatforms": "Select channels",
+    "pickMarkets": "Select markets"
+  },
+  "storeWarnings": {
+    "heading": "Store setup checks",
+    "help": "Fix these so ads and the feed are less likely to get stuck. They do not replace selecting products above."
+  }
+}

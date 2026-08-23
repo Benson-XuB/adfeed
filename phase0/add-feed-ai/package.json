@@ -3,15 +3,18 @@
   "version": "1.0.0",
   "license": "UNLICENSED",
   "workspaces": [
-    "extensions/*"
+    "extensions/*",
+    "web"
   ],
   "scripts": {
     "shopify": "shopify",
-    "build": "shopify app build",
+    "build": "npm run build --workspace=adfeed-web && shopify app build",
     "dev": "shopify app dev",
     "info": "shopify app info",
     "generate": "shopify app generate",
-    "deploy": "shopify app deploy"
+    "deploy": "shopify app deploy",
+    "setup": "npm run setup --workspace=adfeed-web",
+    "typecheck": "npm run typecheck --workspace=adfeed-web"
   },
   "dependencies": {},
   "trustedDependencies": [

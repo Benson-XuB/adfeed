@@ -1,0 +1,15 @@
+api_version = "2026-07"
+
+[[extensions]]
+# Retired as primary App Home for public App Store (iframe React Router in ../web).
+# Kept in repo for reference / rollback only — do not re-enable admin.app.home.render
+# until iframe path is abandoned.
+name = "t:name"
+handle = "app-home"
+uid = "83247469-d4a8-2612-c903-5468f6914aaa918849e8"
+type = "ui_extension"
+
+# [[extensions.targeting]]
+# module = "./src/AppHome.jsx"
+# target = "admin.app.home.render"
+# assets = "./assets"
