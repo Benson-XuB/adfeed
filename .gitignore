@@ -40,8 +40,34 @@ feeds/
 backend/
 frontend/
 
+# Generated Google/Meta feed artifacts (never commit)
+phase0/feeds/
+phase0/output/
+**/*.feed.xml
+
+# Sample / ad-hoc local test scripts (keep phase0/tests/ unit tests)
+/test_*.py
+phase0/test_*.py
+phase0/_test_samples.csv
+
+# Build artifacts
+phase0/web/*.tar.gz
+
+# GPC SQLite is built from taxonomy-with-ids.en-US.txt on first run
+phase0/data/gpc_taxonomy.db
+phase0/data/gpc_taxonomy.db-*
+
+# App Store listing — keep HTML/screenshots; screencast is generated locally
+docs/app-store-listing/screencast/
+
 # Sample data (binary Excel)
 *_realistic.xlsx
 
-# Terminals (Cursor IDE)
-terminals/
+# Runtime / generated (keep source only)
+phase0/data/store.db
+phase0/data/stores.db
+phase0/data/processed_images/
+phase0/scripts/.tunnel-urls
+
+# Cursor local (optional — rules are tracked under .cursor/rules if present)
+.cursor/projects/

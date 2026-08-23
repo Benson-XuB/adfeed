@@ -44,23 +44,41 @@ async def main():
     user = get_user_by_email("shopify-app@adfeed.ai") or create_user(
         email="shopify-app@adfeed.ai", name="Shopify App",
     )
+    from adfeed.config import DEFAULT_STORE_BRAND
+    from adfeed.shopify_billing import quota_for_plan
+
+    free_quota = quota_for_plan("free")  # default 20 — do not inflate for local preview
     store = store_db.get_store_by_domain(shop)
     if store:
         store_db.update_store(
             store.id,
             access_token=token,
             status="active",
-            quota_total=max(store.quota_total, 500),
+            # Keep existing quota unless below free floor (never force 500).
+            quota_total=max(store.quota_total or 0, free_quota)
+            if (store.plan or "free") == "free"
+            else store.quota_total,
         )
         store = store_db.get_store(store.id)
+        # Do not silent-write eprolo; only prefill shop name-shaped brand if empty.
+        if not (store.default_brand or "").strip():
+            hint = (DEFAULT_STORE_BRAND or "").strip()
+            if hint and hint.lower() != "eprolo":
+                store_db.update_store(store.id, default_brand=hint)
+                store = store_db.get_store(store.id)
     else:
         store = store_db.create_store(
             user_id=user.id,
             shopify_domain=shop,
             shop_name=shop.replace(".myshopify.com", ""),
             access_token=token,
-            quota_total=500,
+            plan="free",
+            quota_total=free_quota,
         )
+        hint = (DEFAULT_STORE_BRAND or "").strip()
+        if hint and hint.lower() != "eprolo":
+            store_db.update_store(store.id, default_brand=hint)
+        store = store_db.get_store(store.id)
 
     print(f"Store ready: {store.id}")
     print(f"  domain={store.shopify_domain}")
@@ -76,26 +94,48 @@ async def main():
     import httpx
     from adfeed.config import SHOPIFY_API_VERSION
 
-    data = await fetch_shopify_products(shop, token, limit=min(args.limit, 50))
-    # fetch_shopify_products returns mapped products; we need raw for variants — re-fetch by id
-    ids = [normalize_shopify_product_id(p.get("shopify_id")) for p in data.get("products", [])][: args.limit]
-    print(f"Syncing {len(ids)} products...")
+    shop_short = shop.replace(".myshopify.com", "")
+    ids = []
+    try:
+        data = await fetch_shopify_products(shop, token, limit=min(args.limit, 50))
+        ids = [
+            normalize_shopify_product_id(p.get("shopify_id"))
+            for p in data.get("products", [])
+        ][: args.limit]
+    except Exception as e:
+        print(f"  [WARN] list products failed: {e}")
+
+    # Fallback: re-sync products already in local store_db
+    if not ids:
+        existing = store_db.get_store_products(store.id)[: args.limit]
+        ids = [p.shopify_product_id for p in existing if p.shopify_product_id]
+        print(f"  Using {len(ids)} product ids from local DB")
+
+    print(f"Syncing {len(ids)} products (full body_html)...")
 
     internal = []
-    shop_short = shop.replace(".myshopify.com", "")
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         for pid in ids:
-            resp = await client.get(
-                f"https://{shop_short}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/products/{pid}.json",
-                headers={"X-Shopify-Access-Token": token},
-            )
+            try:
+                resp = await client.get(
+                    f"https://{shop_short}.myshopify.com/admin/api/{SHOPIFY_API_VERSION}/products/{pid}.json",
+                    headers={"X-Shopify-Access-Token": token},
+                )
+            except Exception as e:
+                print(f"  skip {pid}: {e}")
+                continue
             if resp.status_code != 200:
-                print(f"  skip {pid}: HTTP {resp.status_code}")
+                print(f"  skip {pid}: HTTP {resp.status_code} {resp.text[:120]}")
                 continue
             raw = resp.json().get("product")
             saved = upsert_raw_shopify_product(store.id, raw)
+            # 全站统一品牌
+            if not saved.brand or saved.brand != (DEFAULT_STORE_BRAND or "eprolo"):
+                store_db.update_product(saved.id, brand=DEFAULT_STORE_BRAND or "eprolo")
+                saved = store_db.get_product(saved.id)
             internal.append(saved.id)
-            print(f"  synced {pid}: {saved.title[:60]}")
+            desc_len = len(saved.description or "")
+            print(f"  synced {pid}: {saved.title[:60]} (desc={desc_len} chars, brand={saved.brand})")
 
     if not internal:
         print("No products synced.")
@@ -119,6 +159,7 @@ async def main():
         store_id=store.id,
         countries=languages,
         platforms=platforms,
+        product_ids=internal,
     )
     print("Feeds:")
     for f in feeds.get("feed_urls", []):

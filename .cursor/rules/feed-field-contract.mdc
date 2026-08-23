@@ -1,0 +1,49 @@
+---
+description: Feed 改代码硬门禁 — 防偏航；禁止出口打补丁
+alwaysApply: true
+---
+
+# Feed 改代码门禁（防以后又偏）
+
+权威三件套（冲突只认这个顺序）：
+1. `docs/plans/2026-08-12-mvp-north-star.md`
+2. `docs/plans/2026-08-14-feed-field-contract.md`
+3. `docs/plans/2026-08-14-design-audit-cleanup.md`
+
+计划/PR 开头必须写：
+
+```
+Field contract: docs/plans/2026-08-14-feed-field-contract.md
+North Star: docs/plans/2026-08-12-mvp-north-star.md
+```
+
+## 动手改 Feed 相关代码前（必答，写进回复）
+
+1. 改的是哪个**字段主人**？（title / color / size / pattern / brand / …）
+2. 是**修主人层**，还是在 `feed_generator` / `title_guard` / `_enhance_title` **再叠一层**？后者 → **停**。
+3. 验收是「三件真商品购物标题更短更好懂」，还是「审查打分/重复标题计数」？后者 → **停**。
+4. 缺数据是自动从变体算、还是 UI 让商家填、还是编假值？编假值 → **停**。
+
+## 禁止（看到就拒）
+
+- 新增/扩展 `pin_*`、在 `_enhance_title` / `polish_feed_title` 后再插色/码/花色/材质
+- 为 uniqueness 把 Style/花色写进 `color`（`Brown Style 1` 是债，要拆 pattern，不是再脏一点）
+- 静默写入供应商默认品牌 `eprolo`；删 brand「装无主」；假 MPN / 假 GTIN / 假 COGS
+- 把外部 AI / GMC 审查清单当需求整版改 Feed
+- 未完成「标题减层 + color/pattern 分家 + 品牌确认」前：新开安检大动画 / Magic Bar / 动态 URL / AI 修图
+
+## 已知债（只许减，不许加厚）
+
+| 债 | 位置 | 正确方向 |
+|----|------|----------|
+| 标题出口叠层 | `title_guard.pin_variant_size`、`_enhance_title` 多段拼接 | 减层：骨架 + 本行色码各一次 |
+| 脏 color | `_with_pattern_qualifier` → `Brown Style 1` | color 纯色；花色/Style → pattern |
+| 静默 eprolo | `config.DEFAULT_STORE_BRAND`、`_normalize_brand` | 店名预填 + App 确认广告品牌 |
+
+## 旧计划别当待办
+
+`docs/plans/*implementation*` / 带 “For Claude: implement” 的稿：先看盘点状态。已落地的不要机械重做；与字段合同冲突的步骤作废。
+
+## 改完自检
+
+固定看裤/裙/夹克各一条标题：是否更短、更好懂、像人会点的衣服。只有数字变好、标题更像属性墙 → **回滚该改动思路**。

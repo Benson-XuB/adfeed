@@ -28,3 +28,10 @@ data/chroma_gpc/
 data/webapp.db*
 data/product_memory.db*
 data/dedup_lock.db*
+data/product_memory_test.db*
+data/store.db
+data/stores.db
+data/processed_images/
+data/quality_report_live.json
+data/style*.jpg
+scripts/.tunnel-urls
