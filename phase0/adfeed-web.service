@@ -1,11 +1,15 @@
 [Unit]
-Description=AdFeed AI — Next.js Frontend
+Description=AdFeed AI — React Router (Shopify embedded app)
 After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/opt/adfeed/phase0/web
+User=adfeed
+Group=adfeed
+WorkingDirectory=/opt/adfeed/phase0/add-feed-ai/web
+EnvironmentFile=/opt/adfeed/phase0/add-feed-ai/web/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=3

@@ -4,8 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=adfeed
+Group=adfeed
 WorkingDirectory=/opt/adfeed/phase0
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/adfeed/.venv/bin/python3 server.py --port 8000
 Restart=always
 RestartSec=3

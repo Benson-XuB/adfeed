@@ -18,6 +18,8 @@ lerna-debug.log*
 # Environment variables
 .env
 .env.*
+!.env.example
+!web/.env.example
 
 # Build
 dist
