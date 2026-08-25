@@ -78,11 +78,13 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 -- 变体表（每个产品多个变体：颜色×尺码）
+-- SKU uniqueness is per product: suppliers often reuse the same SKU on
+-- active + draft duplicates; a global UNIQUE stole variants across products.
 CREATE TABLE IF NOT EXISTS product_variants (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL REFERENCES products(id),
     shopify_variant_id TEXT,
-    sku TEXT UNIQUE,
+    sku TEXT,
     title TEXT,                           -- 如 "White / S"
     color TEXT,
     size TEXT,
@@ -96,7 +98,8 @@ CREATE TABLE IF NOT EXISTS product_variants (
     barcode TEXT,                         -- UPC/EAN（如有）
     status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(product_id, sku)
 );
 
 -- Feed 配置表（每店×每国一条）
@@ -237,7 +240,84 @@ def init_store_schema():
         except Exception:
             pass
 
+        _migrate_variant_sku_scope(c)
+
     print("[StoreDB] 店铺数据库表已初始化")
+
+
+def _migrate_variant_sku_scope(c) -> None:
+    """Drop global UNIQUE(sku); keep UNIQUE(product_id, sku). Idempotent."""
+    try:
+        row = c.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='product_variants'"
+        ).fetchone()
+        ddl = (row[0] if row else "") or ""
+        # Already migrated when CREATE has UNIQUE(product_id, sku) and no lone sku UNIQUE.
+        if "UNIQUE(product_id, sku)" in ddl.replace(" ", "") or "UNIQUE (product_id, sku)" in ddl:
+            if "sku TEXT UNIQUE" not in ddl and "sku TEXT\n" in ddl.replace("  ", " "):
+                return
+        # Detect legacy global unique: "sku TEXT UNIQUE"
+        if "sku TEXT UNIQUE" not in ddl and "sku TEXT UNIQUE," not in ddl:
+            # Ensure composite unique index exists even if CREATE IF NOT EXISTS skipped alter
+            try:
+                c.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_variants_product_sku "
+                    "ON product_variants(product_id, sku)"
+                )
+                c.commit()
+            except Exception:
+                pass
+            return
+
+        c.execute("ALTER TABLE product_variants RENAME TO product_variants_sku_mig")
+        c.execute(
+            """
+            CREATE TABLE product_variants (
+                id TEXT PRIMARY KEY,
+                product_id TEXT NOT NULL REFERENCES products(id),
+                shopify_variant_id TEXT,
+                sku TEXT,
+                title TEXT,
+                color TEXT,
+                size TEXT,
+                price REAL,
+                compare_at_price REAL,
+                inventory INTEGER DEFAULT 0,
+                weight REAL,
+                weight_unit TEXT DEFAULT 'kg',
+                image_url TEXT,
+                feed_image_url TEXT,
+                barcode TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                feed_title TEXT,
+                UNIQUE(product_id, sku)
+            )
+            """
+        )
+        c.execute(
+            """
+            INSERT INTO product_variants (
+                id, product_id, shopify_variant_id, sku, title, color, size,
+                price, compare_at_price, inventory, weight, weight_unit,
+                image_url, feed_image_url, barcode, status, created_at, updated_at,
+                feed_title
+            )
+            SELECT
+                id, product_id, shopify_variant_id, sku, title, color, size,
+                price, compare_at_price, inventory, weight, weight_unit,
+                image_url, feed_image_url, barcode, status, created_at, updated_at,
+                feed_title
+            FROM product_variants_sku_mig
+            """
+        )
+        c.execute("DROP TABLE product_variants_sku_mig")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id, status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_variants_sku ON product_variants(sku)")
+        c.commit()
+    except Exception:
+        pass
 
 
 # ─────────────────────────────────────────────
@@ -611,13 +691,28 @@ def _variant_from_row(row) -> ProductVariant:
 
 
 def save_variant(product_id: str, sku: str, **kwargs) -> ProductVariant:
-    """保存或更新变体（按 SKU 去重）"""
+    """Save/update a variant scoped to product_id (and shopify_variant_id when set).
+
+    Do not match on global SKU alone — duplicate supplier SKUs across an active
+    product and a draft copy would otherwise steal rows between products.
+    """
     vid = kwargs.get("id") or str(uuid.uuid4())
+    shopify_vid = str(kwargs.get("shopify_variant_id") or "").strip() or None
 
     with _conn() as c:
-        existing = c.execute(
-            "SELECT id, feed_image_url, feed_title FROM product_variants WHERE sku = ?", (sku,),
-        ).fetchone()
+        existing = None
+        if shopify_vid:
+            existing = c.execute(
+                """SELECT id, feed_image_url, feed_title FROM product_variants
+                   WHERE product_id = ? AND shopify_variant_id = ?""",
+                (product_id, shopify_vid),
+            ).fetchone()
+        if not existing and sku:
+            existing = c.execute(
+                """SELECT id, feed_image_url, feed_title FROM product_variants
+                   WHERE product_id = ? AND sku = ?""",
+                (product_id, sku),
+            ).fetchone()
         if existing:
             vid = existing["id"]
 
@@ -635,7 +730,7 @@ def save_variant(product_id: str, sku: str, **kwargs) -> ProductVariant:
                 price, compare_at_price, inventory, weight, weight_unit,
                 image_url, feed_image_url, feed_title, barcode, status)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (vid, product_id, kwargs.get("shopify_variant_id"), sku,
+            (vid, product_id, shopify_vid, sku,
              kwargs.get("title"), kwargs.get("color"), kwargs.get("size"),
              kwargs.get("price", 0), kwargs.get("compare_at_price"),
              kwargs.get("inventory", 0), kwargs.get("weight"),

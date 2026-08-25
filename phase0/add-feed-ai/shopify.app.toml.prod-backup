@@ -39,7 +39,7 @@ direct_api_mode = "online"
 embedded_app_direct_api_access = true
 
 [access_scopes]
-scopes = "read_products"
+scopes = "read_products,write_products,read_legal_policies"
 
 [auth]
 redirect_urls = [

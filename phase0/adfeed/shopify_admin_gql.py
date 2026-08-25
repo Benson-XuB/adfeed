@@ -283,7 +283,7 @@ def fetch_products_page(
         access_token,
         f"""
         query ProductsPage($first: Int!, $after: String) {{
-          products(first: $first, after: $after) {{
+          products(first: $first, after: $after, query: "status:active") {{
             pageInfo {{ hasNextPage endCursor }}
             edges {{ node {{ {fields} }} }}
           }}
