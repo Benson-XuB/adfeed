@@ -81,3 +81,6 @@ phase0/scripts/.tunnel-urls
 
 # Large listing assets (upload to Partner Dashboard from local)
 docs/app-store-listing/icon-1200.png
+
+# local deploy secrets (never commit)
+phase0/scripts/prod/.secrets/

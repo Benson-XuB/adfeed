@@ -92,10 +92,13 @@ if [[ ! -f "${INSTALL_DIR}/phase0/add-feed-ai/web/.env" ]]; then
 fi
 
 # ── nginx ──
+# feeds snippet is location{} only — must live under snippets/, not conf.d/
+install -d /etc/nginx/snippets
+cp "${INSTALL_DIR}/nginx/deltfu-feeds.conf" /etc/nginx/snippets/deltfu-feeds.conf
 cp "${INSTALL_DIR}/nginx/deltfu.com.conf" "/etc/nginx/sites-available/${DOMAIN}"
 ln -sf "/etc/nginx/sites-available/${DOMAIN}" "/etc/nginx/sites-enabled/${DOMAIN}"
 rm -f /etc/nginx/sites-enabled/default
-cp "${INSTALL_DIR}/nginx/deltfu-feeds.conf" /etc/nginx/conf.d/deltfu-feeds.conf
+rm -f /etc/nginx/conf.d/deltfu-feeds.conf
 nginx -t
 
 # ── TLS (needs DNS) ──
