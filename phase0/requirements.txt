@@ -14,3 +14,4 @@ PyJWT>=2.8
 python-multipart>=0.0.12
 stripe>=8.0
 boto3>=1.34  # Cloudflare R2 (S3-compatible)
+email-validator>=2.0

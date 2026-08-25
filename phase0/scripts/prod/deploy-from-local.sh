@@ -66,6 +66,7 @@ ssh_cmd "sudo git config --global --add safe.directory ${REMOTE_DIR}; cd ${REMOT
 echo ""
 echo "━━━ [4/5] Sync artifacts ━━━"
 if [[ "$BACKEND_ONLY" == false ]]; then
+  ssh_cmd "sudo mkdir -p ${REMOTE_DIR}/phase0/add-feed-ai/web/build && sudo chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR}/phase0/add-feed-ai/web"
   rsync -avz --delete -e "$RSYNC_RSH" \
     "${WEB}/build/" \
     "${SSH_TARGET}:${REMOTE_DIR}/phase0/add-feed-ai/web/build/"
