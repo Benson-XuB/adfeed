@@ -73,6 +73,14 @@ SHOPIFY_SCOPES = "read_products,write_products,read_legal_policies"
 # Markets-only catalogs may need re-auth if GraphQL returns access errors.
 SHOPIFY_API_VERSION = "2024-07"
 
+# Google Merchant / Ads (read-only loop) — optional until post-review deploy
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+GOOGLE_OAUTH_REDIRECT_URI = os.getenv(
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    "https://deltfu.com/api/app/google/oauth/callback",
+)
+
 # ============================================
 # Mock 数据配置
 # ============================================

@@ -598,3 +598,81 @@ export function feedPublicFileUrl(storeRelativeOrAbsolute: string): string {
   const base = getBackendUrl();
   return `${base}${storeRelativeOrAbsolute.startsWith("/") ? "" : "/"}${storeRelativeOrAbsolute}`;
 }
+
+export type GoogleMerchant = {
+  merchant_id: string;
+  display_name?: string;
+  is_selected?: number;
+};
+
+export type GoogleStatus = {
+  oauth_configured: boolean;
+  connected: boolean;
+  scopes: string;
+  has_content_scope: boolean;
+  has_ads_scope: boolean;
+  merchants: GoogleMerchant[];
+  selected_merchant_id: string | null;
+};
+
+export type GmcIssueRow = {
+  id?: string;
+  offer_id: string;
+  product_id_internal?: string | null;
+  status: string;
+  reason_code?: string;
+  reason_text?: string;
+  suggested_action?: string;
+};
+
+export async function fetchGoogleStatus(token: string): Promise<GoogleStatus> {
+  const res = await backendFetch("/api/app/google/status", token);
+  return jsonOrThrow(res, "Google status failed");
+}
+
+export async function fetchGoogleIssues(
+  token: string,
+  merchantId: string,
+): Promise<{
+  merchant_id: string | null;
+  issues: GmcIssueRow[];
+  matched: number;
+  unmatched: number;
+}> {
+  const q = merchantId
+    ? `?merchant_id=${encodeURIComponent(merchantId)}`
+    : "";
+  const res = await backendFetch(`/api/app/google/issues${q}`, token);
+  return jsonOrThrow(res, "Google issues failed");
+}
+
+export async function selectGoogleMerchant(
+  token: string,
+  merchantId: string,
+  displayName = "",
+): Promise<void> {
+  const res = await backendFetch("/api/app/google/merchants/select", token, {
+    method: "POST",
+    body: JSON.stringify({
+      merchant_id: merchantId,
+      display_name: displayName,
+    }),
+  });
+  await jsonOrThrow(res, "Select merchant failed");
+}
+
+/** Branch/dev: sync with injectable mock_issues (live Merchant client later). */
+export async function syncGoogleIssuesMock(
+  token: string,
+  merchantId: string,
+  mockIssues: Record<string, unknown>[],
+): Promise<{ written: number; matched: number; unmatched: number }> {
+  const res = await backendFetch("/api/app/google/issues/sync", token, {
+    method: "POST",
+    body: JSON.stringify({
+      merchant_id: merchantId,
+      mock_issues: mockIssues,
+    }),
+  });
+  return jsonOrThrow(res, "Issues sync failed");
+}

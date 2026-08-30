@@ -199,6 +199,55 @@ CREATE INDEX IF NOT EXISTS idx_feed_files_store ON feed_files(store_id, country)
 CREATE INDEX IF NOT EXISTS idx_product_assets_store ON product_assets(store_id, platform, language);
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_store ON usage_ledger(store_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_store_jobs_store ON store_jobs(store_id, created_at DESC);
+
+-- Google OAuth + Merchant Center issues + Ads metrics (read-only loop)
+CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+    store_id TEXT PRIMARY KEY REFERENCES stores(id),
+    refresh_token_enc TEXT NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS google_merchant_accounts (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    merchant_id TEXT NOT NULL,
+    display_name TEXT DEFAULT '',
+    is_selected INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(store_id, merchant_id)
+);
+
+CREATE TABLE IF NOT EXISTS gmc_product_issues (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    merchant_id TEXT NOT NULL,
+    offer_id TEXT NOT NULL,
+    product_id_internal TEXT,
+    status TEXT NOT NULL DEFAULT '',
+    reason_code TEXT DEFAULT '',
+    reason_text TEXT DEFAULT '',
+    raw_json TEXT,
+    synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ads_metrics_daily (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    ads_customer_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    offer_id TEXT,
+    campaign_id TEXT,
+    impressions INTEGER DEFAULT 0,
+    clicks INTEGER DEFAULT 0,
+    cost_micros INTEGER DEFAULT 0,
+    conversions REAL DEFAULT 0,
+    synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_gmc_issues_store ON gmc_product_issues(store_id, merchant_id);
+CREATE INDEX IF NOT EXISTS idx_gmc_merchants_store ON google_merchant_accounts(store_id);
+CREATE INDEX IF NOT EXISTS idx_ads_metrics_store ON ads_metrics_daily(store_id, ads_customer_id, date);
 """
 
 
@@ -1522,6 +1571,10 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM feed_excluded_skus WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM feed_configs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM products WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM gmc_product_issues WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM google_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM stores WHERE id = ?", (store_id,))
         c.commit()
 
@@ -1545,6 +1598,242 @@ def purge_store_data(store_id: str) -> bool:
         pass
     shutil.rmtree(DATA_DIR / "processed_images" / store_id, ignore_errors=True)
     return True
+
+
+# ─────────────────────────────────────────────
+# Google OAuth / GMC issues / Ads metrics
+# ─────────────────────────────────────────────
+
+def upsert_google_oauth_token(store_id: str, refresh_token_enc: str, scopes: str) -> None:
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO google_oauth_tokens (store_id, refresh_token_enc, scopes, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id) DO UPDATE SET
+              refresh_token_enc = excluded.refresh_token_enc,
+              scopes = excluded.scopes,
+              updated_at = datetime('now')
+            """,
+            (store_id, refresh_token_enc, scopes or ""),
+        )
+        c.commit()
+
+
+def get_google_oauth_token(store_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM google_oauth_tokens WHERE store_id = ?",
+            (store_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_google_oauth_token(store_id: str) -> None:
+    with _conn() as c:
+        c.execute("DELETE FROM google_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM gmc_product_issues WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
+        c.commit()
+
+
+def upsert_google_merchant_account(
+    store_id: str,
+    merchant_id: str,
+    display_name: str = "",
+    *,
+    select: bool = False,
+) -> dict:
+    mid = str(merchant_id).strip()
+    row_id = f"{store_id}:{mid}"
+    with _conn() as c:
+        if select:
+            c.execute(
+                "UPDATE google_merchant_accounts SET is_selected = 0 WHERE store_id = ?",
+                (store_id,),
+            )
+        c.execute(
+            """
+            INSERT INTO google_merchant_accounts
+              (id, store_id, merchant_id, display_name, is_selected, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id, merchant_id) DO UPDATE SET
+              display_name = excluded.display_name,
+              is_selected = CASE WHEN ? THEN 1 ELSE google_merchant_accounts.is_selected END
+            """,
+            (row_id, store_id, mid, display_name or mid, 1 if select else 0, 1 if select else 0),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM google_merchant_accounts WHERE store_id = ? AND merchant_id = ?",
+            (store_id, mid),
+        ).fetchone()
+        return dict(row)
+
+
+def list_google_merchant_accounts(store_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM google_merchant_accounts
+            WHERE store_id = ?
+            ORDER BY is_selected DESC, created_at ASC
+            """,
+            (store_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_selected_merchant_id(store_id: str) -> Optional[str]:
+    with _conn() as c:
+        row = c.execute(
+            """
+            SELECT merchant_id FROM google_merchant_accounts
+            WHERE store_id = ? AND is_selected = 1
+            LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+        if row:
+            return row["merchant_id"]
+        row = c.execute(
+            """
+            SELECT merchant_id FROM google_merchant_accounts
+            WHERE store_id = ? ORDER BY created_at ASC LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+        return row["merchant_id"] if row else None
+
+
+def replace_gmc_product_issues(store_id: str, merchant_id: str, issues: list[dict]) -> int:
+    """Replace all cached issues for one merchant. issues keys: offer_id, status, reason_code, reason_text, product_id_internal, raw_json."""
+    mid = str(merchant_id).strip()
+    with _conn() as c:
+        c.execute(
+            "DELETE FROM gmc_product_issues WHERE store_id = ? AND merchant_id = ?",
+            (store_id, mid),
+        )
+        n = 0
+        for it in issues:
+            oid = str(it.get("offer_id") or "").strip()
+            if not oid:
+                continue
+            c.execute(
+                """
+                INSERT INTO gmc_product_issues
+                  (id, store_id, merchant_id, offer_id, product_id_internal,
+                   status, reason_code, reason_text, raw_json, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    str(uuid.uuid4()),
+                    store_id,
+                    mid,
+                    oid,
+                    it.get("product_id_internal"),
+                    str(it.get("status") or ""),
+                    str(it.get("reason_code") or ""),
+                    str(it.get("reason_text") or ""),
+                    it.get("raw_json"),
+                ),
+            )
+            n += 1
+        c.commit()
+        return n
+
+
+def list_gmc_product_issues(store_id: str, merchant_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM gmc_product_issues
+            WHERE store_id = ? AND merchant_id = ?
+            ORDER BY
+              CASE WHEN product_id_internal IS NULL OR product_id_internal = '' THEN 1 ELSE 0 END,
+              status, offer_id
+            """,
+            (store_id, merchant_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def replace_ads_metrics_daily(store_id: str, ads_customer_id: str, rows: list[dict]) -> int:
+    cid = str(ads_customer_id).strip()
+    with _conn() as c:
+        c.execute(
+            "DELETE FROM ads_metrics_daily WHERE store_id = ? AND ads_customer_id = ?",
+            (store_id, cid),
+        )
+        n = 0
+        for it in rows:
+            c.execute(
+                """
+                INSERT INTO ads_metrics_daily
+                  (id, store_id, ads_customer_id, date, offer_id, campaign_id,
+                   impressions, clicks, cost_micros, conversions, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    str(uuid.uuid4()),
+                    store_id,
+                    cid,
+                    str(it.get("date") or ""),
+                    it.get("offer_id"),
+                    it.get("campaign_id"),
+                    int(it.get("impressions") or 0),
+                    int(it.get("clicks") or 0),
+                    int(it.get("cost_micros") or 0),
+                    float(it.get("conversions") or 0),
+                ),
+            )
+            n += 1
+        c.commit()
+        return n
+
+
+def list_ads_metrics_daily(
+    store_id: str,
+    ads_customer_id: str,
+    *,
+    product_level_only: bool = False,
+) -> list[dict]:
+    with _conn() as c:
+        if product_level_only:
+            rows = c.execute(
+                """
+                SELECT * FROM ads_metrics_daily
+                WHERE store_id = ? AND ads_customer_id = ?
+                  AND offer_id IS NOT NULL AND offer_id != ''
+                ORDER BY date DESC, clicks DESC
+                """,
+                (store_id, ads_customer_id),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                """
+                SELECT * FROM ads_metrics_daily
+                WHERE store_id = ? AND ads_customer_id = ?
+                ORDER BY date DESC, clicks DESC
+                """,
+                (store_id, ads_customer_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def list_store_skus(store_id: str) -> set[str]:
+    """SKU set for offer_id matching (feed g:id)."""
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT v.sku FROM product_variants v
+            JOIN products p ON p.id = v.product_id
+            WHERE p.store_id = ? AND v.sku IS NOT NULL AND v.sku != ''
+            """,
+            (store_id,),
+        ).fetchall()
+        return {str(r["sku"]) for r in rows}
 
 
 # ─────────────────────────────────────────────

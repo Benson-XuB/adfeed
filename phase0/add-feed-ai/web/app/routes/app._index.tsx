@@ -5,6 +5,7 @@ import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { t } from "../lib/i18n";
 import { FeedWorkbench } from "../components/FeedWorkbench";
+import { GmcIssuesPanel } from "../components/GmcIssuesPanel";
 import {
   GenerateConfirmModal,
   buildGenerateConfirmItems,
@@ -505,6 +506,8 @@ export default function Home() {
         onCancel={() => setGenConfirmOpen(false)}
         onConfirm={confirmGenerate}
       />
+
+      <GmcIssuesPanel getToken={() => shopify.idToken()} />
 
       {generating ? (
         <s-section heading={t("pipeline.heading")}>

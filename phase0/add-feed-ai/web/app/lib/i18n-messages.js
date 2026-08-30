@@ -3,6 +3,18 @@ export const messages = {
   en: {
   "name": "AdFeed AI",
   "welcome": "AdFeed AI — Google Shopping Feed",
+  "gmc": {
+    "issuesTitle": "Review issues",
+    "issuesHint": "After your feed is in Merchant Center, sync disapproval reasons here. Manual sync only.",
+    "oauthNotConfigured": "Google OAuth is not configured on this server yet (post-review).",
+    "connectLater": "Connect Google after deploy to pull live Merchant issues.",
+    "merchant": "Merchant account",
+    "selectMerchant": "Select…",
+    "sync": "Sync",
+    "empty": "No cached issues yet. Sync after connecting Google.",
+    "unmatched": "Unmatched offer",
+    "matchStats": "Matched {{matched}} · unmatched {{unmatched}}"
+  },
   "cta": {
     "generate": "Generate feed",
     "create": "Generate feed",
@@ -780,6 +792,18 @@ export const messages = {
   "zh-CN": {
   "name": "AdFeed AI",
   "welcome": "AdFeed AI — Google 购物 Feed",
+  "gmc": {
+    "issuesTitle": "过审问题",
+    "issuesHint": "Feed 进入 Merchant Center 后，可在此同步拒审原因。仅支持手动同步。",
+    "oauthNotConfigured": "服务器尚未配置 Google OAuth（审核结束后再上线）。",
+    "connectLater": "部署并连接 Google 后可拉取实时 Merchant 问题。",
+    "merchant": "Merchant 账号",
+    "selectMerchant": "选择…",
+    "sync": "同步",
+    "empty": "暂无缓存问题。连接 Google 后点同步。",
+    "unmatched": "未匹配 offer",
+    "matchStats": "已匹配 {{matched}} · 未匹配 {{unmatched}}"
+  },
   "cta": {
     "generate": "生成 Feed",
     "create": "生成 Feed",
