@@ -33,8 +33,10 @@ from .store_db import Store as StoreModel
 app = FastAPI(title="AdFeed AI", version="0.3.0", request_max_size=200 * 1024 * 1024)
 
 from .platforms.google.router import router as google_platform_router
+from .platforms.meta.router import router as meta_platform_router
 
 app.include_router(google_platform_router)
+app.include_router(meta_platform_router)
 
 
 # Embedded admin + CLI tunnels call the API from HTTPS origins (not localhost UI).

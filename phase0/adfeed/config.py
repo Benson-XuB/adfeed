@@ -85,6 +85,15 @@ GOOGLE_ADS_DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
 GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
 GOOGLE_ADS_API_VERSION = os.getenv("GOOGLE_ADS_API_VERSION", "v19")
 
+# Meta Catalog (optional until post-review deploy)
+META_APP_ID = os.getenv("META_APP_ID", "")
+META_APP_SECRET = os.getenv("META_APP_SECRET", "")
+META_OAUTH_REDIRECT_URI = os.getenv(
+    "META_OAUTH_REDIRECT_URI",
+    "https://deltfu.com/api/app/meta/oauth/callback",
+)
+META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v21.0")
+
 # ============================================
 # Mock 数据配置
 # ============================================

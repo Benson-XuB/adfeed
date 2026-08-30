@@ -248,6 +248,27 @@ CREATE TABLE IF NOT EXISTS ads_metrics_daily (
 CREATE INDEX IF NOT EXISTS idx_gmc_issues_store ON gmc_product_issues(store_id, merchant_id);
 CREATE INDEX IF NOT EXISTS idx_gmc_merchants_store ON google_merchant_accounts(store_id);
 CREATE INDEX IF NOT EXISTS idx_ads_metrics_store ON ads_metrics_daily(store_id, ads_customer_id, date);
+
+-- Meta Catalog (OAuth + selected catalogs)
+CREATE TABLE IF NOT EXISTS meta_oauth_tokens (
+    store_id TEXT PRIMARY KEY REFERENCES stores(id),
+    access_token_enc TEXT NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS meta_catalogs (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    catalog_id TEXT NOT NULL,
+    display_name TEXT DEFAULT '',
+    product_feed_id TEXT DEFAULT '',
+    is_selected INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(store_id, catalog_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_meta_catalogs_store ON meta_catalogs(store_id);
 """
 
 
@@ -1575,6 +1596,8 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM google_oauth_tokens WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM meta_catalogs WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM meta_oauth_tokens WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM stores WHERE id = ?", (store_id,))
         c.commit()
 
@@ -1834,6 +1857,131 @@ def list_store_skus(store_id: str) -> set[str]:
             (store_id,),
         ).fetchall()
         return {str(r["sku"]) for r in rows}
+
+
+# ─────────────────────────────────────────────
+# Meta OAuth / catalogs
+# ─────────────────────────────────────────────
+
+def upsert_meta_oauth_token(store_id: str, access_token_enc: str, scopes: str) -> None:
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO meta_oauth_tokens (store_id, access_token_enc, scopes, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id) DO UPDATE SET
+              access_token_enc = excluded.access_token_enc,
+              scopes = excluded.scopes,
+              updated_at = datetime('now')
+            """,
+            (store_id, access_token_enc, scopes or ""),
+        )
+        c.commit()
+
+
+def get_meta_oauth_token(store_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM meta_oauth_tokens WHERE store_id = ?",
+            (store_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_meta_oauth_token(store_id: str) -> None:
+    with _conn() as c:
+        c.execute("DELETE FROM meta_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM meta_catalogs WHERE store_id = ?", (store_id,))
+        c.commit()
+
+
+def upsert_meta_catalog(
+    store_id: str,
+    catalog_id: str,
+    display_name: str = "",
+    *,
+    product_feed_id: str = "",
+    select: bool = False,
+) -> dict:
+    cid = str(catalog_id).strip()
+    row_id = f"{store_id}:meta:{cid}"
+    with _conn() as c:
+        if select:
+            c.execute(
+                "UPDATE meta_catalogs SET is_selected = 0 WHERE store_id = ?",
+                (store_id,),
+            )
+        existing = c.execute(
+            "SELECT product_feed_id FROM meta_catalogs WHERE store_id = ? AND catalog_id = ?",
+            (store_id, cid),
+        ).fetchone()
+        feed_id = product_feed_id or (
+            (existing["product_feed_id"] if existing else "") or ""
+        )
+        c.execute(
+            """
+            INSERT INTO meta_catalogs
+              (id, store_id, catalog_id, display_name, product_feed_id, is_selected, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id, catalog_id) DO UPDATE SET
+              display_name = excluded.display_name,
+              product_feed_id = CASE
+                WHEN excluded.product_feed_id != '' THEN excluded.product_feed_id
+                ELSE meta_catalogs.product_feed_id
+              END,
+              is_selected = CASE WHEN ? THEN 1 ELSE meta_catalogs.is_selected END
+            """,
+            (
+                row_id,
+                store_id,
+                cid,
+                display_name or cid,
+                feed_id,
+                1 if select else 0,
+                1 if select else 0,
+            ),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM meta_catalogs WHERE store_id = ? AND catalog_id = ?",
+            (store_id, cid),
+        ).fetchone()
+        return dict(row)
+
+
+def list_meta_catalogs(store_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM meta_catalogs
+            WHERE store_id = ?
+            ORDER BY is_selected DESC, created_at ASC
+            """,
+            (store_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_selected_meta_catalog_id(store_id: str) -> Optional[str]:
+    with _conn() as c:
+        row = c.execute(
+            """
+            SELECT catalog_id FROM meta_catalogs
+            WHERE store_id = ? AND is_selected = 1
+            LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+        if row:
+            return row["catalog_id"]
+        row = c.execute(
+            """
+            SELECT catalog_id FROM meta_catalogs
+            WHERE store_id = ? ORDER BY created_at ASC LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+        return row["catalog_id"] if row else None
 
 
 # ─────────────────────────────────────────────

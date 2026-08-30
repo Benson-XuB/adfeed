@@ -31,6 +31,18 @@ export const messages = {
     "rowStats": "{{imps}} imps · {{clicks}} clicks · {{cost}}",
     "empty": "No cached metrics yet."
   },
+  "meta": {
+    "catalogTitle": "Meta catalog",
+    "catalogHint": "Connect Meta, pick a catalog, and schedule Meta to fetch your AdFeed XML URL.",
+    "oauthNotConfigured": "Meta OAuth is not configured on this server yet (set META_*).",
+    "connect": "Connect Meta",
+    "disconnect": "Disconnect",
+    "catalog": "Catalog",
+    "selectCatalog": "Select…",
+    "refreshCatalogs": "Refresh catalogs",
+    "attachFeed": "Attach feed URL",
+    "attachOk": "Scheduled feed {{feedId}}. Meta will fetch your Meta feed URL."
+  },
   "cta": {
     "generate": "Generate feed",
     "create": "Generate feed",
@@ -835,6 +847,18 @@ export const messages = {
     "productLevel": "{{n}} 条商品级记录",
     "rowStats": "{{imps}} 展示 · {{clicks}} 点击 · {{cost}}",
     "empty": "暂无缓存效果数据。"
+  },
+  "meta": {
+    "catalogTitle": "Meta 目录",
+    "catalogHint": "连接 Meta，选择 Catalog，并把本店 Meta Feed URL 挂到定时抓取。",
+    "oauthNotConfigured": "服务器尚未配置 Meta OAuth（需设置 META_*）。",
+    "connect": "连接 Meta",
+    "disconnect": "断开连接",
+    "catalog": "目录",
+    "selectCatalog": "选择…",
+    "refreshCatalogs": "刷新目录",
+    "attachFeed": "挂接 Feed URL",
+    "attachOk": "已创建定时 Feed {{feedId}}，Meta 将拉取你的 Meta Feed。"
   },
   "cta": {
     "generate": "生成 Feed",

@@ -754,3 +754,73 @@ export async function syncAdsMetrics(
   });
   return jsonOrThrow(res, "Ads sync failed");
 }
+
+export type MetaCatalog = {
+  catalog_id: string;
+  display_name?: string;
+  product_feed_id?: string;
+  is_selected?: number;
+};
+
+export type MetaStatus = {
+  oauth_configured: boolean;
+  connected: boolean;
+  scopes: string;
+  catalogs: MetaCatalog[];
+  selected_catalog_id: string | null;
+};
+
+export async function fetchMetaStatus(token: string): Promise<MetaStatus> {
+  const res = await backendFetch("/api/app/meta/status", token);
+  return jsonOrThrow(res, "Meta status failed");
+}
+
+export async function startMetaOAuth(
+  token: string,
+): Promise<{ authorize_url: string }> {
+  const res = await backendFetch("/api/app/meta/oauth/start", token);
+  return jsonOrThrow(res, "Meta OAuth start failed");
+}
+
+export async function disconnectMeta(token: string): Promise<void> {
+  const res = await backendFetch("/api/app/meta/disconnect", token, {
+    method: "POST",
+  });
+  await jsonOrThrow(res, "Disconnect Meta failed");
+}
+
+export async function selectMetaCatalog(
+  token: string,
+  catalogId: string,
+  displayName = "",
+): Promise<void> {
+  const res = await backendFetch("/api/app/meta/catalogs/select", token, {
+    method: "POST",
+    body: JSON.stringify({
+      catalog_id: catalogId,
+      display_name: displayName,
+    }),
+  });
+  await jsonOrThrow(res, "Select catalog failed");
+}
+
+export async function refreshMetaCatalogs(token: string): Promise<{
+  catalogs: MetaCatalog[];
+}> {
+  const res = await backendFetch("/api/app/meta/catalogs/refresh", token, {
+    method: "POST",
+  });
+  return jsonOrThrow(res, "Refresh catalogs failed");
+}
+
+export async function attachMetaFeed(
+  token: string,
+  catalogId: string,
+  country = "US",
+): Promise<{ product_feed_id?: string; feed_url?: string }> {
+  const res = await backendFetch("/api/app/meta/feed/attach", token, {
+    method: "POST",
+    body: JSON.stringify({ catalog_id: catalogId, country }),
+  });
+  return jsonOrThrow(res, "Attach Meta feed failed");
+}
