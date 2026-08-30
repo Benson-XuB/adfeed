@@ -269,6 +269,29 @@ CREATE TABLE IF NOT EXISTS meta_catalogs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_meta_catalogs_store ON meta_catalogs(store_id);
+
+-- TikTok Shop (OAuth + selected shops)
+CREATE TABLE IF NOT EXISTS tiktok_oauth_tokens (
+    store_id TEXT PRIMARY KEY REFERENCES stores(id),
+    refresh_token_enc TEXT NOT NULL,
+    access_token_enc TEXT NOT NULL DEFAULT '',
+    scopes TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tiktok_shops (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    shop_id TEXT NOT NULL,
+    display_name TEXT DEFAULT '',
+    feed_url TEXT DEFAULT '',
+    cipher TEXT DEFAULT '',
+    is_selected INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(store_id, shop_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tiktok_shops_store ON tiktok_shops(store_id);
 """
 
 
@@ -1598,6 +1621,8 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_catalogs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM tiktok_shops WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM tiktok_oauth_tokens WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM stores WHERE id = ?", (store_id,))
         c.commit()
 
@@ -1982,6 +2007,143 @@ def get_selected_meta_catalog_id(store_id: str) -> Optional[str]:
             (store_id,),
         ).fetchone()
         return row["catalog_id"] if row else None
+
+
+# ─────────────────────────────────────────────
+# TikTok OAuth / shops
+# ─────────────────────────────────────────────
+
+def upsert_tiktok_oauth_token(
+    store_id: str,
+    refresh_token_enc: str,
+    access_token_enc: str = "",
+    scopes: str = "",
+) -> None:
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO tiktok_oauth_tokens
+              (store_id, refresh_token_enc, access_token_enc, scopes, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id) DO UPDATE SET
+              refresh_token_enc = excluded.refresh_token_enc,
+              access_token_enc = excluded.access_token_enc,
+              scopes = excluded.scopes,
+              updated_at = datetime('now')
+            """,
+            (store_id, refresh_token_enc, access_token_enc or "", scopes or ""),
+        )
+        c.commit()
+
+
+def get_tiktok_oauth_token(store_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM tiktok_oauth_tokens WHERE store_id = ?",
+            (store_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def delete_tiktok_oauth_token(store_id: str) -> None:
+    with _conn() as c:
+        c.execute("DELETE FROM tiktok_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM tiktok_shops WHERE store_id = ?", (store_id,))
+        c.commit()
+
+
+def upsert_tiktok_shop(
+    store_id: str,
+    shop_id: str,
+    display_name: str = "",
+    *,
+    feed_url: str = "",
+    cipher: str = "",
+    select: bool = False,
+) -> dict:
+    sid = str(shop_id).strip()
+    row_id = f"{store_id}:tt:{sid}"
+    with _conn() as c:
+        if select:
+            c.execute(
+                "UPDATE tiktok_shops SET is_selected = 0 WHERE store_id = ?",
+                (store_id,),
+            )
+        existing = c.execute(
+            "SELECT feed_url, cipher FROM tiktok_shops WHERE store_id = ? AND shop_id = ?",
+            (store_id, sid),
+        ).fetchone()
+        keep_feed = feed_url or ((existing["feed_url"] if existing else "") or "")
+        keep_cipher = cipher or ((existing["cipher"] if existing else "") or "")
+        c.execute(
+            """
+            INSERT INTO tiktok_shops
+              (id, store_id, shop_id, display_name, feed_url, cipher, is_selected, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id, shop_id) DO UPDATE SET
+              display_name = excluded.display_name,
+              feed_url = CASE
+                WHEN excluded.feed_url != '' THEN excluded.feed_url
+                ELSE tiktok_shops.feed_url
+              END,
+              cipher = CASE
+                WHEN excluded.cipher != '' THEN excluded.cipher
+                ELSE tiktok_shops.cipher
+              END,
+              is_selected = CASE WHEN ? THEN 1 ELSE tiktok_shops.is_selected END
+            """,
+            (
+                row_id,
+                store_id,
+                sid,
+                display_name or sid,
+                keep_feed,
+                keep_cipher,
+                1 if select else 0,
+                1 if select else 0,
+            ),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM tiktok_shops WHERE store_id = ? AND shop_id = ?",
+            (store_id, sid),
+        ).fetchone()
+        return dict(row)
+
+
+def list_tiktok_shops(store_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM tiktok_shops
+            WHERE store_id = ?
+            ORDER BY is_selected DESC, created_at ASC
+            """,
+            (store_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_selected_tiktok_shop_id(store_id: str) -> Optional[str]:
+    with _conn() as c:
+        row = c.execute(
+            """
+            SELECT shop_id FROM tiktok_shops
+            WHERE store_id = ? AND is_selected = 1
+            LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+        if row:
+            return row["shop_id"]
+        row = c.execute(
+            """
+            SELECT shop_id FROM tiktok_shops
+            WHERE store_id = ? ORDER BY created_at ASC LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+        return row["shop_id"] if row else None
 
 
 # ─────────────────────────────────────────────

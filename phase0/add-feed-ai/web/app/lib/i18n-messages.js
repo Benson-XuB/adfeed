@@ -43,6 +43,18 @@ export const messages = {
     "attachFeed": "Attach feed URL",
     "attachOk": "Scheduled feed {{feedId}}. Meta will fetch your Meta feed URL."
   },
+  "tiktok": {
+    "shopTitle": "TikTok Shop",
+    "shopHint": "Connect TikTok Shop, pick a shop, and register your AdFeed CSV URL (no invented weights).",
+    "oauthNotConfigured": "TikTok OAuth is not configured on this server yet (set TIKTOK_*).",
+    "connect": "Connect TikTok",
+    "disconnect": "Disconnect",
+    "shop": "Shop",
+    "selectShop": "Select…",
+    "refreshShops": "Refresh shops",
+    "attachFeed": "Register feed URL",
+    "attachOk": "Registered CSV URL: {{url}}"
+  },
   "cta": {
     "generate": "Generate feed",
     "create": "Generate feed",
@@ -859,6 +871,18 @@ export const messages = {
     "refreshCatalogs": "刷新目录",
     "attachFeed": "挂接 Feed URL",
     "attachOk": "已创建定时 Feed {{feedId}}，Meta 将拉取你的 Meta Feed。"
+  },
+  "tiktok": {
+    "shopTitle": "TikTok 小店",
+    "shopHint": "连接 TikTok Shop，选择店铺，并登记本店 CSV Feed URL（不编造重量）。",
+    "oauthNotConfigured": "服务器尚未配置 TikTok OAuth（需设置 TIKTOK_*）。",
+    "connect": "连接 TikTok",
+    "disconnect": "断开连接",
+    "shop": "店铺",
+    "selectShop": "选择…",
+    "refreshShops": "刷新店铺",
+    "attachFeed": "登记 Feed URL",
+    "attachOk": "已登记 CSV：{{url}}"
   },
   "cta": {
     "generate": "生成 Feed",

@@ -94,6 +94,17 @@ META_OAUTH_REDIRECT_URI = os.getenv(
 )
 META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v21.0")
 
+# TikTok Shop Partner (optional until post-review deploy)
+TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "")
+TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
+TIKTOK_OAUTH_REDIRECT_URI = os.getenv(
+    "TIKTOK_OAUTH_REDIRECT_URI",
+    "https://deltfu.com/api/app/tiktok/oauth/callback",
+)
+TIKTOK_API_BASE = os.getenv(
+    "TIKTOK_API_BASE", "https://open-api.tiktokglobalshop.com"
+)
+
 # ============================================
 # Mock 数据配置
 # ============================================

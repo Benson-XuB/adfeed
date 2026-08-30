@@ -8,6 +8,7 @@ import { FeedWorkbench } from "../components/FeedWorkbench";
 import { GmcIssuesPanel } from "../components/GmcIssuesPanel";
 import { AdsMetricsPanel } from "../components/AdsMetricsPanel";
 import { MetaCatalogPanel } from "../components/MetaCatalogPanel";
+import { TikTokShopPanel } from "../components/TikTokShopPanel";
 import {
   GenerateConfirmModal,
   buildGenerateConfirmItems,
@@ -516,6 +517,7 @@ export default function Home() {
       <GmcIssuesPanel getToken={() => shopify.idToken()} />
       <AdsMetricsPanel getToken={() => shopify.idToken()} />
       <MetaCatalogPanel getToken={() => shopify.idToken()} />
+      <TikTokShopPanel getToken={() => shopify.idToken()} />
 
       {generating ? (
         <s-section heading={t("pipeline.heading")}>

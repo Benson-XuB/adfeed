@@ -824,3 +824,70 @@ export async function attachMetaFeed(
   });
   return jsonOrThrow(res, "Attach Meta feed failed");
 }
+
+export type TikTokShop = {
+  shop_id: string;
+  display_name?: string;
+  feed_url?: string;
+  is_selected?: number;
+};
+
+export type TikTokStatus = {
+  oauth_configured: boolean;
+  connected: boolean;
+  scopes: string;
+  shops: TikTokShop[];
+  selected_shop_id: string | null;
+};
+
+export async function fetchTikTokStatus(token: string): Promise<TikTokStatus> {
+  const res = await backendFetch("/api/app/tiktok/status", token);
+  return jsonOrThrow(res, "TikTok status failed");
+}
+
+export async function startTikTokOAuth(
+  token: string,
+): Promise<{ authorize_url: string }> {
+  const res = await backendFetch("/api/app/tiktok/oauth/start", token);
+  return jsonOrThrow(res, "TikTok OAuth start failed");
+}
+
+export async function disconnectTikTok(token: string): Promise<void> {
+  const res = await backendFetch("/api/app/tiktok/disconnect", token, {
+    method: "POST",
+  });
+  await jsonOrThrow(res, "Disconnect TikTok failed");
+}
+
+export async function selectTikTokShop(
+  token: string,
+  shopId: string,
+  displayName = "",
+): Promise<void> {
+  const res = await backendFetch("/api/app/tiktok/shops/select", token, {
+    method: "POST",
+    body: JSON.stringify({ shop_id: shopId, display_name: displayName }),
+  });
+  await jsonOrThrow(res, "Select shop failed");
+}
+
+export async function refreshTikTokShops(token: string): Promise<{
+  shops: TikTokShop[];
+}> {
+  const res = await backendFetch("/api/app/tiktok/shops/refresh", token, {
+    method: "POST",
+  });
+  return jsonOrThrow(res, "Refresh shops failed");
+}
+
+export async function attachTikTokFeed(
+  token: string,
+  shopId: string,
+  country = "US",
+): Promise<{ feed_url?: string; mode?: string }> {
+  const res = await backendFetch("/api/app/tiktok/feed/attach", token, {
+    method: "POST",
+    body: JSON.stringify({ shop_id: shopId, country }),
+  });
+  return jsonOrThrow(res, "Attach TikTok feed failed");
+}
