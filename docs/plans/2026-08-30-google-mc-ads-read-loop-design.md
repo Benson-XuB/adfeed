@@ -1,7 +1,8 @@
 # Google MC + Ads 只读闭环 — 设计规格（SDD · Spec）
 
 **日期：** 2026-08-30  
-**状态：** DRAFT — 待产品确认后再写 Implementation Plan / 动代码  
+**状态：** ACCEPTED（开放问题已答，2026-08-30）— 可写 Implementation Plan；审核期仍禁止动生产 Google OAuth  
+
 **分支：** `docs/google-mc-ads-read-loop`（与 App Store 审核中的生产改动隔离）  
 **产品形态：** AdFeed AI **应用内扩展模块**（不新建 Shopify App / 不换 Client ID）
 
@@ -172,13 +173,13 @@ Feed 侧已有稳定 id（Shopify variant / 自有 offer id — 以当前 `feed_
 
 ```
 [ 生成 Feed ]  [ Feed 链接 ]
-[ Google 商品状态 ]  ← Phase 1
+[ 过审问题 ]  ← Phase 1
   未连接 → [连接 Google]
-  已连接 → 上次同步时间 [同步]
+  已连接 → Merchant 选择器（可多账号）| 上次同步 [同步]
   列表：SKU | 状态 | 原因 | [去处理]
-[ 广告效果 7日 ]     ← Phase 2（可灰显「连接广告账号」）
-  花费 | 点击 | 展示
-  [查看商品问题]
+[ 广告效果 7日 ]     ← Phase 2（商品级 metrics；可灰显「连接广告账号」）
+  花费 | 点击 | 展示（按商品/offer）
+  [查看过审问题]
 ```
 
 文案避免保证过审；避免 Features/listing 未批准前就写「连接 Google」（上架后再改 listing）。
@@ -227,21 +228,30 @@ Feed 侧已有稳定 id（Shopify variant / 自有 offer id — 以当前 `feed_
 
 ---
 
-## 13. 开放问题（请你批注）
+## 13. 开放问题 — 已决议
 
-1. P1 UI 标题用「Google 商品状态」还是「过审问题」？  
-2. 同步频率：手动 only，还是每日 cron？  
-3. 多 Merchant 账号：MVP 是否只支持绑 1 个？  
-4. P2 第一版要不要商品级 metrics，还是账户+系列就够？  
+| # | 决议 | 含义 |
+|---|------|------|
+| 1 | **B.「过审问题」** | P1 模块标题用「过审问题」，不用「Google 商品状态」 |
+| 2 | **A. 仅手动同步** | MVP 不设每日 cron；用户点「同步」才拉 MC |
+| 3 | **B. 支持多个 Merchant** | MVP 可绑多个 MC 账号（需账号切换 UI + 按 merchant_id 存 issues） |
+| 4 | **B. 要商品级 metrics** | P2 第一版做到商品级效果（不只账户+系列）；实现成本更高，spike 必须验证 Shopping/商品维度可用性 |
+
+### 决议对设计的影响（补丁）
+
+- **§5 P1 UI：** 入口文案改为「过审问题」。  
+- **§5 P1 同步：** 仅手动；`上次同步时间` +「同步」按钮。  
+- **§6 / 存储：** `merchant_id` 一对多（每 shop 多行或 JSON 列表）；UI 需「当前 Merchant」选择器。  
+- **§5 P2：** metrics 表需支持 product/offer 维度（或 shopping performance view）；若 Google API 对某账户拿不到商品级，降级展示账户+系列并标注「本账号无商品级数据」。  
 
 ---
 
-## 14. 下一步（你确认 Spec 后）
+## 14. 下一步
 
-1. 你在本文件批注 / 回复开放问题  
-2. 状态改为 **ACCEPTED**  
-3. 再开 `docs/plans/2026-08-30-google-mc-ads-read-loop.md`（Implementation Plan，writing-plans 粒度）  
-4. **另开** `feature/google-mc-issues` 实现分支；**禁止**在审核紧急修复分支上混入 Google OAuth  
+1. ~~开放问题~~ → 已答（1B/2A/3B/4B）  
+2. ~~Implementation Plan~~ → `docs/plans/2026-08-30-google-mc-ads-read-loop.md`  
+3. **另开** `feature/google-mc-issues`；审核期优先只做 Phase 0 spike  
+4. Phase 1 编码等上架稳定后再合入生产 deploy  
 
 ---
 
@@ -250,3 +260,5 @@ Feed 侧已有稳定 id（Shopify variant / 自有 offer id — 以当前 `feed_
 | 日期 | 变更 |
 |------|------|
 | 2026-08-30 | 初稿 DRAFT；分支 `docs/google-mc-ads-read-loop` |
+| 2026-08-30 | 开放问题决议 1B/2A/3B/4B；状态 ACCEPTED |
+| 2026-08-30 | 链到 Implementation Plan |
