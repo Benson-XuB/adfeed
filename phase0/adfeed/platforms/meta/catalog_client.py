@@ -115,3 +115,59 @@ class HttpMetaCatalogClient:
         except RuntimeError:
             pass
         return {"product_feed_id": feed_id, "catalog_id": catalog_id, "feed_url": feed_url}
+
+    def list_product_issues(self, catalog_id: str) -> list[dict]:
+        """Products with rejection / review issues (Graph product fields)."""
+        import json
+
+        payload = self._get(
+            f"/{catalog_id}/products",
+            {
+                "fields": "id,retailer_id,review_status,review_rejection_reasons",
+                "limit": "100",
+            },
+        )
+        return issues_from_meta_products(payload)
+
+
+def issues_from_meta_products(payload: dict) -> list[dict]:
+    """Normalize Graph catalog products → issue dicts."""
+    import json
+
+    out: list[dict] = []
+    for item in payload.get("data") or []:
+        status = str(item.get("review_status") or "").upper()
+        reasons = item.get("review_rejection_reasons") or []
+        offer = str(item.get("retailer_id") or item.get("id") or "").strip()
+        if not offer:
+            continue
+        if status in ("", "APPROVED", "PUBLISHED") and not reasons:
+            continue
+        if not reasons:
+            out.append(
+                {
+                    "offer_id": offer,
+                    "status": status.lower() or "disapproved",
+                    "reason_code": status.lower() or "review",
+                    "reason_text": status or "not approved",
+                    "raw_json": json.dumps(item, ensure_ascii=False),
+                }
+            )
+            continue
+        for r in reasons:
+            if isinstance(r, dict):
+                code = str(r.get("reason") or r.get("code") or "rejected")
+                text = str(r.get("description") or r.get("message") or code)
+            else:
+                code = str(r)
+                text = code
+            out.append(
+                {
+                    "offer_id": offer,
+                    "status": status.lower() or "disapproved",
+                    "reason_code": code,
+                    "reason_text": text,
+                    "raw_json": json.dumps(r if isinstance(r, dict) else {"reason": r}, ensure_ascii=False),
+                }
+            )
+    return out

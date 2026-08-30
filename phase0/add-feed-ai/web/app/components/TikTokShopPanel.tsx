@@ -3,10 +3,13 @@ import { t } from "../lib/i18n";
 import {
   attachTikTokFeed,
   disconnectTikTok,
+  fetchTikTokIssues,
   fetchTikTokStatus,
   refreshTikTokShops,
   selectTikTokShop,
   startTikTokOAuth,
+  syncTikTokIssues,
+  type PlatformIssueRow,
   type TikTokStatus,
 } from "../lib/adfeed-api";
 import styles from "./GmcIssuesPanel.module.css";
@@ -19,6 +22,8 @@ type Props = {
 export function TikTokShopPanel({ getToken, country = "US" }: Props) {
   const [status, setStatus] = useState<TikTokStatus | null>(null);
   const [shopId, setShopId] = useState("");
+  const [issues, setIssues] = useState<PlatformIssueRow[]>([]);
+  const [stats, setStats] = useState({ matched: 0, unmatched: 0 });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -31,6 +36,13 @@ export function TikTokShopPanel({ getToken, country = "US" }: Props) {
       setStatus(st);
       const sid = st.selected_shop_id || shopId;
       if (sid) setShopId(sid);
+      if (sid) {
+        const res = await fetchTikTokIssues(token, sid);
+        setIssues(res.issues || []);
+        setStats({ matched: res.matched, unmatched: res.unmatched });
+      } else {
+        setIssues([]);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -60,6 +72,7 @@ export function TikTokShopPanel({ getToken, country = "US" }: Props) {
       const token = await getToken();
       await disconnectTikTok(token);
       setShopId("");
+      setIssues([]);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -105,6 +118,21 @@ export function TikTokShopPanel({ getToken, country = "US" }: Props) {
       const token = await getToken();
       const res = await attachTikTokFeed(token, shopId, country);
       setMsg(t("tiktok.attachOk", { url: String(res.feed_url || "") }));
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSyncIssues = async () => {
+    if (!shopId) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      await syncTikTokIssues(token, shopId);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -159,6 +187,13 @@ export function TikTokShopPanel({ getToken, country = "US" }: Props) {
           >
             {t("tiktok.attachFeed")}
           </s-button>
+          <s-button
+            variant="secondary"
+            disabled={busy || !shopId}
+            onClick={() => void onSyncIssues()}
+          >
+            {t("tiktok.syncIssues")}
+          </s-button>
           <s-button variant="tertiary" disabled={busy} onClick={() => void onDisconnect()}>
             {t("tiktok.disconnect")}
           </s-button>
@@ -167,6 +202,32 @@ export function TikTokShopPanel({ getToken, country = "US" }: Props) {
 
       {err ? <p className={styles.err}>{err}</p> : null}
       {msg ? <p className={styles.meta}>{msg}</p> : null}
+
+      {issues.length > 0 ? (
+        <>
+          <p className={styles.meta}>
+            {t("tiktok.matchStats", {
+              matched: String(stats.matched),
+              unmatched: String(stats.unmatched),
+            })}
+          </p>
+          <ul className={styles.list}>
+            {issues.map((it) => (
+              <li key={it.id || `${it.offer_id}-${it.reason_code}`}>
+                <span className={styles.sku}>{it.offer_id}</span>
+                <span className={styles.status}>{it.status}</span>
+                <span className={styles.reason}>{it.reason_text || it.reason_code}</span>
+                <span className={styles.action}>{it.suggested_action}</span>
+                {!it.product_id_internal ? (
+                  <span className={styles.unmatched}>{t("tiktok.unmatched")}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : status?.connected ? (
+        <p className={styles.muted}>{t("tiktok.issuesEmpty")}</p>
+      ) : null}
     </section>
   );
 }

@@ -825,6 +825,41 @@ export async function attachMetaFeed(
   return jsonOrThrow(res, "Attach Meta feed failed");
 }
 
+export type PlatformIssueRow = {
+  id?: string;
+  offer_id: string;
+  product_id_internal?: string | null;
+  status: string;
+  reason_code?: string;
+  reason_text?: string;
+  suggested_action?: string;
+};
+
+export async function fetchMetaIssues(
+  token: string,
+  catalogId: string,
+): Promise<{
+  catalog_id: string | null;
+  issues: PlatformIssueRow[];
+  matched: number;
+  unmatched: number;
+}> {
+  const q = catalogId ? `?catalog_id=${encodeURIComponent(catalogId)}` : "";
+  const res = await backendFetch(`/api/app/meta/issues${q}`, token);
+  return jsonOrThrow(res, "Meta issues failed");
+}
+
+export async function syncMetaIssues(
+  token: string,
+  catalogId: string,
+): Promise<{ written: number; matched: number; unmatched: number }> {
+  const res = await backendFetch("/api/app/meta/issues/sync", token, {
+    method: "POST",
+    body: JSON.stringify({ catalog_id: catalogId }),
+  });
+  return jsonOrThrow(res, "Meta issues sync failed");
+}
+
 export type TikTokShop = {
   shop_id: string;
   display_name?: string;
@@ -890,4 +925,29 @@ export async function attachTikTokFeed(
     body: JSON.stringify({ shop_id: shopId, country }),
   });
   return jsonOrThrow(res, "Attach TikTok feed failed");
+}
+
+export async function fetchTikTokIssues(
+  token: string,
+  shopId: string,
+): Promise<{
+  shop_id: string | null;
+  issues: PlatformIssueRow[];
+  matched: number;
+  unmatched: number;
+}> {
+  const q = shopId ? `?shop_id=${encodeURIComponent(shopId)}` : "";
+  const res = await backendFetch(`/api/app/tiktok/issues${q}`, token);
+  return jsonOrThrow(res, "TikTok issues failed");
+}
+
+export async function syncTikTokIssues(
+  token: string,
+  shopId: string,
+): Promise<{ written: number; matched: number; unmatched: number }> {
+  const res = await backendFetch("/api/app/tiktok/issues/sync", token, {
+    method: "POST",
+    body: JSON.stringify({ shop_id: shopId }),
+  });
+  return jsonOrThrow(res, "TikTok issues sync failed");
 }

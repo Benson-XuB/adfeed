@@ -198,3 +198,74 @@ async def app_meta_feed_attach(
         product_feed_id=str(result.get("product_feed_id") or ""),
     )
     return {"ok": True, **result}
+
+
+class MetaIssuesSyncBody(BaseModel):
+    catalog_id: Optional[str] = None
+    mock_issues: Optional[list[dict]] = None
+
+
+@router.get("/api/app/meta/issues")
+async def app_meta_issues(
+    store: StoreModel = Depends(require_store),
+    catalog_id: Optional[str] = None,
+):
+    from adfeed import store_db
+    from adfeed.platforms.common.issue_actions import suggest_action
+
+    cid = (catalog_id or "").strip() or store_db.get_selected_meta_catalog_id(store.id)
+    if not cid:
+        return {"catalog_id": None, "issues": [], "matched": 0, "unmatched": 0}
+    issues = store_db.list_meta_product_issues(store.id, cid)
+    out = []
+    matched = unmatched = 0
+    for it in issues:
+        row = dict(it)
+        row["suggested_action"] = suggest_action(it.get("reason_code") or "")["action"]
+        if it.get("product_id_internal"):
+            matched += 1
+        else:
+            unmatched += 1
+        out.append(row)
+    return {
+        "catalog_id": cid,
+        "issues": out,
+        "matched": matched,
+        "unmatched": unmatched,
+    }
+
+
+@router.post("/api/app/meta/issues/sync")
+async def app_meta_issues_sync(
+    body: MetaIssuesSyncBody,
+    store: StoreModel = Depends(require_store),
+):
+    from adfeed import store_db
+    from adfeed.platforms.meta.catalog_client import HttpMetaCatalogClient
+    from adfeed.platforms.meta.issues_sync import sync_meta_issues
+    from adfeed.platforms.meta.oauth import access_token_for_store
+
+    cid = (body.catalog_id or "").strip() or store_db.get_selected_meta_catalog_id(store.id)
+    if not cid:
+        raise HTTPException(400, "Select a Meta catalog first")
+    if not store_db.get_meta_oauth_token(store.id) and body.mock_issues is None:
+        raise HTTPException(400, "Connect Meta first")
+
+    class _Mock:
+        def __init__(self, issues):
+            self._issues = issues
+
+        def list_product_issues(self, catalog_id: str):
+            return self._issues
+
+    if body.mock_issues is not None:
+        client = _Mock(body.mock_issues)
+    else:
+        try:
+            client = HttpMetaCatalogClient(access_token_for_store(store.id))
+        except RuntimeError as e:
+            raise HTTPException(502, str(e)) from e
+    try:
+        return sync_meta_issues(store.id, cid, client)
+    except RuntimeError as e:
+        raise HTTPException(502, str(e)) from e

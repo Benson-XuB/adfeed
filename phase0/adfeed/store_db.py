@@ -292,6 +292,35 @@ CREATE TABLE IF NOT EXISTS tiktok_shops (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tiktok_shops_store ON tiktok_shops(store_id);
+
+CREATE TABLE IF NOT EXISTS meta_product_issues (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    catalog_id TEXT NOT NULL,
+    offer_id TEXT NOT NULL,
+    product_id_internal TEXT,
+    status TEXT NOT NULL DEFAULT '',
+    reason_code TEXT DEFAULT '',
+    reason_text TEXT DEFAULT '',
+    raw_json TEXT,
+    synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tiktok_product_issues (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    shop_id TEXT NOT NULL,
+    offer_id TEXT NOT NULL,
+    product_id_internal TEXT,
+    status TEXT NOT NULL DEFAULT '',
+    reason_code TEXT DEFAULT '',
+    reason_text TEXT DEFAULT '',
+    raw_json TEXT,
+    synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_meta_issues_store ON meta_product_issues(store_id, catalog_id);
+CREATE INDEX IF NOT EXISTS idx_tiktok_issues_store ON tiktok_product_issues(store_id, shop_id);
 """
 
 
@@ -1621,8 +1650,10 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_catalogs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM meta_product_issues WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM tiktok_shops WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM tiktok_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM tiktok_product_issues WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM stores WHERE id = ?", (store_id,))
         c.commit()
 
@@ -2144,6 +2175,108 @@ def get_selected_tiktok_shop_id(store_id: str) -> Optional[str]:
             (store_id,),
         ).fetchone()
         return row["shop_id"] if row else None
+
+
+def replace_meta_product_issues(store_id: str, catalog_id: str, issues: list[dict]) -> int:
+    cid = str(catalog_id).strip()
+    with _conn() as c:
+        c.execute(
+            "DELETE FROM meta_product_issues WHERE store_id = ? AND catalog_id = ?",
+            (store_id, cid),
+        )
+        n = 0
+        for it in issues:
+            oid = str(it.get("offer_id") or "").strip()
+            if not oid:
+                continue
+            c.execute(
+                """
+                INSERT INTO meta_product_issues
+                  (id, store_id, catalog_id, offer_id, product_id_internal,
+                   status, reason_code, reason_text, raw_json, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    str(uuid.uuid4()),
+                    store_id,
+                    cid,
+                    oid,
+                    it.get("product_id_internal"),
+                    str(it.get("status") or ""),
+                    str(it.get("reason_code") or ""),
+                    str(it.get("reason_text") or ""),
+                    it.get("raw_json"),
+                ),
+            )
+            n += 1
+        c.commit()
+        return n
+
+
+def list_meta_product_issues(store_id: str, catalog_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM meta_product_issues
+            WHERE store_id = ? AND catalog_id = ?
+            ORDER BY
+              CASE WHEN product_id_internal IS NULL OR product_id_internal = '' THEN 1 ELSE 0 END,
+              status, offer_id
+            """,
+            (store_id, catalog_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def replace_tiktok_product_issues(store_id: str, shop_id: str, issues: list[dict]) -> int:
+    sid = str(shop_id).strip()
+    with _conn() as c:
+        c.execute(
+            "DELETE FROM tiktok_product_issues WHERE store_id = ? AND shop_id = ?",
+            (store_id, sid),
+        )
+        n = 0
+        for it in issues:
+            oid = str(it.get("offer_id") or "").strip()
+            if not oid:
+                continue
+            c.execute(
+                """
+                INSERT INTO tiktok_product_issues
+                  (id, store_id, shop_id, offer_id, product_id_internal,
+                   status, reason_code, reason_text, raw_json, synced_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (
+                    str(uuid.uuid4()),
+                    store_id,
+                    sid,
+                    oid,
+                    it.get("product_id_internal"),
+                    str(it.get("status") or ""),
+                    str(it.get("reason_code") or ""),
+                    str(it.get("reason_text") or ""),
+                    it.get("raw_json"),
+                ),
+            )
+            n += 1
+        c.commit()
+        return n
+
+
+def list_tiktok_product_issues(store_id: str, shop_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM tiktok_product_issues
+            WHERE store_id = ? AND shop_id = ?
+            ORDER BY
+              CASE WHEN product_id_internal IS NULL OR product_id_internal = '' THEN 1 ELSE 0 END,
+              status, offer_id
+            """,
+            (store_id, shop_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ─────────────────────────────────────────────

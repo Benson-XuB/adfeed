@@ -3,11 +3,14 @@ import { t } from "../lib/i18n";
 import {
   attachMetaFeed,
   disconnectMeta,
+  fetchMetaIssues,
   fetchMetaStatus,
   refreshMetaCatalogs,
   selectMetaCatalog,
   startMetaOAuth,
+  syncMetaIssues,
   type MetaStatus,
+  type PlatformIssueRow,
 } from "../lib/adfeed-api";
 import styles from "./GmcIssuesPanel.module.css";
 
@@ -19,6 +22,8 @@ type Props = {
 export function MetaCatalogPanel({ getToken, country = "US" }: Props) {
   const [status, setStatus] = useState<MetaStatus | null>(null);
   const [catalogId, setCatalogId] = useState("");
+  const [issues, setIssues] = useState<PlatformIssueRow[]>([]);
+  const [metaStats, setMetaStats] = useState({ matched: 0, unmatched: 0 });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -31,6 +36,13 @@ export function MetaCatalogPanel({ getToken, country = "US" }: Props) {
       setStatus(st);
       const cid = st.selected_catalog_id || catalogId;
       if (cid) setCatalogId(cid);
+      if (cid) {
+        const res = await fetchMetaIssues(token, cid);
+        setIssues(res.issues || []);
+        setMetaStats({ matched: res.matched, unmatched: res.unmatched });
+      } else {
+        setIssues([]);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -60,6 +72,7 @@ export function MetaCatalogPanel({ getToken, country = "US" }: Props) {
       const token = await getToken();
       await disconnectMeta(token);
       setCatalogId("");
+      setIssues([]);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -104,11 +117,22 @@ export function MetaCatalogPanel({ getToken, country = "US" }: Props) {
     try {
       const token = await getToken();
       const res = await attachMetaFeed(token, catalogId, country);
-      setMsg(
-        t("meta.attachOk", {
-          feedId: String(res.product_feed_id || ""),
-        }),
-      );
+      setMsg(t("meta.attachOk", { feedId: String(res.product_feed_id || "") }));
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSyncIssues = async () => {
+    if (!catalogId) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      await syncMetaIssues(token, catalogId);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -163,6 +187,13 @@ export function MetaCatalogPanel({ getToken, country = "US" }: Props) {
           >
             {t("meta.attachFeed")}
           </s-button>
+          <s-button
+            variant="secondary"
+            disabled={busy || !catalogId}
+            onClick={() => void onSyncIssues()}
+          >
+            {t("meta.syncIssues")}
+          </s-button>
           <s-button variant="tertiary" disabled={busy} onClick={() => void onDisconnect()}>
             {t("meta.disconnect")}
           </s-button>
@@ -171,6 +202,32 @@ export function MetaCatalogPanel({ getToken, country = "US" }: Props) {
 
       {err ? <p className={styles.err}>{err}</p> : null}
       {msg ? <p className={styles.meta}>{msg}</p> : null}
+
+      {issues.length > 0 ? (
+        <>
+          <p className={styles.meta}>
+            {t("meta.matchStats", {
+              matched: String(metaStats.matched),
+              unmatched: String(metaStats.unmatched),
+            })}
+          </p>
+          <ul className={styles.list}>
+            {issues.map((it) => (
+              <li key={it.id || `${it.offer_id}-${it.reason_code}`}>
+                <span className={styles.sku}>{it.offer_id}</span>
+                <span className={styles.status}>{it.status}</span>
+                <span className={styles.reason}>{it.reason_text || it.reason_code}</span>
+                <span className={styles.action}>{it.suggested_action}</span>
+                {!it.product_id_internal ? (
+                  <span className={styles.unmatched}>{t("meta.unmatched")}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : status?.connected ? (
+        <p className={styles.muted}>{t("meta.issuesEmpty")}</p>
+      ) : null}
     </section>
   );
 }

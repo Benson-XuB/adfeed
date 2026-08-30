@@ -202,3 +202,74 @@ async def app_tiktok_feed_attach(
         feed_url=str(result.get("feed_url") or feed_url),
     )
     return {"ok": True, **result}
+
+
+class TikTokIssuesSyncBody(BaseModel):
+    shop_id: Optional[str] = None
+    mock_issues: Optional[list[dict]] = None
+
+
+@router.get("/api/app/tiktok/issues")
+async def app_tiktok_issues(
+    store: StoreModel = Depends(require_store),
+    shop_id: Optional[str] = None,
+):
+    from adfeed import store_db
+    from adfeed.platforms.common.issue_actions import suggest_action
+
+    sid = (shop_id or "").strip() or store_db.get_selected_tiktok_shop_id(store.id)
+    if not sid:
+        return {"shop_id": None, "issues": [], "matched": 0, "unmatched": 0}
+    issues = store_db.list_tiktok_product_issues(store.id, sid)
+    out = []
+    matched = unmatched = 0
+    for it in issues:
+        row = dict(it)
+        row["suggested_action"] = suggest_action(it.get("reason_code") or "")["action"]
+        if it.get("product_id_internal"):
+            matched += 1
+        else:
+            unmatched += 1
+        out.append(row)
+    return {
+        "shop_id": sid,
+        "issues": out,
+        "matched": matched,
+        "unmatched": unmatched,
+    }
+
+
+@router.post("/api/app/tiktok/issues/sync")
+async def app_tiktok_issues_sync(
+    body: TikTokIssuesSyncBody,
+    store: StoreModel = Depends(require_store),
+):
+    from adfeed import store_db
+    from adfeed.platforms.tiktok.issues_sync import sync_tiktok_issues
+    from adfeed.platforms.tiktok.oauth import access_token_for_store
+    from adfeed.platforms.tiktok.shop_client import HttpTikTokShopClient
+
+    sid = (body.shop_id or "").strip() or store_db.get_selected_tiktok_shop_id(store.id)
+    if not sid:
+        raise HTTPException(400, "Select a TikTok shop first")
+    if not store_db.get_tiktok_oauth_token(store.id) and body.mock_issues is None:
+        raise HTTPException(400, "Connect TikTok first")
+
+    class _Mock:
+        def __init__(self, issues):
+            self._issues = issues
+
+        def list_product_issues(self, shop_id: str):
+            return self._issues
+
+    if body.mock_issues is not None:
+        client = _Mock(body.mock_issues)
+    else:
+        try:
+            client = HttpTikTokShopClient(access_token_for_store(store.id))
+        except RuntimeError as e:
+            raise HTTPException(502, str(e)) from e
+    try:
+        return sync_tiktok_issues(store.id, sid, client)
+    except RuntimeError as e:
+        raise HTTPException(502, str(e)) from e

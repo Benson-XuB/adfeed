@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import os
 import time
 from typing import Any
@@ -97,3 +98,80 @@ class HttpTikTokShopClient:
             "mode": "register",
             "note": "TikTok Shop has no scheduled URL fetch; CSV URL registered for merchant/API follow-up.",
         }
+
+    def list_product_issues(self, shop_id: str) -> list[dict]:
+        """Product diagnoses / listing issues when Partner API returns them."""
+        path = "/product/202309/products/diagnoses/search"
+        ts = str(int(time.time()))
+        params = {
+            "app_key": self._app_key,
+            "timestamp": ts,
+        }
+        body = json.dumps({"shop_id": shop_id, "page_size": 50})
+        if self._app_secret:
+            params["sign"] = sign_request(
+                self._app_secret, path=path, params=params, body=body
+            )
+        url = f"{_api_base()}{path}?{urlencode(params)}"
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(
+                url,
+                content=body,
+                headers={
+                    "x-tts-access-token": self._token,
+                    "Content-Type": "application/json",
+                },
+            )
+        if resp.status_code != 200:
+            # Soft-empty: diagnoses may be unavailable for app scopes
+            return []
+        return issues_from_tiktok_diagnoses(resp.json())
+
+
+def issues_from_tiktok_diagnoses(payload: dict) -> list[dict]:
+    import json
+
+    data = payload.get("data") or payload
+    items = data.get("products") or data.get("diagnoses") or data.get("list") or []
+    out: list[dict] = []
+    for item in items or []:
+        offer = str(
+            item.get("seller_sku")
+            or item.get("sku")
+            or item.get("outer_product_id")
+            or item.get("product_id")
+            or ""
+        ).strip()
+        if not offer:
+            continue
+        issues = item.get("issues") or item.get("diagnoses") or []
+        if not issues:
+            code = str(item.get("issue_code") or item.get("code") or "listing_issue")
+            text = str(item.get("message") or item.get("suggestion") or code)
+            out.append(
+                {
+                    "offer_id": offer,
+                    "status": str(item.get("status") or "rejected").lower(),
+                    "reason_code": code,
+                    "reason_text": text,
+                    "raw_json": json.dumps(item, ensure_ascii=False),
+                }
+            )
+            continue
+        for iss in issues:
+            if isinstance(iss, dict):
+                code = str(iss.get("code") or iss.get("issue_code") or "listing_issue")
+                text = str(iss.get("message") or iss.get("suggestion") or code)
+            else:
+                code = str(iss)
+                text = code
+            out.append(
+                {
+                    "offer_id": offer,
+                    "status": "rejected",
+                    "reason_code": code,
+                    "reason_text": text,
+                    "raw_json": json.dumps(iss if isinstance(iss, dict) else {"issue": iss}, ensure_ascii=False),
+                }
+            )
+    return out

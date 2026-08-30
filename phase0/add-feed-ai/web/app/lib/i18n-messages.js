@@ -41,7 +41,11 @@ export const messages = {
     "selectCatalog": "Select…",
     "refreshCatalogs": "Refresh catalogs",
     "attachFeed": "Attach feed URL",
-    "attachOk": "Scheduled feed {{feedId}}. Meta will fetch your Meta feed URL."
+    "attachOk": "Scheduled feed {{feedId}}. Meta will fetch your Meta feed URL.",
+    "syncIssues": "Sync review issues",
+    "issuesEmpty": "No cached Meta review issues. Sync after connecting.",
+    "unmatched": "Unmatched offer",
+    "matchStats": "Matched {{matched}} · unmatched {{unmatched}}"
   },
   "tiktok": {
     "shopTitle": "TikTok Shop",
@@ -53,7 +57,11 @@ export const messages = {
     "selectShop": "Select…",
     "refreshShops": "Refresh shops",
     "attachFeed": "Register feed URL",
-    "attachOk": "Registered CSV URL: {{url}}"
+    "attachOk": "Registered CSV URL: {{url}}",
+    "syncIssues": "Sync listing issues",
+    "issuesEmpty": "No cached TikTok listing issues. Sync after connecting.",
+    "unmatched": "Unmatched offer",
+    "matchStats": "Matched {{matched}} · unmatched {{unmatched}}"
   },
   "cta": {
     "generate": "Generate feed",
@@ -870,7 +878,11 @@ export const messages = {
     "selectCatalog": "选择…",
     "refreshCatalogs": "刷新目录",
     "attachFeed": "挂接 Feed URL",
-    "attachOk": "已创建定时 Feed {{feedId}}，Meta 将拉取你的 Meta Feed。"
+    "attachOk": "已创建定时 Feed {{feedId}}，Meta 将拉取你的 Meta Feed。",
+    "syncIssues": "同步拒审问题",
+    "issuesEmpty": "暂无 Meta 拒审缓存。连接后点同步。",
+    "unmatched": "未匹配 offer",
+    "matchStats": "已匹配 {{matched}} · 未匹配 {{unmatched}}"
   },
   "tiktok": {
     "shopTitle": "TikTok 小店",
@@ -882,7 +894,11 @@ export const messages = {
     "selectShop": "选择…",
     "refreshShops": "刷新店铺",
     "attachFeed": "登记 Feed URL",
-    "attachOk": "已登记 CSV：{{url}}"
+    "attachOk": "已登记 CSV：{{url}}",
+    "syncIssues": "同步上架问题",
+    "issuesEmpty": "暂无 TikTok 上架问题缓存。连接后点同步。",
+    "unmatched": "未匹配 offer",
+    "matchStats": "已匹配 {{matched}} · 未匹配 {{unmatched}}"
   },
   "cta": {
     "generate": "生成 Feed",
