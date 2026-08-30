@@ -39,7 +39,11 @@ async def exchange_session_for_offline_token(
     shop_domain: str,
     session_token: str,
 ) -> Optional[dict]:
-    """Exchange App Bridge session JWT for offline Admin API access token."""
+    """Exchange App Bridge session JWT for expiring offline Admin API token.
+
+    Public apps must pass ``expiring=1`` — non-expiring offline tokens get
+    HTTP 403 on Admin API ("Non-expiring access tokens are no longer accepted").
+    """
     shop = normalize_shop_domain(shop_domain).replace(".myshopify.com", "")
     client_id = SHOPIFY_CLIENT_ID or config.SHOPIFY_CLIENT_ID
     client_secret = SHOPIFY_CLIENT_SECRET or config.SHOPIFY_CLIENT_SECRET
@@ -54,6 +58,8 @@ async def exchange_session_for_offline_token(
         "subject_token": session_token,
         "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
         "requested_token_type": "urn:shopify:params:oauth:token-type:offline-access-token",
+        # Required for Admin API on public apps (2026+).
+        "expiring": "1",
     }
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -78,10 +84,102 @@ async def exchange_session_for_offline_token(
                 "scope": body.get("scope", ""),
                 "expires_in": body.get("expires_in"),
                 "refresh_token": body.get("refresh_token"),
+                "refresh_token_expires_in": body.get("refresh_token_expires_in"),
             }
     except Exception as e:
         logger.error("Token exchange error: %s", e)
         return None
+
+
+async def refresh_offline_access_token(
+    shop_domain: str,
+    refresh_token: str,
+) -> Optional[dict]:
+    """Refresh an expiring offline Admin API token (rotates refresh_token)."""
+    shop = normalize_shop_domain(shop_domain).replace(".myshopify.com", "")
+    client_id = SHOPIFY_CLIENT_ID or config.SHOPIFY_CLIENT_ID
+    client_secret = SHOPIFY_CLIENT_SECRET or config.SHOPIFY_CLIENT_SECRET
+    if not client_id or not client_secret or not refresh_token:
+        return None
+    data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"https://{shop}.myshopify.com/admin/oauth/access_token",
+                data=data,
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code != 200:
+                logger.error(
+                    "Token refresh failed: %s %s",
+                    resp.status_code,
+                    resp.text[:300],
+                )
+                return None
+            body = resp.json()
+            token = body.get("access_token")
+            if not token:
+                return None
+            return {
+                "access_token": token,
+                "scope": body.get("scope", ""),
+                "expires_in": body.get("expires_in"),
+                "refresh_token": body.get("refresh_token") or refresh_token,
+                "refresh_token_expires_in": body.get("refresh_token_expires_in"),
+            }
+    except Exception as e:
+        logger.error("Token refresh error: %s", e)
+        return None
+
+
+def _persist_exchanged_token(store: store_db.Store, exchanged: dict) -> store_db.Store:
+    """Write access_token (+ refresh metadata) and refresh shop profile fields."""
+    from datetime import datetime, timedelta, timezone
+
+    shop_name = store.shop_name
+    site_url = store.site_url
+    default_currency = store.default_currency
+    try:
+        from .shopify_admin_gql import fetch_shop
+
+        info = fetch_shop(store.shopify_domain, exchanged["access_token"])
+        shop_name = info.get("name") or shop_name
+        domain = info.get("domain") or info.get("myshopify_domain")
+        if domain and not str(domain).startswith("http"):
+            site_url = f"https://{domain}"
+        elif domain:
+            site_url = str(domain)
+        if info.get("currency"):
+            default_currency = str(info["currency"]).strip().upper()
+    except Exception as e:
+        logger.warning("Shop info after exchange failed: %s", e)
+
+    expires_in = exchanged.get("expires_in")
+    expires_at = None
+    if expires_in:
+        try:
+            expires_at = (
+                datetime.now(timezone.utc) + timedelta(seconds=int(expires_in) - 60)
+            ).isoformat()
+        except (TypeError, ValueError):
+            expires_at = None
+
+    store_db.update_store(
+        store.id,
+        access_token=exchanged["access_token"],
+        refresh_token=exchanged.get("refresh_token"),
+        token_expires_at=expires_at,
+        shop_name=shop_name,
+        site_url=site_url,
+        default_currency=default_currency,
+        status="active",
+    )
+    return store_db.get_store(store.id) or store
 
 
 async def ensure_store_access_token(
@@ -90,24 +188,46 @@ async def ensure_store_access_token(
     *,
     force: bool = False,
 ) -> store_db.Store:
-    """Ensure store has a working offline Admin API token.
+    """Ensure store has a working expiring offline Admin API token.
 
-    By default skips exchange if a token already exists. Pass ``force=True``
-    (App bootstrap) to re-exchange from the session JWT — stale seeded
-    tokens otherwise cause GraphQL 401 and empty/broken App UX.
+    By default skips exchange if a token already works. Pass ``force=True``
+    to re-exchange from the session JWT. Stale / non-expiring tokens cause
+    GraphQL 403 and empty App product lists.
     """
     if store.access_token and not force:
         try:
-            from .shopify_admin_gql import fetch_shop
+            from .shopify_admin_gql import fetch_shop, graphql_payload
 
-            info = fetch_shop(store.shopify_domain, store.access_token)
-            # graphql() returns {} on HTTP 401 — treat empty shop as stale token
-            if info and (info.get("name") or info.get("myshopify_domain") or info.get("domain")):
-                return store
-            logger.warning(
-                "Stored access_token appears stale for %s; re-exchanging",
+            # Probe with payload so we can detect non-expiring-token 403.
+            probe = graphql_payload(
                 store.shopify_domain,
+                store.access_token,
+                "{ shop { name myshopifyDomain } }",
             )
+            err_text = str(probe.get("errors") or "") + str(probe.get("error_body") or "")
+            if "Non-expiring access tokens" in err_text:
+                logger.warning(
+                    "Non-expiring offline token rejected for %s; re-exchanging",
+                    store.shopify_domain,
+                )
+            else:
+                info = (probe.get("data") or {}).get("shop") or {}
+                # Also try fetch_shop shape used elsewhere
+                if not info:
+                    info = fetch_shop(store.shopify_domain, store.access_token) or {}
+                if info.get("name") or info.get("myshopifyDomain") or info.get("myshopify_domain") or info.get("domain"):
+                    return store
+                # Token may be expired — try refresh_token before session exchange
+                if getattr(store, "refresh_token", None):
+                    refreshed = await refresh_offline_access_token(
+                        store.shopify_domain, store.refresh_token,
+                    )
+                    if refreshed:
+                        return _persist_exchanged_token(store, refreshed)
+                logger.warning(
+                    "Stored access_token appears stale for %s; re-exchanging",
+                    store.shopify_domain,
+                )
         except Exception as e:
             logger.warning(
                 "Stored access_token invalid for %s (%s); re-exchanging",
@@ -121,32 +241,7 @@ async def ensure_store_access_token(
     if not exchanged:
         return store
 
-    shop_name = store.shop_name
-    site_url = store.site_url
-    default_currency = store.default_currency
-    try:
-        from .shopify_admin_gql import fetch_shop
-        info = fetch_shop(store.shopify_domain, exchanged["access_token"])
-        shop_name = info.get("name") or shop_name
-        domain = info.get("domain") or info.get("myshopify_domain")
-        if domain and not str(domain).startswith("http"):
-            site_url = f"https://{domain}"
-        elif domain:
-            site_url = str(domain)
-        if info.get("currency"):
-            default_currency = str(info["currency"]).strip().upper()
-    except Exception as e:
-        logger.warning("Shop info after exchange failed: %s", e)
-
-    store_db.update_store(
-        store.id,
-        access_token=exchanged["access_token"],
-        shop_name=shop_name,
-        site_url=site_url,
-        default_currency=default_currency,
-        status="active",
-    )
-    return store_db.get_store(store.id) or store
+    return _persist_exchanged_token(store, exchanged)
 
 
 def refresh_store_currency_from_shopify(store: store_db.Store) -> store_db.Store:

@@ -16,7 +16,7 @@ declare module './src/index.js' {
 
   interface ShopifyTools {
     /**
-     * Explain how AdFeed AI generates Google, Meta, and TikTok shopping feeds from the Shopify catalog, including missing color/size fixes. Does not guarantee Merchant Center approval.
+     * Explain how AdFeed AI optimizes 1688-imported catalog products into a Google Shopping data feed: ad brand, generate, feed URL, optional color/size tips. Google only. Does not guarantee Merchant Center approval.
      */
     register(
       name: 'describe_adfeed',

@@ -1,7 +1,9 @@
 """Pre-generate product attribute gaps from Shopify options / store_db variants.
 
-Merchants should see which products lack color or size *before* generating a feed,
-so they can fix Shopify or decide what to select — not only after Multicolor/One Size autofix.
+Policy (field contract §3 — 缺数据不挡生成):
+- Color/size gaps are **soft suggestions** when Shopify has a named option we can edit.
+- No Color/Size option on the product → **skip** (do not open dead-end Fix; do not block generate).
+- Engine may fill apparel Multicolor / One Size at generate time; never invent brand/GTIN/COGS.
 """
 from __future__ import annotations
 
@@ -12,6 +14,9 @@ from .feed_quality import is_apparel_like
 
 _PLACEHOLDER_COLORS = {"", "multicolor", "multicolour", "default title", "default", "nan"}
 _PLACEHOLDER_SIZES = {"", "one size", "osfa", "default title", "default", "nan", "free size"}
+
+_COLOR_KEYS = ("color", "colour", "farbe", "颜色", "couleur")
+_SIZE_KEYS = ("size", "größe", "taille", "尺码", "sizing")
 
 
 def _blank_color(val: str) -> bool:
@@ -36,11 +41,18 @@ def _blank_size(val: str) -> bool:
     return False
 
 
+def _has_named_option(pos_to_name: dict, keys: tuple[str, ...]) -> bool:
+    return any(
+        any(k in str(n or "").lower() for k in keys)
+        for n in pos_to_name.values()
+    )
+
+
 def check_shopify_product_attrs(product: dict[str, Any]) -> dict[str, Any]:
     """Inspect one Shopify REST-shaped product for missing color/size.
 
-    Returns:
-        need_color / need_size booleans, plus empty variant counts.
+    need_color / need_size mean: optional Fix is available (named option + blank/placeholder).
+    They must NOT be treated as hard generate blockers by the workbench.
     """
     from .store_sync import _option_maps, _variant_color_size
 
@@ -59,28 +71,37 @@ def check_shopify_product_attrs(product: dict[str, Any]) -> dict[str, Any]:
         if _blank_size(size):
             empty_size += 1
 
+    has_color_option = _has_named_option(pos_to_name, _COLOR_KEYS)
+    has_size_option = _has_named_option(pos_to_name, _SIZE_KEYS)
+
     if not variants:
         return {
-            "need_color": True,
-            "need_size": True,
+            "need_color": False,
+            "need_size": False,
             "empty_color_variants": 0,
             "empty_size_variants": 0,
             "apparel": apparel,
+            "has_color_option": has_color_option,
+            "has_size_option": has_size_option,
         }
 
-    # Merchant "check products" UX: any blank color/size on a variant is a gap.
-    # (Includes Chinese apparel titles that do not match English apparel heuristics.)
     return {
-        "need_color": empty_color > 0,
-        "need_size": empty_size > 0,
+        # Soft Fix only when Shopify has an editable named option.
+        "need_color": empty_color > 0 and has_color_option,
+        "need_size": empty_size > 0 and has_size_option,
         "empty_color_variants": empty_color,
         "empty_size_variants": empty_size,
         "apparel": apparel,
+        "has_color_option": has_color_option,
+        "has_size_option": has_size_option,
     }
 
 
 def check_store_product_attrs(product, variants: list) -> dict[str, Any]:
-    """Same gaps for a store_db Product + ProductVariant rows."""
+    """Same gaps for store_db rows.
+
+    store_db has no option names — cannot know if Fix is possible → never force Fix.
+    """
     title = str(getattr(product, "title", "") or "")
     product_type = str(getattr(product, "product_type", "") or "")
     apparel = is_apparel_like(
@@ -91,8 +112,8 @@ def check_store_product_attrs(product, variants: list) -> dict[str, Any]:
     )
     if not variants:
         return {
-            "need_color": True,
-            "need_size": True,
+            "need_color": False,
+            "need_size": False,
             "empty_color_variants": 0,
             "empty_size_variants": 0,
             "apparel": apparel,
@@ -100,8 +121,8 @@ def check_store_product_attrs(product, variants: list) -> dict[str, Any]:
     empty_color = sum(1 for v in variants if _blank_color(getattr(v, "color", "") or ""))
     empty_size = sum(1 for v in variants if _blank_size(getattr(v, "size", "") or ""))
     return {
-        "need_color": empty_color > 0,
-        "need_size": empty_size > 0,
+        "need_color": False,
+        "need_size": False,
         "empty_color_variants": empty_color,
         "empty_size_variants": empty_size,
         "apparel": apparel,

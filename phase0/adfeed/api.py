@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, HTMLResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 
@@ -310,6 +310,7 @@ async def app_bootstrap(
     if not session_token:
         raise HTTPException(401, "Missing session token")
 
+    # Re-exchange when token is missing/stale/non-expiring (Admin API 403).
     updated = await ensure_store_access_token(store, session_token, force=False)
     # Refresh shop currency so App can guide market selection
     if updated.access_token:
@@ -1652,7 +1653,7 @@ PAYPAL_PLAN_IDS = {
     "growth":  os.getenv("PAYPAL_PLAN_ID_GROWTH", ""),
 }
 
-PLAN_QUOTAS = {"starter": 150, "growth": 400}
+PLAN_QUOTAS = {"starter": 50, "growth": 200}
 
 
 @app.get("/api/billing/plans")
@@ -2025,6 +2026,7 @@ async def serve_feed_file(store_id: str, filename: str):
 # ── Shopify catalog / uninstall / GDPR webhooks ──
 
 @app.post("/api/webhooks/shopify/products_update")
+@app.post("/api/webhooks/shopify/products_update/")
 async def webhook_products_update(request: Request):
     from .shopify_webhooks import verify_shopify_hmac, handle_products_update
     raw = await request.body()
@@ -2037,6 +2039,7 @@ async def webhook_products_update(request: Request):
 
 
 @app.post("/api/webhooks/shopify/products_delete")
+@app.post("/api/webhooks/shopify/products_delete/")
 async def webhook_products_delete(request: Request):
     from .shopify_webhooks import verify_shopify_hmac, handle_products_delete
     raw = await request.body()
@@ -2049,6 +2052,7 @@ async def webhook_products_delete(request: Request):
 
 
 @app.post("/api/webhooks/shopify/app_uninstalled")
+@app.post("/api/webhooks/shopify/app_uninstalled/")
 async def webhook_app_uninstalled(request: Request):
     from .shopify_webhooks import verify_shopify_hmac, handle_app_uninstalled
     raw = await request.body()
@@ -2062,9 +2066,10 @@ async def webhook_app_uninstalled(request: Request):
 async def _webhook_gdpr(request: Request):
     from .shopify_webhooks import verify_shopify_hmac, handle_compliance_webhook
     raw = await request.body()
-    if not verify_shopify_hmac(raw, request.headers.get("X-Shopify-Hmac-Sha256", "")):
+    hmac_header = request.headers.get("X-Shopify-Hmac-Sha256", "")
+    if not verify_shopify_hmac(raw, hmac_header):
         if config.SHOPIFY_CLIENT_SECRET and os.getenv("ADFEED_WEBHOOK_SKIP_HMAC", "").lower() not in ("1", "true", "yes"):
-            raise HTTPException(401, "Invalid webhook HMAC")
+            return Response(status_code=401)
     topic = request.headers.get("X-Shopify-Topic", "gdpr")
     try:
         payload = json.loads(raw.decode("utf-8") or "{}")
@@ -2074,20 +2079,32 @@ async def _webhook_gdpr(request: Request):
     return handle_compliance_webhook(topic, payload, shop)
 
 
-@app.post("/api/webhooks/shopify/compliance")
-async def webhook_shopify_compliance(request: Request):
-    """Single URI for toml compliance_topics (customers/* + shop/redact)."""
+async def _webhook_gdpr_entry(request: Request):
     return await _webhook_gdpr(request)
 
 
-@app.post("/api/webhooks/shopify/customers_redact")
-async def webhook_customers_redact(request: Request):
-    return await _webhook_gdpr(request)
-
-
-@app.post("/api/webhooks/shopify/shop_redact")
-async def webhook_shop_redact(request: Request):
-    return await _webhook_gdpr(request)
+# Partner automated checks may hit the unified URI or legacy per-topic paths (with/without trailing slash).
+_GDPR_WEBHOOK_PATHS = [
+    "/api/webhooks/shopify/compliance",
+    "/api/webhooks/shopify/customers/data_request",
+    "/api/webhooks/shopify/customers/redact",
+    "/api/webhooks/shopify/shop/redact",
+    "/api/webhooks/shopify/customers_redact",
+    "/api/webhooks/shopify/shop_redact",
+    # Stale checker URLs (no /api prefix) seen in production nginx logs.
+    "/webhooks/compliance",
+    "/webhooks/customers/data_request",
+    "/webhooks/customers/data/request",
+    "/webhooks/customers/redact",
+    "/webhooks/shop/redact",
+    "/customers/data_request",
+    "/customers/data/request",
+    "/customers/redact",
+    "/shop/redact",
+]
+for _gdpr_path in _GDPR_WEBHOOK_PATHS:
+    app.add_api_route(_gdpr_path, _webhook_gdpr_entry, methods=["POST"])
+    app.add_api_route(_gdpr_path + "/", _webhook_gdpr_entry, methods=["POST"])
 
 
 # 保留 StaticFiles 作为回退（处理其他路径）

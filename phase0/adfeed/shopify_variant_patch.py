@@ -59,11 +59,12 @@ def _find_option_name(product: dict[str, Any], field: str) -> Optional[str]:
         low = name.lower()
         if any(k in low for k in keys):
             return name
-    opts = sorted(product.get("options") or [], key=lambda o: int(o.get("position") or 0))
-    if field == "color" and opts:
-        return str(opts[0].get("name") or "").strip() or None
-    if field == "size" and len(opts) >= 2:
-        return str(opts[1].get("name") or "").strip() or None
+    # Color only: Title-only Shopify demos can rename option1 (Default Title → Black).
+    # Never invent a Size option from option2 — that dead-ends Fix on snowboards.
+    if field == "color":
+        opts = sorted(product.get("options") or [], key=lambda o: int(o.get("position") or 0))
+        if opts:
+            return str(opts[0].get("name") or "").strip() or None
     return None
 
 
@@ -91,6 +92,13 @@ def _blank(field: str, val: str) -> bool:
     return _blank_color(val) if field == "color" else _blank_size(val)
 
 
+def _sku_filter_match(sku: str, skus: set[str]) -> bool:
+    """Empty skus set means apply to every variant (demo products often lack SKUs)."""
+    if not skus:
+        return True
+    return sku in skus
+
+
 def _placeholder_values(
     product: dict[str, Any],
     field: str,
@@ -102,10 +110,15 @@ def _placeholder_values(
     out: list[str] = []
     for variant in product.get("variants") or []:
         sku = str(variant.get("sku") or "").strip()
-        if sku not in skus:
+        if not _sku_filter_match(sku, skus):
             continue
         color, size = _variant_color_size(variant, pos_to_name)
         val = str(color if field == "color" else size).strip()
+        # Title-only Shopify demos keep "Default Title" on option1 — treat as placeholder.
+        if not val:
+            raw = str(variant.get("option1") or "").strip() if field == "color" else str(variant.get("option2") or "").strip()
+            if raw and _blank(field, raw):
+                val = raw
         if not val or not _blank(field, val):
             continue
         if val not in seen:
@@ -124,12 +137,14 @@ def _skus_for_option_value(
     matched: list[str] = []
     for variant in product.get("variants") or []:
         sku = str(variant.get("sku") or "").strip()
-        if sku not in skus:
+        if not _sku_filter_match(sku, skus):
             continue
         color, size = _variant_color_size(variant, pos_to_name)
         val = str(color if field == "color" else size).strip()
+        if not val and field == "color":
+            val = str(variant.get("option1") or "").strip()
         if val == option_value:
-            matched.append(sku)
+            matched.append(sku or str(variant.get("id") or "ok"))
     return matched
 
 
@@ -321,8 +336,18 @@ def _bulk_variant_update(
         }
 
     updated_variants = list(block.get("productVariants") or [])
-    updated = [str(v.get("sku") or "").strip() for v in updated_variants if v.get("sku")]
-    message = f"Wrote {len(updated)} variant(s) to Shopify" if updated else "Shopify returned no updates"
+    # Demo / supplier variants often have empty SKUs — still count the write as success.
+    updated = [
+        str(v.get("sku") or "").strip() or str(v.get("id") or "ok")
+        for v in updated_variants
+    ]
+    if not updated and bulk_inputs:
+        updated = [str(i.get("id") or "ok") for i in bulk_inputs]
+    message = (
+        f"Wrote {len(updated)} variant(s) to Shopify"
+        if updated
+        else "Shopify returned no updates"
+    )
     return {
         "updated": updated,
         "missing": missing,
@@ -377,38 +402,72 @@ def patch_shopify_variant_attrs(
     color_opt = _find_option_name(product, "color")
     size_opt = _find_option_name(product, "size")
 
+    # Soft-skip: cannot invent a Size option — merchant would hit a dead-end dialog.
+    if field == "size" and not size_opt:
+        return {
+            "updated": ["skipped"],
+            "missing": [],
+            "errors": [],
+            "message": "No Size option on this product — size not required. You can generate the feed.",
+            "skipped_no_option": True,
+            "need_size": False,
+            "debug": {"stage": "skip_no_size_option"},
+        }
+
     # Prefer option-value rename when variants share placeholder text (Style 1, OSFA…).
     rename_result = _try_option_rename(shop_domain, access_token, product, field, new_value, patch_skus)
     if rename_result is not None:
         return rename_result
 
+    variants = list(product.get("variants") or [])
     sku_to_variant = {
-        str(v.get("sku") or "").strip(): v for v in (product.get("variants") or []) if v.get("sku")
+        str(v.get("sku") or "").strip(): v for v in variants if v.get("sku")
     }
     bulk_inputs: list[dict[str, Any]] = []
     missing: list[str] = []
     errors: list[dict[str, str]] = []
 
-    for patch in patches:
+    # Empty SKU patches (or no SKUs on product) → write the same color/size to all variants.
+    apply_all = (not patch_skus) or any(
+        not str(p.get("sku") or "").strip() for p in patches
+    )
+    work_patches: list[dict[str, Any]]
+    if apply_all and new_value:
+        work_patches = [
+            {"sku": str(v.get("sku") or "").strip(), field: new_value, "id": v.get("id")}
+            for v in variants
+        ]
+    else:
+        work_patches = list(patches)
+
+    for patch in work_patches:
         sku = str(patch.get("sku") or "").strip()
-        if not sku:
+        variant = sku_to_variant.get(sku) if sku else None
+        if not variant and patch.get("id"):
+            variant = next(
+                (v for v in variants if str(v.get("id") or "") == str(patch.get("id"))),
+                None,
+            )
+        if not variant and apply_all and not sku:
+            # Already expanded from variants above with id.
             continue
-        variant = sku_to_variant.get(sku)
         if not variant:
-            missing.append(sku)
+            if sku:
+                missing.append(sku)
             continue
 
         option_values: list[dict[str, str]] = []
         color_val = str(patch.get("color") or "").strip()
         size_val = str(patch.get("size") or "").strip()
+        label = sku or str(variant.get("id") or "")
         if color_val:
             if not color_opt:
-                errors.append({"sku": sku, "message": "No Color option on this product — add one in Shopify"})
+                errors.append({"sku": label, "message": "No Color option on this product — add one in Shopify"})
                 continue
             option_values.append({"optionName": color_opt, "name": color_val})
         if size_val:
             if not size_opt:
-                errors.append({"sku": sku, "message": "No Size option on this product — add one in Shopify"})
+                errors.append({"sku": label, "message": "No Size option on this product — add one in Shopify"})
                 continue
             option_values.append({"optionName": size_opt, "name": size_val})
         if not option_values:

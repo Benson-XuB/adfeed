@@ -49,4 +49,6 @@ capture "04-copy-url.png" "Shot 4/5 — Sidebar feed URL + Copy button"
 capture "05-ad-image.png" "Shot 5/5 — Feed drawer: pick ad image for a SKU"
 
 echo
-echo "Done. Run: python3 $ROOT/self_test.py"
+echo "Done. Optional — build screencast from these real UI shots:"
+echo "  $ROOT/build_screencast_from_live.sh"
+echo "Then: python3 $ROOT/self_test.py"

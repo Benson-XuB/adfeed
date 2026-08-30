@@ -17,9 +17,9 @@ def app_client(monkeypatch, tmp_path):
     monkeypatch.setenv("ADFEED_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SHOPIFY_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("SHOPIFY_CLIENT_SECRET", "test-client-secret")
-    monkeypatch.setenv("ADFEED_QUOTA_FREE", "20")
-    monkeypatch.setenv("ADFEED_QUOTA_STARTER", "150")
-    monkeypatch.setenv("ADFEED_QUOTA_GROWTH", "400")
+    monkeypatch.setenv("ADFEED_QUOTA_FREE", "3")
+    monkeypatch.setenv("ADFEED_QUOTA_STARTER", "50")
+    monkeypatch.setenv("ADFEED_QUOTA_GROWTH", "200")
 
     for name in list(sys.modules):
         if name == "adfeed" or name.startswith("adfeed."):
@@ -63,9 +63,9 @@ def _token(shop="demo.myshopify.com"):
 
 def test_plan_quota_mapping(app_client):
     _, _, billing = app_client
-    assert billing.quota_for_plan("free") == 20
-    assert billing.quota_for_plan("starter") == 150
-    assert billing.quota_for_plan("growth") == 400
+    assert billing.quota_for_plan("free") == 3
+    assert billing.quota_for_plan("starter") == 50
+    assert billing.quota_for_plan("growth") == 200
     assert billing.normalize_plan_name("AdFeed Starter") == "starter"
 
 
@@ -81,7 +81,7 @@ def test_subscribe_returns_confirmation_url(app_client):
     data = res.json()
     assert "confirmation_url" in data
     assert data["plan"] == "starter"
-    assert data["quota_total"] == 150
+    assert data["quota_total"] == 50
 
 
 def test_subscription_webhook_updates_quota(app_client):
@@ -104,7 +104,7 @@ def test_subscription_webhook_updates_quota(app_client):
     })
     assert updated is not None
     assert updated.plan == "growth"
-    assert updated.quota_total == 400
+    assert updated.quota_total == 200
     assert updated.billing_status == "active"
 
 

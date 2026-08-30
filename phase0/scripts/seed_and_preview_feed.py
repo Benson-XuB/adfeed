@@ -47,7 +47,7 @@ async def main():
     from adfeed.config import DEFAULT_STORE_BRAND
     from adfeed.shopify_billing import quota_for_plan
 
-    free_quota = quota_for_plan("free")  # default 20 — do not inflate for local preview
+    free_quota = quota_for_plan("free")  # default 3 — do not inflate for local preview
     store = store_db.get_store_by_domain(shop)
     if store:
         store_db.update_store(

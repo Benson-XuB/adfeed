@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS stores (
     default_brand TEXT,
     default_currency TEXT DEFAULT 'USD',
     plan TEXT DEFAULT 'free',
-    quota_total INTEGER DEFAULT 20,
+    quota_total INTEGER DEFAULT 3,
     quota_used INTEGER DEFAULT 0,
     subscription_id TEXT,
     billing_status TEXT DEFAULT 'none',   -- none / active / cancelled / frozen
@@ -215,13 +215,15 @@ def init_store_schema():
             "ALTER TABLE products ADD COLUMN feed_enabled INTEGER DEFAULT 0",
             "ALTER TABLE products ADD COLUMN ai_status TEXT DEFAULT 'raw'",
             "ALTER TABLE stores ADD COLUMN plan TEXT DEFAULT 'free'",
-            "ALTER TABLE stores ADD COLUMN quota_total INTEGER DEFAULT 20",
+            "ALTER TABLE stores ADD COLUMN quota_total INTEGER DEFAULT 3",
             "ALTER TABLE stores ADD COLUMN quota_used INTEGER DEFAULT 0",
             "ALTER TABLE stores ADD COLUMN subscription_id TEXT",
             "ALTER TABLE stores ADD COLUMN billing_status TEXT DEFAULT 'none'",
             "ALTER TABLE feed_files ADD COLUMN platform TEXT DEFAULT 'google'",
             "ALTER TABLE product_variants ADD COLUMN feed_image_url TEXT",
             "ALTER TABLE product_variants ADD COLUMN feed_title TEXT",
+            "ALTER TABLE stores ADD COLUMN refresh_token TEXT",
+            "ALTER TABLE stores ADD COLUMN token_expires_at TEXT",
         ]
         for sql in migrations:
             try:
@@ -331,11 +333,13 @@ class Store:
     shopify_domain: str
     shop_name: Optional[str] = None
     access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_expires_at: Optional[str] = None
     site_url: Optional[str] = None
     default_brand: Optional[str] = None
     default_currency: str = "USD"
     plan: str = "free"
-    quota_total: int = 20
+    quota_total: int = 3
     quota_used: int = 0
     subscription_id: Optional[str] = None
     billing_status: str = "none"
@@ -469,10 +473,12 @@ def _row_to_store(row) -> Store:
     return Store(
         id=row["id"], user_id=row["user_id"], shopify_domain=row["shopify_domain"],
         shop_name=row["shop_name"], access_token=row["access_token"],
+        refresh_token=row["refresh_token"] if "refresh_token" in keys else None,
+        token_expires_at=row["token_expires_at"] if "token_expires_at" in keys else None,
         site_url=row["site_url"], default_brand=row["default_brand"],
         default_currency=row["default_currency"] or "USD",
         plan=row["plan"] if "plan" in keys else "free",
-        quota_total=row["quota_total"] if "quota_total" in keys else 20,
+        quota_total=row["quota_total"] if "quota_total" in keys else 3,
         quota_used=row["quota_used"] if "quota_used" in keys else 0,
         subscription_id=row["subscription_id"] if "subscription_id" in keys else None,
         billing_status=row["billing_status"] if "billing_status" in keys else "none",
@@ -487,7 +493,7 @@ def _row_to_store(row) -> Store:
 
 def create_store(user_id: str, shopify_domain: str, shop_name: str = None,
                  access_token: str = None, site_url: str = None,
-                 plan: str = "free", quota_total: int = 20) -> Store:
+                 plan: str = "free", quota_total: int = 3) -> Store:
     """创建新店铺"""
     sid = str(uuid.uuid4())
     with _conn() as c:
@@ -543,7 +549,8 @@ def list_stores(user_id: str) -> list[Store]:
 
 def update_store(store_id: str, **kwargs) -> bool:
     """更新店铺信息"""
-    allowed = {"shop_name", "access_token", "site_url", "default_brand",
+    allowed = {"shop_name", "access_token", "refresh_token", "token_expires_at",
+               "site_url", "default_brand",
                "default_currency", "status", "plan", "quota_total", "quota_used",
                "subscription_id", "billing_status"}
     sets, vals = [], []

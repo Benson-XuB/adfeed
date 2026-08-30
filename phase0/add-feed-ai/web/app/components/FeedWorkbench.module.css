@@ -47,11 +47,29 @@
   background: var(--p-color-bg-surface, #fff);
   border-left: 1px solid var(--p-color-border, #e3e3e3);
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
-  overflow: hidden;
+  overflow: auto;
   padding: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+}
+
+/* Compact quick-fix card (color/size) — avoid a tall empty white drawer. */
+.quickFixCard {
+  position: absolute;
+  z-index: 21;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 48px);
+  overflow: auto;
+  background: var(--p-color-bg-surface, #fff);
+  border: 1px solid var(--p-color-border, #e3e3e3);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .sidebar {
@@ -706,6 +724,26 @@
   font-size: 12px;
   color: #dc2626;
   line-height: 1.35;
+}
+
+.defectFixBtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: #b98900;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  line-height: 1.35;
+}
+
+.defectFixBtn:hover {
+  color: #8a6800;
 }
 
 .quickFixError {

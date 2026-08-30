@@ -1,0 +1,182 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px 24px;
+  box-sizing: border-box;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  width: min(480px, 100%);
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e3e3e3;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  padding: 20px 20px 16px;
+  box-sizing: border-box;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 650;
+  color: #1a1a1a;
+}
+
+.summary {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #303030;
+}
+
+.hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #6d7175;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+  min-height: 80px;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+}
+
+.row {
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowOff {
+  opacity: 0.45;
+}
+
+.rowLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.rowLabel input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: #f6f6f6;
+}
+
+.thumbEmpty {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: #f6f6f6;
+  color: #8c9196;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rowTitle {
+  font-size: 13px;
+  font-weight: 550;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badgeOverwrite {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b98900;
+}
+
+.badgeNew {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6d7175;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.btnSecondary,
+.btnPrimary {
+  appearance: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.btnSecondary {
+  border: 1px solid #c9cccf;
+  background: #fff;
+  color: #202223;
+}
+
+.btnSecondary:disabled,
+.btnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  border: 1px solid #008060;
+  background: #008060;
+  color: #fff;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: #006e52;
+}

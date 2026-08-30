@@ -14,6 +14,18 @@ export const messages = {
     "meta": "{{n}} selected · {{platform}} · {{market}}",
     "sub": "Write {{n}} products into the feed"
   },
+  "genModal": {
+    "title": "Confirm feed generate",
+    "summaryNew": "Generate feed for {{n}} selected product(s).",
+    "summaryMerge": "Add {{n}} product(s) into the current feed. Other items stay.",
+    "summaryOverwrite": "{{n}} selected · {{overwrite}} already in feed will be overwritten.",
+    "uncheckHint": "Uncheck any product to skip it this time.",
+    "willOverwrite": "Already in feed · will overwrite ({{n}} variants)",
+    "willAdd": "New · will add to feed",
+    "cancel": "Cancel",
+    "confirm": "Generate {{n}}",
+    "close": "Close"
+  },
   "hub": {
     "title": "Feed Generator Hub",
     "panel": "HUB PANEL",
@@ -208,8 +220,8 @@ export const messages = {
     "current": "Plan: {{plan}} · {{left}} / {{total}} generate units left",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "plan_free": "Free",
-    "plan_starter": "Starter ($14.99/mo, 150)",
-    "plan_growth": "Growth ($39/mo, 400)",
+    "plan_starter": "Starter ($14.99/mo, 50)",
+    "plan_growth": "Growth ($39/mo, 200)",
     "chooseStarter": "Switch to Starter",
     "chooseGrowth": "Switch to Growth",
     "approveInShopify": "Approve charge in Shopify",
@@ -228,19 +240,19 @@ export const messages = {
       "free": {
         "name": "Free",
         "price": "$0 / month",
-        "quota": "20 generate units / month",
+        "quota": "3 generate units / month",
         "blurb": "Try the flow on a small catalog."
       },
       "starter": {
         "name": "Starter",
         "price": "$14.99 / month",
-        "quota": "150 generate units / month",
+        "quota": "50 generate units / month",
         "blurb": "For shops running Google Shopping regularly."
       },
       "growth": {
         "name": "Growth",
         "price": "$39 / month",
-        "quota": "400 generate units / month",
+        "quota": "200 generate units / month",
         "blurb": "For multi-platform / multi-market catalogs."
       }
     }
@@ -366,8 +378,9 @@ export const messages = {
     "actionGenerateFeed": "Generate feed",
     "tagInFeed": "Feed · {{n}} variants",
     "tagFailed": "Generation failed",
-    "defectsLine": "⚠️ Required missing: {{list}}",
+    "defectsLine": "Suggested: {{list}}",
     "fixThenGenerate": "Fix & generate",
+    "fixOptional": "optional fix",
     "edit": "Edit feed",
     "statusReady": "Ready",
     "statusMissing": "Missing Info",
@@ -557,6 +570,8 @@ export const messages = {
     "doneWarn": "Check done: auto-fixed {{auto}} items; {{warn}} still need a spot-check before Google.",
     "doneOk": "Check done: fields look complete — add the feed link in Google Merchant Center.",
     "doneMergeOk": "This product was added to the current feed (other items kept).",
+    "regenConfirm": "{{n}} selected product(s) are already in the feed. Regenerate and overwrite them? (Uses quota again.)",
+    "mergeConfirm": "Add {{n}} product(s) into the current feed? Existing items stay.",
     "alsoBlocked": " Also {{count}} market(s) blocked for currency.",
     "noFeed": "Feed not generated: no writable country or products.",
     "genFailedDetail": "Generation failed: {{detail}}",
@@ -776,6 +791,18 @@ export const messages = {
     "meta": "已选 {{n}} 件 · {{platform}} · {{market}}",
     "sub": "将 {{n}} 件写入 Feed"
   },
+  "genModal": {
+    "title": "确认生成 Feed",
+    "summaryNew": "将为所选 {{n}} 件商品生成 Feed。",
+    "summaryMerge": "将把 {{n}} 件合并进当前 Feed（其他商品保留）。",
+    "summaryOverwrite": "已选 {{n}} 件 · 其中 {{overwrite}} 件已在 Feed 中，会被覆盖。",
+    "uncheckHint": "可取消勾选，跳过不想这次生成的商品。",
+    "willOverwrite": "已在 Feed · 将覆盖（{{n}} 个变体）",
+    "willAdd": "新商品 · 将加入 Feed",
+    "cancel": "取消",
+    "confirm": "生成 {{n}} 件",
+    "close": "关闭"
+  },
   "hub": {
     "title": "Feed Generator Hub",
     "panel": "HUB PANEL",
@@ -970,8 +997,8 @@ export const messages = {
     "current": "套餐：{{plan}} · 剩余 {{left}} / {{total}} 次生成",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "plan_free": "免费",
-    "plan_starter": "Starter（$14.99/月，150 次）",
-    "plan_growth": "Growth（$39/月，400 次）",
+    "plan_starter": "Starter（$14.99/月，50 次）",
+    "plan_growth": "Growth（$39/月，200 次）",
     "chooseStarter": "改用 Starter",
     "chooseGrowth": "改用 Growth",
     "approveInShopify": "去 Shopify 确认扣费",
@@ -990,19 +1017,19 @@ export const messages = {
       "free": {
         "name": "免费",
         "price": "$0 / 月",
-        "quota": "每月 20 次生成",
+        "quota": "每月 3 次生成",
         "blurb": "适合先跑通小目录。"
       },
       "starter": {
         "name": "Starter",
         "price": "$14.99 / 月",
-        "quota": "每月 150 次生成",
+        "quota": "每月 50 次生成",
         "blurb": "适合常态跑 Google Shopping。"
       },
       "growth": {
         "name": "Growth",
         "price": "$39 / 月",
-        "quota": "每月 400 次生成",
+        "quota": "每月 200 次生成",
         "blurb": "适合多平台 / 多市场。"
       }
     }
@@ -1128,8 +1155,9 @@ export const messages = {
     "actionGenerateFeed": "生成到 Feed",
     "tagInFeed": "Feed · {{n}}变体",
     "tagFailed": "生成失败",
-    "defectsLine": "⚠️ 必填缺失：{{list}}",
+    "defectsLine": "建议补充：{{list}}",
     "fixThenGenerate": "修复后生成",
+    "fixOptional": "可选修复",
     "edit": "编辑Feed",
     "statusReady": "Ready",
     "statusMissing": "Missing Info",
@@ -1317,6 +1345,8 @@ export const messages = {
     "doneWarn": "安检完成：已自动处理 {{auto}} 项，还有 {{warn}} 项建议你抽查后再交给 Google。",
     "doneOk": "安检完成：字段齐全，可以把 Feed 链接配进 Google Merchant Center。",
     "doneMergeOk": "已把这件商品加入当前 Feed（原有商品保留）。",
+    "regenConfirm": "所选里有 {{n}} 件已经在 Feed 里。要重新生成并覆盖吗？（会再扣配额）",
+    "mergeConfirm": "将把 {{n}} 件商品合并进当前 Feed（已有商品保留）。继续？",
     "alsoBlocked": " 另有 {{count}} 个市场因币种被拦截。",
     "noFeed": "未能生成 Feed：没有可写入的国家或产品。",
     "genFailedDetail": "生成失败: {{detail}}",

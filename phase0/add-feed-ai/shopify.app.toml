@@ -1,9 +1,6 @@
-# Production URL backup for Partner / release deploy.
-# iframe App Home: application_url + /auth/callback = hosted React Router (`add-feed-ai/web`).
-# FastAPI webhooks stay on the same host under /api/webhooks/...
-# Local trycloudflare lives in shopify.app.toml — do not submit that for review.
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "ac2bf432a87c7e12cb7c439556fe762b"
+client_id = "c623b1a10d5dac7c293691dc1f80b672"
 name = "AdFeed AI"
 application_url = "https://deltfu.com"
 embedded = true
@@ -15,36 +12,45 @@ automatically_update_urls_on_dev = true
 api_version = "2026-07"
 
   [[webhooks.subscriptions]]
-  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/compliance"
-
-  [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/app_uninstalled"
-
-  [[webhooks.subscriptions]]
-  topics = [ "products/update" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/products_update"
-
-  [[webhooks.subscriptions]]
-  topics = [ "products/delete" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/products_delete"
-
-  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/shopify/app_subscriptions_update"
   topics = [ "app_subscriptions/update" ]
-  uri = "https://deltfu.com/api/webhooks/shopify/app_subscriptions_update"
+
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/shopify/app_uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/shopify/products_delete"
+  topics = [ "products/delete" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/data_request"
+  compliance_topics = [ "customers/data_request" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/redact"
+  compliance_topics = [ "customers/redact" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/redact"
+  compliance_topics = [ "shop/redact" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/api/webhooks/shopify/products_update"
+  topics = [ "products/update" ]
 
 [access.admin]
 direct_api_mode = "online"
 embedded_app_direct_api_access = true
 
 [access_scopes]
-scopes = "read_products,write_products,read_legal_policies"
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_legal_policies,read_products,write_products"
 
 [auth]
 redirect_urls = [
   "https://deltfu.com/auth/callback",
-  "https://deltfu.com/api/shopify/callback",
+  "https://deltfu.com/api/shopify/callback"
 ]
 
 [sidekick]

@@ -101,7 +101,11 @@ def graphql_payload(shop_domain: str, access_token: str, query: str, variables: 
         resp = client.post(url, headers=headers, json={"query": query, "variables": variables or {}})
         if resp.status_code != 200:
             logger.warning("Admin GraphQL HTTP %s", resp.status_code)
-            return {"errors": [{"message": f"HTTP {resp.status_code}"}]}
+            # Include body so callers can detect non-expiring-token 403.
+            return {
+                "errors": [{"message": f"HTTP {resp.status_code}"}],
+                "error_body": (resp.text or "")[:500],
+            }
         return resp.json()
 
 

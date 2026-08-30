@@ -5,6 +5,10 @@ import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { t } from "../lib/i18n";
 import { FeedWorkbench } from "../components/FeedWorkbench";
+import {
+  GenerateConfirmModal,
+  buildGenerateConfirmItems,
+} from "../components/GenerateConfirmModal";
 import { MarketMultiSelect } from "../components/MarketMultiSelect";
 import setupStyles from "../components/FeedWorkbench.module.css";
 import { TARGET_MARKETS } from "../lib/markets";
@@ -78,6 +82,7 @@ export default function Home() {
     affordable: boolean;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [genConfirmOpen, setGenConfirmOpen] = useState(false);
   const [pipelineStep, setPipelineStep] = useState(0);
   const [marketHint, setMarketHint] = useState("");
   const [compatibleMarkets, setCompatibleMarkets] = useState<string[] | null>(
@@ -410,7 +415,42 @@ export default function Home() {
     }
   };
 
-  const onGenerate = () => void runGenerate(productIds, { merge: false });
+  const onGenerate = () => {
+    if (!adBrandConfirmed) {
+      showMsg(t("msg.needBrand"), "critical");
+      return;
+    }
+    if (!productIds.length) {
+      showMsg(t("msg.needProduct"), "critical");
+      return;
+    }
+    if (!platformList.length || !countryList.length) {
+      showMsg(t("msg.needPlatformMarket"), "critical");
+      return;
+    }
+    setGenConfirmOpen(true);
+  };
+
+  const genConfirmItems = useMemo(
+    () => buildGenerateConfirmItems(productIds, workbenchProducts),
+    [productIds, workbenchProducts],
+  );
+
+  const genFeedExists = Boolean(
+    workbenchFeed &&
+      ((workbenchFeed.item_count || 0) > 0 || workbenchFeed.url),
+  );
+
+  const confirmGenerate = (ids: string[]) => {
+    setGenConfirmOpen(false);
+    if (!ids.length) {
+      showMsg(t("msg.needProduct"), "critical");
+      return;
+    }
+    setSelected(new Set(ids));
+    void runGenerate(ids, { merge: genFeedExists });
+  };
+
   const onGenerateOne = (productId: string) =>
     void runGenerate([productId], { merge: true });
 
@@ -456,6 +496,15 @@ export default function Home() {
           <s-text>{message}</s-text>
         </s-banner>
       ) : null}
+
+      <GenerateConfirmModal
+        open={genConfirmOpen}
+        items={genConfirmItems}
+        feedExists={genFeedExists}
+        busy={generating}
+        onCancel={() => setGenConfirmOpen(false)}
+        onConfirm={confirmGenerate}
+      />
 
       {generating ? (
         <s-section heading={t("pipeline.heading")}>

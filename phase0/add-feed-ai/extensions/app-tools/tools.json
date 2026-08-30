@@ -2,7 +2,7 @@
   {
     "$schema": "https://extensions.shopifycdn.com/shopifycloud/schemas/v1/tool.json",
     "name": "describe_adfeed",
-    "description": "Explain how AdFeed AI generates Google, Meta, and TikTok shopping feeds from the Shopify catalog, including missing color/size fixes. Does not guarantee Merchant Center approval.",
+    "description": "Explain how AdFeed AI optimizes 1688-imported catalog products into a Google Shopping data feed: ad brand, generate, feed URL, optional color/size tips. Google only. Does not guarantee Merchant Center approval.",
     "inputSchema": {
       "type": "object",
       "properties": {},

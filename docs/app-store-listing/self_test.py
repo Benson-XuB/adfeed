@@ -25,7 +25,7 @@ FORBIDDEN = re.compile(
 # Allowed disclaimer in details.
 ALLOWED_GUARANTEE = re.compile(r"does not guarantee", re.I)
 
-PRICING_MARKERS = ("$14.99", "$39", "20 generate", "150 generate", "400 generate")
+PRICING_MARKERS = ("$14.99", "$39", "3 generate", "50 generate", "200 generate")
 
 
 def fence(md: str, heading: str) -> str:

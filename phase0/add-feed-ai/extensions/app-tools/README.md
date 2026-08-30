@@ -1,12 +1,11 @@
 # App Tools
 
-This extension registers headless data tools for Sidekick (`admin.app.tools.data`).
+Sidekick data tools for AdFeed AI (`admin.app.tools.data`).
 
 ## Tools
 
-- **`list_faqs`** — Returns all FAQ entries as resource links
-- **`get_faq`** — Returns a single FAQ entry by GID
+- **`describe_adfeed`** — Explains Google Shopping feed workflow for 1688-imported products (ad brand, generate, feed URL, optional color/size tips). Google only.
 
-## Get started
+## Deploy
 
-After your extension is deployed and installed in a development store, Sidekick can call these tools when a merchant asks about FAQ entries.
+After `shopify app deploy`, Sidekick reads `tools.json`, `instructions.md`, and the registered handler in `src/index.js`.

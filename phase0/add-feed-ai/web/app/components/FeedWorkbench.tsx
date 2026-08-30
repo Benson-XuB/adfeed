@@ -70,8 +70,9 @@ function defectParts(p: WorkbenchProduct): string[] {
   return out;
 }
 
-function hasMandatoryGaps(p: WorkbenchProduct): boolean {
-  return Boolean(p.need_color || p.need_size || p.need_image);
+function hasMandatoryGaps(_p: WorkbenchProduct): boolean {
+  // Soft suggestions only — never hard-block generate on color/size/image.
+  return false;
 }
 
 /** Pending + required gaps: cannot batch-generate; checkbox off. */
@@ -80,11 +81,13 @@ function blockGenerateSelect(p: WorkbenchProduct): boolean {
   return pending && hasMandatoryGaps(p);
 }
 
-/** Show red “fix then generate” instead of green generate. */
-function needsFixBeforeGenerate(p: WorkbenchProduct): boolean {
-  if (p.feed_status === "missing") return true;
-  const pending = (p.feed_status || "pending") === "pending";
-  return pending && hasMandatoryGaps(p);
+/** Red Fix-then-generate — unused for attr gaps; main action stays Generate. */
+function needsFixBeforeGenerate(_p: WorkbenchProduct): boolean {
+  return false;
+}
+
+function hasOptionalFix(p: WorkbenchProduct): boolean {
+  return Boolean(p.need_color || p.need_size || p.need_image);
 }
 
 function displayProductType(key: string): string {
@@ -282,12 +285,7 @@ export function FeedWorkbench(props: Props) {
         );
         skus = (prev.items || []).map((i) => i.sku).filter(Boolean);
       }
-      if (!skus.length) {
-        const msg = t("workbench.fixNoSkus");
-        setQuickFixError(msg);
-        onMessage(msg, "warning");
-        return;
-      }
+      // Demo / supplier products often have empty SKUs — still patch all variants.
       const inFeed = (p.feed_item_count || 0) > 0;
       console.info("[quickFix] save", {
         productId: p.id,
@@ -298,6 +296,12 @@ export function FeedWorkbench(props: Props) {
         inFeed,
       });
       if (inFeed) {
+        if (!skus.length) {
+          const msg = t("workbench.fixNoSkus");
+          setQuickFixError(msg);
+          onMessage(msg, "warning");
+          return;
+        }
         await withToken((token) =>
           patchFeedRows(
             token,
@@ -311,23 +315,44 @@ export function FeedWorkbench(props: Props) {
         );
         onMessage(t("workbench.fixSavedInFeed"), "success");
       } else {
-        const result = await withToken((token) =>
-          patchShopifyVariantAttrs(
-            token,
-            p.id,
-            skus.map((sku) =>
+        const patches = skus.length
+          ? skus.map((sku) =>
               field === "color" ? { sku, color: value } : { sku, size: value },
-            ),
-          ),
+            )
+          : [
+              field === "color"
+                ? { sku: "", color: value }
+                : { sku: "", size: value },
+            ];
+        const result = await withToken((token) =>
+          patchShopifyVariantAttrs(token, p.id, patches),
         );
         console.info("[quickFix] shopify result", result);
+        const skipped = Boolean(result.skipped_no_option);
         const updatedN = result.updated?.length || 0;
-        if (!updatedN) {
+        if (!updatedN && !result.partial && !skipped) {
           throw new Error(result.message || t("workbench.fixNoSkus"));
         }
         const msg =
           result.message || t("workbench.fixSavedShopify");
         onMessage(msg, result.partial ? "warning" : "success");
+        const stillNeedsSize =
+          !skipped &&
+          field === "color" &&
+          Boolean(result.need_size);
+        setQuickFix(null);
+        setQuickValue("");
+        setQuickFixError("");
+        onSavedEdits();
+        if (stillNeedsSize) {
+          setTimeout(() => {
+            openAttrFix(
+              { ...p, need_color: false, need_size: true },
+              "size",
+            );
+          }, 0);
+        }
+        return;
       }
       setQuickFix(null);
       setQuickValue("");
@@ -455,6 +480,7 @@ export function FeedWorkbench(props: Props) {
                 const pending = (p.feed_status || "pending") === "pending";
                 const fixFirst = needsFixBeforeGenerate(p);
                 const selectBlocked = blockGenerateSelect(p);
+                const optionalFix = hasOptionalFix(p);
                 const tag = feedStatusTag(p);
                 const defects = defectParts(p);
                 const actionLabel = fixFirst
@@ -508,11 +534,18 @@ export function FeedWorkbench(props: Props) {
                           </h4>
                           {defects.length ? (
                             <div className={styles.statusRow}>
-                              <span className={styles.defectText}>
+                              <button
+                                type="button"
+                                className={styles.defectFixBtn}
+                                onClick={() => openRowFix(p)}
+                              >
                                 {t("workbench.defectsLine", {
                                   list: defects.join("、"),
                                 })}
-                              </span>
+                                {optionalFix
+                                  ? ` · ${t("workbench.fixOptional")}`
+                                  : ""}
+                              </button>
                             </div>
                           ) : null}
                         </div>
@@ -547,7 +580,7 @@ export function FeedWorkbench(props: Props) {
                 aria-label={t("workbench.close")}
                 onClick={() => setQuickFix(null)}
               />
-              <div className={styles.drawerPanel} role="dialog" aria-modal="true">
+              <div className={styles.quickFixCard} role="dialog" aria-modal="true">
                 <s-box padding="base" border="base" borderRadius="base">
                   <s-stack gap="base">
                     <s-text type="strong">

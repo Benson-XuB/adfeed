@@ -393,6 +393,7 @@ export async function patchShopifyVariantAttrs(
   need_size?: boolean;
   message?: string;
   partial?: boolean;
+  skipped_no_option?: boolean;
 }> {
   const res = await backendFetch("/api/app/products/shopify_variant_patch", token, {
     method: "POST",
