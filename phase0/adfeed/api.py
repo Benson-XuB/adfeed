@@ -32,6 +32,11 @@ from .store_db import Store as StoreModel
 
 app = FastAPI(title="AdFeed AI", version="0.3.0", request_max_size=200 * 1024 * 1024)
 
+from .platforms.google.router import router as google_platform_router
+
+app.include_router(google_platform_router)
+
+
 # Embedded admin + CLI tunnels call the API from HTTPS origins (not localhost UI).
 # Admin UI extensions run on extensions.shopifycdn.com (CORS preflight Origin).
 # Admin UI extensions: extensions.shopifycdn.com
@@ -140,169 +145,6 @@ async def app_billing_status(store: StoreModel = Depends(require_store)):
         "quota_used": store.quota_used,
         "quota_remaining": store.quota_remaining,
         "subscription_id": store.subscription_id,
-    }
-
-
-@app.get("/api/app/google/status")
-async def app_google_status(store: StoreModel = Depends(require_store)):
-    """Connection status for 过审问题 / Ads (no secrets)."""
-    from . import store_db
-    from .google_oauth import google_oauth_configured, SCOPE_ADWORDS, SCOPE_CONTENT
-
-    tok = store_db.get_google_oauth_token(store.id)
-    scopes = (tok or {}).get("scopes") or ""
-    merchants = store_db.list_google_merchant_accounts(store.id)
-    return {
-        "oauth_configured": google_oauth_configured(),
-        "connected": bool(tok),
-        "scopes": scopes,
-        "has_content_scope": SCOPE_CONTENT in scopes,
-        "has_ads_scope": SCOPE_ADWORDS in scopes,
-        "merchants": merchants,
-        "selected_merchant_id": store_db.get_selected_merchant_id(store.id),
-    }
-
-
-@app.get("/api/app/google/oauth/start")
-async def app_google_oauth_start(
-    store: StoreModel = Depends(require_store),
-    ads: bool = False,
-):
-    from .google_oauth import build_authorize_url, google_oauth_configured
-
-    if not google_oauth_configured():
-        raise HTTPException(
-            503,
-            "Google OAuth is not configured (GOOGLE_OAUTH_*). Available after App Store review deploy.",
-        )
-    state = f"{store.id}|{'ads' if ads else 'mc'}"
-    try:
-        url = build_authorize_url(state=state, include_ads=ads)
-    except RuntimeError as e:
-        raise HTTPException(503, str(e)) from e
-    return {"authorize_url": url, "state": state}
-
-
-class GoogleMerchantSelectBody(BaseModel):
-    merchant_id: str
-    display_name: str = ""
-
-
-@app.post("/api/app/google/merchants/select")
-async def app_google_merchant_select(
-    body: GoogleMerchantSelectBody,
-    store: StoreModel = Depends(require_store),
-):
-    from . import store_db
-
-    if not store_db.get_google_oauth_token(store.id):
-        raise HTTPException(400, "Connect Google first")
-    row = store_db.upsert_google_merchant_account(
-        store.id,
-        body.merchant_id,
-        body.display_name,
-        select=True,
-    )
-    return {"ok": True, "merchant": row}
-
-
-@app.post("/api/app/google/disconnect")
-async def app_google_disconnect(store: StoreModel = Depends(require_store)):
-    from . import store_db
-
-    store_db.delete_google_oauth_token(store.id)
-    return {"ok": True}
-
-
-@app.get("/api/app/google/issues")
-async def app_google_issues(
-    store: StoreModel = Depends(require_store),
-    merchant_id: Optional[str] = None,
-):
-    from . import store_db
-    from .google_issue_actions import suggest_action
-
-    mid = (merchant_id or "").strip() or store_db.get_selected_merchant_id(store.id)
-    if not mid:
-        return {"merchant_id": None, "issues": [], "matched": 0, "unmatched": 0}
-    issues = store_db.list_gmc_product_issues(store.id, mid)
-    out = []
-    matched = unmatched = 0
-    for it in issues:
-        action = suggest_action(it.get("reason_code") or "")["action"]
-        row = dict(it)
-        row["suggested_action"] = action
-        if it.get("product_id_internal"):
-            matched += 1
-        else:
-            unmatched += 1
-        out.append(row)
-    return {
-        "merchant_id": mid,
-        "issues": out,
-        "matched": matched,
-        "unmatched": unmatched,
-    }
-
-
-class GoogleIssuesSyncBody(BaseModel):
-    merchant_id: Optional[str] = None
-    # Dev/test only: inject issues without live Google (never for production clients)
-    mock_issues: Optional[list[dict]] = None
-
-
-@app.post("/api/app/google/issues/sync")
-async def app_google_issues_sync(
-    body: GoogleIssuesSyncBody,
-    store: StoreModel = Depends(require_store),
-):
-    """Manual sync only (Spec 2A)."""
-    from . import store_db
-    from .google_merchant_sync import sync_merchant_issues
-
-    mid = (body.merchant_id or "").strip() or store_db.get_selected_merchant_id(store.id)
-    if not mid:
-        raise HTTPException(400, "Select a Merchant account first")
-    if not store_db.get_google_oauth_token(store.id) and body.mock_issues is None:
-        raise HTTPException(400, "Connect Google first")
-
-    class _Mock:
-        def __init__(self, issues):
-            self._issues = issues
-
-        def list_product_issues(self, merchant_id: str):
-            return self._issues
-
-    if body.mock_issues is not None:
-        client = _Mock(body.mock_issues)
-    else:
-        raise HTTPException(
-            501,
-            "Live Merchant API client not wired yet — use mock_issues in tests or await Google client module.",
-        )
-
-    store_db.upsert_google_merchant_account(store.id, mid, select=True)
-    result = sync_merchant_issues(store.id, mid, client)
-    return result
-
-
-@app.get("/api/app/google/ads/metrics")
-async def app_google_ads_metrics(
-    store: StoreModel = Depends(require_store),
-    ads_customer_id: str = "",
-):
-    from . import store_db
-
-    cid = (ads_customer_id or "").strip()
-    if not cid:
-        return {"ads_customer_id": None, "rows": [], "product_level": 0, "degraded": False}
-    rows = store_db.list_ads_metrics_daily(store.id, cid)
-    product_level = sum(1 for r in rows if r.get("offer_id"))
-    return {
-        "ads_customer_id": cid,
-        "rows": rows,
-        "product_level": product_level,
-        "degraded": bool(rows) and product_level == 0,
     }
 
 

@@ -80,6 +80,10 @@ GOOGLE_OAUTH_REDIRECT_URI = os.getenv(
     "GOOGLE_OAUTH_REDIRECT_URI",
     "https://deltfu.com/api/app/google/oauth/callback",
 )
+# Ads API developer token (required for product metrics sync; separate from OAuth)
+GOOGLE_ADS_DEVELOPER_TOKEN = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
+GOOGLE_ADS_LOGIN_CUSTOMER_ID = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "")
+GOOGLE_ADS_API_VERSION = os.getenv("GOOGLE_ADS_API_VERSION", "v19")
 
 # ============================================
 # Mock 数据配置

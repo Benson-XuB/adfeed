@@ -32,7 +32,8 @@
   font-size: 0.8rem;
 }
 
-.label select {
+.label select,
+.label input {
   min-width: 12rem;
   padding: 0.35rem 0.5rem;
 }

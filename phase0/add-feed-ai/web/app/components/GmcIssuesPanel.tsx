@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { t } from "../lib/i18n";
 import {
+  disconnectGoogle,
   fetchGoogleIssues,
   fetchGoogleStatus,
+  refreshGoogleMerchants,
   selectGoogleMerchant,
-  syncGoogleIssuesMock,
+  startGoogleOAuth,
+  syncGoogleIssues,
   type GmcIssueRow,
   type GoogleStatus,
 } from "../lib/adfeed-api";
@@ -49,6 +52,50 @@ export function GmcIssuesPanel({ getToken }: Props) {
     void reload();
   }, [getToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const onConnect = async (ads: boolean) => {
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      const { authorize_url } = await startGoogleOAuth(token, ads);
+      window.open(authorize_url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDisconnect = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      await disconnectGoogle(token);
+      setMerchantId("");
+      setIssues([]);
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRefreshMerchants = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      await refreshGoogleMerchants(token);
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onSelectMerchant = async (mid: string) => {
     if (!mid) return;
     setBusy(true);
@@ -65,13 +112,12 @@ export function GmcIssuesPanel({ getToken }: Props) {
   };
 
   const onSync = async () => {
+    if (!merchantId) return;
     setBusy(true);
     setErr("");
     try {
       const token = await getToken();
-      const mid = merchantId || "demo-merchant";
-      await syncGoogleIssuesMock(token, mid, []);
-      setMerchantId(mid);
+      await syncGoogleIssues(token, merchantId);
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -91,6 +137,14 @@ export function GmcIssuesPanel({ getToken }: Props) {
         <p className={styles.muted}>{t("gmc.oauthNotConfigured")}</p>
       ) : null}
 
+      {status?.oauth_configured && !status?.connected ? (
+        <div className={styles.toolbar}>
+          <s-button variant="primary" disabled={busy} onClick={() => void onConnect(false)}>
+            {t("gmc.connect")}
+          </s-button>
+        </div>
+      ) : null}
+
       {status?.connected ? (
         <div className={styles.toolbar}>
           <label className={styles.label}>
@@ -108,11 +162,17 @@ export function GmcIssuesPanel({ getToken }: Props) {
               ))}
             </select>
           </label>
+          <s-button variant="secondary" disabled={busy} onClick={() => void onRefreshMerchants()}>
+            {t("gmc.refreshMerchants")}
+          </s-button>
           <s-button variant="secondary" disabled={busy || !merchantId} onClick={() => void onSync()}>
             {t("gmc.sync")}
           </s-button>
+          <s-button variant="tertiary" disabled={busy} onClick={() => void onDisconnect()}>
+            {t("gmc.disconnect")}
+          </s-button>
         </div>
-      ) : (
+      ) : status?.oauth_configured ? null : (
         <p className={styles.muted}>{t("gmc.connectLater")}</p>
       )}
 

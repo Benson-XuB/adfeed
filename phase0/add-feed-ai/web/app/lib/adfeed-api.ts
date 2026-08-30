@@ -607,6 +607,7 @@ export type GoogleMerchant = {
 
 export type GoogleStatus = {
   oauth_configured: boolean;
+  ads_api_configured?: boolean;
   connected: boolean;
   scopes: string;
   has_content_scope: boolean;
@@ -661,7 +662,43 @@ export async function selectGoogleMerchant(
   await jsonOrThrow(res, "Select merchant failed");
 }
 
-/** Branch/dev: sync with injectable mock_issues (live Merchant client later). */
+export async function startGoogleOAuth(
+  token: string,
+  ads = false,
+): Promise<{ authorize_url: string }> {
+  const q = ads ? "?ads=true" : "";
+  const res = await backendFetch(`/api/app/google/oauth/start${q}`, token);
+  return jsonOrThrow(res, "Google OAuth start failed");
+}
+
+export async function disconnectGoogle(token: string): Promise<void> {
+  const res = await backendFetch("/api/app/google/disconnect", token, {
+    method: "POST",
+  });
+  await jsonOrThrow(res, "Disconnect Google failed");
+}
+
+export async function refreshGoogleMerchants(token: string): Promise<{
+  merchants: GoogleMerchant[];
+}> {
+  const res = await backendFetch("/api/app/google/merchants/refresh", token, {
+    method: "POST",
+  });
+  return jsonOrThrow(res, "Refresh merchants failed");
+}
+
+export async function syncGoogleIssues(
+  token: string,
+  merchantId: string,
+): Promise<{ written: number; matched: number; unmatched: number }> {
+  const res = await backendFetch("/api/app/google/issues/sync", token, {
+    method: "POST",
+    body: JSON.stringify({ merchant_id: merchantId }),
+  });
+  return jsonOrThrow(res, "Issues sync failed");
+}
+
+/** Dev/test: sync with injectable mock_issues. */
 export async function syncGoogleIssuesMock(
   token: string,
   merchantId: string,
@@ -675,4 +712,45 @@ export async function syncGoogleIssuesMock(
     }),
   });
   return jsonOrThrow(res, "Issues sync failed");
+}
+
+export type AdsMetricsRow = {
+  date: string;
+  offer_id?: string | null;
+  campaign_id?: string | null;
+  impressions: number;
+  clicks: number;
+  cost_micros: number;
+  conversions: number;
+};
+
+export async function fetchAdsMetrics(
+  token: string,
+  adsCustomerId: string,
+): Promise<{
+  ads_customer_id: string | null;
+  rows: AdsMetricsRow[];
+  product_level: number;
+  degraded: boolean;
+}> {
+  const q = adsCustomerId
+    ? `?ads_customer_id=${encodeURIComponent(adsCustomerId)}`
+    : "";
+  const res = await backendFetch(`/api/app/google/ads/metrics${q}`, token);
+  return jsonOrThrow(res, "Ads metrics failed");
+}
+
+export async function syncAdsMetrics(
+  token: string,
+  adsCustomerId: string,
+): Promise<{
+  written: number;
+  product_level: number;
+  degraded: boolean;
+}> {
+  const res = await backendFetch("/api/app/google/ads/sync", token, {
+    method: "POST",
+    body: JSON.stringify({ ads_customer_id: adsCustomerId }),
+  });
+  return jsonOrThrow(res, "Ads sync failed");
 }
