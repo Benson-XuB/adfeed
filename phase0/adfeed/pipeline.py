@@ -1171,10 +1171,11 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
     """
     from . import store_db
     from .config import FEEDS_DIR, PUBLIC_BASE_URL
-    from .feed_generator import generate as generate_feed_xml
-    from .multi_platform_feeds import (
-        save_meta_feed, save_tiktok_feed, durable_feed_path, durable_feed_url,
-    )
+    from .platforms.common.paths import durable_feed_path, durable_feed_url
+    from .platforms.common.registry import get_platform
+    # Ensure platform modules are registered
+    import adfeed.platforms  # noqa: F401
+
 
     store = store_db.get_store(store_id)
     if not store:
@@ -1599,25 +1600,20 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
             feed_path = durable_feed_path(FEEDS_DIR, store_id, plat, cu)
             from .feed_snapshots import maybe_snapshot_current
             maybe_snapshot_current(store_id, plat, cu, feed_path)
+            item_count = get_platform(plat).export_feed(
+                plat_rows,
+                output_path=feed_path,
+                country=cu,
+                shop_name=store.shop_name or "",
+                site_link=site_url,
+                skip_out_of_stock=skip_out_of_stock,
+            )
             if plat == "google":
-                country_df = pd.DataFrame(plat_rows)
-                xml = generate_feed_xml(country_df, cu, skip_out_of_stock=skip_out_of_stock)
-                feed_path.parent.mkdir(parents=True, exist_ok=True)
-                feed_path.write_text(xml, encoding="utf-8")
-                item_count = xml.count("<item>")
                 try:
                     from .feed_preview import write_google_tsv_from_xml
                     write_google_tsv_from_xml(feed_path, feed_path.with_suffix(".csv"))
                 except Exception as e:
                     print(f"  [CSV] skip: {e}")
-            elif plat == "meta":
-                item_count = save_meta_feed(
-                    plat_rows, feed_path, store.shop_name or "", site_url, cu,
-                )
-            else:
-                item_count = save_tiktok_feed(
-                    plat_rows, feed_path, store.shop_name or "",
-                )
 
             total_items += item_count
             feed_url = durable_feed_url(public_base, store_id, plat, cu)

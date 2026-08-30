@@ -6,6 +6,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { t } from "../lib/i18n";
 import { FeedWorkbench } from "../components/FeedWorkbench";
 import { GmcIssuesPanel } from "../components/GmcIssuesPanel";
+import { AdsMetricsPanel } from "../components/AdsMetricsPanel";
 import {
   GenerateConfirmModal,
   buildGenerateConfirmItems,
@@ -40,7 +41,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 /** MVP: Google only — Meta/TikTok generators exist server-side but stay out of merchant UI. */
-const PLATFORMS = [{ code: "google", label: "Google" }] as const;
+const PLATFORMS = [
+  { code: "google", label: "Google" },
+  { code: "meta", label: "Meta" },
+  { code: "tiktok", label: "TikTok" },
+] as const;
 const SHOW_PLATFORM_PICKER = PLATFORMS.length > 1;
 
 const PIPELINE_IDS = ["title", "category", "variant", "id", "image"] as const;
@@ -508,6 +513,7 @@ export default function Home() {
       />
 
       <GmcIssuesPanel getToken={() => shopify.idToken()} />
+      <AdsMetricsPanel getToken={() => shopify.idToken()} />
 
       {generating ? (
         <s-section heading={t("pipeline.heading")}>
