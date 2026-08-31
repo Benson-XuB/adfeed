@@ -16,7 +16,18 @@ export const messages = {
     "sync": "Sync issues",
     "empty": "No cached issues yet. Sync after connecting Google.",
     "unmatched": "Unmatched offer",
-    "matchStats": "Matched {{matched}} · unmatched {{unmatched}}"
+    "matchStats": "Matched {{matched}} · unmatched {{unmatched}}",
+    "sandboxTitle": "Sandbox push",
+    "sandboxHint": "Push products via Merchant API (sandbox). Catalog rows land in a follow-up; until then the API may ask for rows.",
+    "pushSandbox": "Push to Google (sandbox)",
+    "pushDisabled": "Push is off on this server (set GOOGLE_PUSH_ENABLED).",
+    "pushNeedMerchant": "Select a Merchant account first.",
+    "dataSource": "API data source",
+    "selectDataSource": "Select…",
+    "refreshDataSources": "Refresh data sources",
+    "pushRunning": "Pushing…",
+    "pushOk": "Push done — {{ok}} ok · {{fail}} failed",
+    "pushNeedDataSource": "Select an API data source before pushing."
   },
   "ads": {
     "metricsTitle": "Ad performance",
@@ -853,7 +864,18 @@ export const messages = {
     "sync": "同步问题",
     "empty": "暂无缓存问题。连接 Google 后点同步。",
     "unmatched": "未匹配 offer",
-    "matchStats": "已匹配 {{matched}} · 未匹配 {{unmatched}}"
+    "matchStats": "已匹配 {{matched}} · 未匹配 {{unmatched}}",
+    "sandboxTitle": "沙盒推送",
+    "sandboxHint": "通过 Merchant API 推送商品（沙盒）。商品行由后续任务接线；目前接口可能要求 rows。",
+    "pushSandbox": "推送到 Google（沙盒）",
+    "pushDisabled": "本服务器未开启推送（需设置 GOOGLE_PUSH_ENABLED）。",
+    "pushNeedMerchant": "请先选择 Merchant 账号。",
+    "dataSource": "API 数据源",
+    "selectDataSource": "选择…",
+    "refreshDataSources": "刷新数据源",
+    "pushRunning": "推送中…",
+    "pushOk": "推送完成 — 成功 {{ok}} · 失败 {{fail}}",
+    "pushNeedDataSource": "推送前请先选择 API 数据源。"
   },
   "ads": {
     "metricsTitle": "广告效果",

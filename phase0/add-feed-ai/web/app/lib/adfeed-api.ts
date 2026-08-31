@@ -603,6 +603,7 @@ export type GoogleMerchant = {
   merchant_id: string;
   display_name?: string;
   is_selected?: number;
+  data_source_name?: string;
 };
 
 export type GoogleStatus = {
@@ -614,6 +615,32 @@ export type GoogleStatus = {
   has_ads_scope: boolean;
   merchants: GoogleMerchant[];
   selected_merchant_id: string | null;
+  /** GOOGLE_PUSH_ENABLED env gate — sandbox Merchant API productInputs push */
+  push_enabled?: boolean;
+};
+
+export type GoogleDataSource = {
+  name: string;
+  dataSourceId?: string;
+  displayName?: string;
+  input?: string;
+  primaryProductDataSource?: Record<string, unknown>;
+  supplementalProductDataSource?: Record<string, unknown>;
+};
+
+export type GooglePushRun = {
+  id: string;
+  store_id?: string;
+  merchant_id?: string;
+  status: string;
+  ok_count?: number;
+  fail_count?: number;
+  items?: Array<{
+    offer_id?: string;
+    status?: string;
+    error?: string | null;
+  }>;
+  [key: string]: unknown;
 };
 
 export type GmcIssueRow = {
@@ -696,6 +723,65 @@ export async function syncGoogleIssues(
     body: JSON.stringify({ merchant_id: merchantId }),
   });
   return jsonOrThrow(res, "Issues sync failed");
+}
+
+export async function listGoogleDataSources(
+  token: string,
+  merchantId = "",
+): Promise<{ merchant_id: string; data_sources: GoogleDataSource[] }> {
+  const q = merchantId
+    ? `?merchant_id=${encodeURIComponent(merchantId)}`
+    : "";
+  const res = await backendFetch(`/api/app/google/datasources${q}`, token);
+  return jsonOrThrow(res, "List Google dataSources failed");
+}
+
+export async function selectGoogleDataSource(
+  token: string,
+  dataSourceName: string,
+  merchantId = "",
+): Promise<{ merchant: GoogleMerchant }> {
+  const res = await backendFetch("/api/app/google/datasources/select", token, {
+    method: "POST",
+    body: JSON.stringify({
+      data_source_name: dataSourceName,
+      ...(merchantId ? { merchant_id: merchantId } : {}),
+    }),
+  });
+  return jsonOrThrow(res, "Select Google dataSource failed");
+}
+
+export type GooglePushBody = {
+  rows?: Record<string, unknown>[] | null;
+  use_fake?: boolean;
+  merchant_id?: string;
+  channel?: string;
+  content_language?: string;
+  feed_label?: string;
+  mock_result?: Record<string, unknown>;
+};
+
+/** Sandbox push — omit rows to build catalog from store (same path as Google XML). */
+export async function pushGoogleProducts(
+  token: string,
+  body: GooglePushBody = {},
+): Promise<GooglePushRun> {
+  const res = await backendFetch("/api/app/google/push", token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return jsonOrThrow(res, "Google push failed");
+}
+
+export async function getGooglePushRun(
+  token: string,
+  runId: string,
+): Promise<GooglePushRun> {
+  const res = await backendFetch(
+    `/api/app/google/push/runs/${encodeURIComponent(runId)}`,
+    token,
+  );
+  return jsonOrThrow(res, "Google push run failed");
 }
 
 /** Dev/test: sync with injectable mock_issues. */

@@ -106,7 +106,24 @@
 
 ---
 
+## 2026-08-31 修订（Google 出口：API 为主、XML 逃生）
+
+**拍板：** 方案 A + UI A3（见 `docs/plans/2026-08-31-google-api-push-dual-export-design.md`）。  
+**隔离：** 仅隔离分支 / 沙盒；**不影响** Shopify V1.0 审核中的生产配置与 deploy。
+
+| 项 | 修订 |
+|----|------|
+| 一句话北星中的「Google Shopping Feed」 | 理解为 Google Shopping **目录过审**；Google 主交付可为 **Merchant API 推送**，XML 为逃生舱 |
+| 支柱① | **不变**（质量引擎 / 字段合同仍是唯一字段主人路径） |
+| 支柱② | **不变**（主图选择） |
+| 支柱③ | 「再生成 Feed」扩展为：修正字段后 **再推送 Google**（或再导出 XML 逃生）；Meta/TikTok 仍 Feed/CSV |
+| 验收 | Google：推送任务可验收；XML 生成能力保留但不作为沙盒主 UI |
+
+**未改：** 禁止假 GTIN/品牌/脏 color；不做 AI 修图；不做 Celery/Remix 预防性重构。
+
+---
+
 ## 给未来协作者 / 其他 AI 的一句话
 
-> AdFeed MVP 的胜负手是 **Feed 过审闭环**，不是技术栈炫技。  
-> 别建议迁 Polaris React、别建议上 Celery、别建议默认 AI 修图——除非北星文档已被正式修订。
+> AdFeed MVP 的胜负手是 **目录过审闭环**（质量 → 主图 → 修正 → 再推送/再导出），不是技术栈炫技。  
+> Google 可走 API 推送，XML 仅逃生；别建议迁 Polaris React、别建议上 Celery、别建议默认 AI 修图——除非北星文档已被正式修订。

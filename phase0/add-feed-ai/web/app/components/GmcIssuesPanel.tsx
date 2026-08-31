@@ -4,10 +4,14 @@ import {
   disconnectGoogle,
   fetchGoogleIssues,
   fetchGoogleStatus,
+  listGoogleDataSources,
+  pushGoogleProducts,
   refreshGoogleMerchants,
+  selectGoogleDataSource,
   selectGoogleMerchant,
   startGoogleOAuth,
   syncGoogleIssues,
+  type GoogleDataSource,
   type GmcIssueRow,
   type GoogleStatus,
 } from "../lib/adfeed-api";
@@ -21,12 +25,46 @@ export function GmcIssuesPanel({ getToken }: Props) {
   const [status, setStatus] = useState<GoogleStatus | null>(null);
   const [issues, setIssues] = useState<GmcIssueRow[]>([]);
   const [merchantId, setMerchantId] = useState("");
+  const [dataSources, setDataSources] = useState<GoogleDataSource[]>([]);
+  const [dataSourceName, setDataSourceName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [pushMsg, setPushMsg] = useState("");
   const [meta, setMeta] = useState<{ matched: number; unmatched: number }>({
     matched: 0,
     unmatched: 0,
   });
+
+  const loadDataSources = useCallback(
+    async (token: string, mid: string, preferName = "") => {
+      if (!mid) {
+        setDataSources([]);
+        setDataSourceName("");
+        return;
+      }
+      try {
+        const res = await listGoogleDataSources(token, mid);
+        const list = res.data_sources || [];
+        setDataSources(list);
+        const savedOk =
+          Boolean(preferName) && list.some((d) => d.name === preferName);
+        const pick = savedOk ? preferName : list[0]?.name || "";
+        setDataSourceName(pick);
+        if (pick && !savedOk) {
+          try {
+            await selectGoogleDataSource(token, pick, mid);
+          } catch {
+            /* keep UI selection; push will surface API error */
+          }
+        }
+      } catch {
+        setDataSources([]);
+        /* non-fatal — push still shows API errors */
+      }
+    },
+    [],
+  );
 
   const reload = useCallback(async () => {
     setErr("");
@@ -40,13 +78,23 @@ export function GmcIssuesPanel({ getToken }: Props) {
         const res = await fetchGoogleIssues(token, mid);
         setIssues(res.issues || []);
         setMeta({ matched: res.matched, unmatched: res.unmatched });
+        const selectedMerchant = (st.merchants || []).find(
+          (m) => m.merchant_id === mid,
+        );
+        const savedDs = (selectedMerchant?.data_source_name || "").trim();
+        if (savedDs) setDataSourceName(savedDs);
+        if (st.connected && st.push_enabled) {
+          await loadDataSources(token, mid, savedDs);
+        }
       } else {
         setIssues([]);
+        setDataSources([]);
+        setDataSourceName("");
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [getToken, merchantId]);
+  }, [getToken, merchantId, loadDataSources]);
 
   useEffect(() => {
     void reload();
@@ -74,6 +122,9 @@ export function GmcIssuesPanel({ getToken }: Props) {
       await disconnectGoogle(token);
       setMerchantId("");
       setIssues([]);
+      setDataSources([]);
+      setDataSourceName("");
+      setPushMsg("");
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -111,6 +162,35 @@ export function GmcIssuesPanel({ getToken }: Props) {
     }
   };
 
+  const onSelectDataSource = async (name: string) => {
+    if (!name || !merchantId) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      await selectGoogleDataSource(token, name, merchantId);
+      setDataSourceName(name);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRefreshDataSources = async () => {
+    if (!merchantId) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const token = await getToken();
+      await loadDataSources(token, merchantId, dataSourceName);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onSync = async () => {
     if (!merchantId) return;
     setBusy(true);
@@ -125,6 +205,41 @@ export function GmcIssuesPanel({ getToken }: Props) {
       setBusy(false);
     }
   };
+
+  const onPushSandbox = async () => {
+    setPushBusy(true);
+    setErr("");
+    setPushMsg("");
+    try {
+      if (!merchantId) {
+        setErr(t("gmc.pushNeedMerchant"));
+        return;
+      }
+      if (!dataSourceName) {
+        setErr(t("gmc.pushNeedDataSource"));
+        return;
+      }
+      const token = await getToken();
+      // Task 6: omit rows — API returns 400 until Task 7 builds catalog from store.
+      const run = await pushGoogleProducts(token, {
+        merchant_id: merchantId,
+      });
+      setPushMsg(
+        t("gmc.pushOk", {
+          ok: String(run.ok_count ?? 0),
+          fail: String(run.fail_count ?? 0),
+        }),
+      );
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const pushEnabled = Boolean(status?.push_enabled);
+  const canPush =
+    pushEnabled && Boolean(merchantId) && Boolean(dataSourceName) && !pushBusy;
 
   return (
     <section className={styles.panel} aria-labelledby="gmc-issues-heading">
@@ -175,6 +290,51 @@ export function GmcIssuesPanel({ getToken }: Props) {
       ) : status?.oauth_configured ? null : (
         <p className={styles.muted}>{t("gmc.connectLater")}</p>
       )}
+
+      {status?.connected ? (
+        <div className={styles.sandbox}>
+          <div className={styles.head}>
+            <h3 className={styles.sandboxTitle}>{t("gmc.sandboxTitle")}</h3>
+            <p className={styles.hint}>{t("gmc.sandboxHint")}</p>
+          </div>
+          {!pushEnabled ? (
+            <p className={styles.muted}>{t("gmc.pushDisabled")}</p>
+          ) : (
+            <div className={styles.toolbar}>
+              <label className={styles.label}>
+                {t("gmc.dataSource")}
+                <select
+                  value={dataSourceName}
+                  disabled={busy || pushBusy || !merchantId}
+                  onChange={(e) => void onSelectDataSource(e.target.value)}
+                >
+                  <option value="">{t("gmc.selectDataSource")}</option>
+                  {dataSources.map((ds) => (
+                    <option key={ds.name} value={ds.name}>
+                      {ds.displayName || ds.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <s-button
+                variant="secondary"
+                disabled={busy || pushBusy || !merchantId}
+                onClick={() => void onRefreshDataSources()}
+              >
+                {t("gmc.refreshDataSources")}
+              </s-button>
+              <s-button
+                variant="primary"
+                disabled={!canPush || busy}
+                onClick={() => void onPushSandbox()}
+              >
+                {pushBusy ? t("gmc.pushRunning") : t("gmc.pushSandbox")}
+              </s-button>
+            </div>
+          )}
+          {pushMsg ? <p className={styles.ok}>{pushMsg}</p> : null}
+        </div>
+      ) : null}
 
       {err ? <p className={styles.err}>{err}</p> : null}
 

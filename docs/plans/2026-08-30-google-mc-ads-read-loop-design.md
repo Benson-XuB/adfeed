@@ -1,9 +1,12 @@
 # Google MC + Ads 只读闭环 — 设计规格（SDD · Spec）
 
 **日期：** 2026-08-30  
-**状态：** ACCEPTED（开放问题已答，2026-08-30）— 可写 Implementation Plan；审核期仍禁止动生产 Google OAuth  
+**状态：** ACCEPTED — **Phase 1（只读）已被部分取代**  
+**取代说明（2026-08-31）：** Google Phase 1 升级为「API 推送 + 读拒审 + XML 逃生」，见  
+`docs/plans/2026-08-31-google-api-push-dual-export-design.md`。  
+本文 **Phase 2 Ads 只读**、多 Merchant、手动同步等决议仍有效；「不做自动 PATCH / 先挂 Feed URL」等 Phase 1 表述以新 Spec 为准。
 
-**分支：** `docs/google-mc-ads-read-loop`（与 App Store 审核中的生产改动隔离）  
+**分支：** `feature/google-mc-issues`（与 App Store 审核中的生产改动隔离）  
 **产品形态：** AdFeed AI **应用内扩展模块**（不新建 Shopify App / 不换 Client ID）
 
 ```

@@ -784,7 +784,18 @@ def optimize_layered(
             material = product.material or ""
 
             # ── Layer 1: shared once ──
-            gpc = gpc_match(title=title, category=category, material=material)
+            if (
+                (product.gpc_code or "").strip()
+                and (product.gpc_source or "").strip().lower() in ("catalog", "mock", "manual")
+            ):
+                gpc = {
+                    "gpc_code": product.gpc_code,
+                    "gpc_path": product.gpc_path or "",
+                    "confidence": float(product.gpc_confidence or 0.95),
+                    "source": product.gpc_source,
+                }
+            else:
+                gpc = gpc_match(title=title, category=category, material=material)
             attr = infer_product_attributes(
                 category_key=resolve_category(category, gpc.get("gpc_path", "")),
                 gpc_path=gpc.get("gpc_path", ""),
@@ -793,6 +804,9 @@ def optimize_layered(
                 search_prefix=get_search_prefix("US", category, gpc.get("gpc_path", "")),
                 size="",
             )
+            # Catalog age_group wins over generic adult default
+            if (product.age_group or "").strip():
+                attr["age_group"] = product.age_group
             store_db.update_product_ai_result(
                 product_id=product.id,
                 optimized_title=title,
@@ -906,11 +920,36 @@ _TITLE_MATERIAL_KEYWORDS = {
     "silk": "Silk", "linen": "Linen", "wool": "Wool",
     "leather": "Leather", "polyester": "Polyester",
     "spandex": "Spandex", "nylon": "Nylon",
+    "silicone": "Silicone", "ceramic": "Ceramic", "stoneware": "Stoneware",
+    "bamboo": "Bamboo", "fleece": "Fleece", "chiffon": "Chiffon",
+    "satin": "Satin", "cashmere": "Cashmere", "merino": "Wool",
 }
 
 
+def _variant_shipping_weight(weight, weight_unit: str = "kg") -> str:
+    """Format real variant weight for g:shipping_weight; empty if unknown (no fake grams)."""
+    try:
+        w = float(weight) if weight is not None else 0.0
+    except (TypeError, ValueError):
+        return ""
+    if w <= 0:
+        return ""
+    unit = (weight_unit or "kg").strip().lower()
+    if unit in ("g", "gram", "grams"):
+        grams = w
+    elif unit in ("lb", "lbs", "pound", "pounds"):
+        grams = w * 453.592
+    elif unit in ("oz", "ounce", "ounces"):
+        grams = w * 28.3495
+    else:
+        grams = w * 1000.0  # kg default
+    if grams >= 1000:
+        return f"{grams / 1000.0:.2f} kg"
+    return f"{grams:.1f} g"
+
+
 def _infer_material(gpc_code: str, title: str, existing_material: str, description: str = "") -> str:
-    """推断材质：已有值 > 面料栏 > 标题关键词 > GPC 默认值"""
+    """推断材质：已有值 > 面料栏 > 标题关键词 >（仅服装）GPC 默认。不编假材质。"""
     if existing_material:
         return existing_material
     blob = f"{title or ''}\n{description or ''}"
@@ -924,11 +963,16 @@ def _infer_material(gpc_code: str, title: str, existing_material: str, descripti
         for kw, mat in _TITLE_MATERIAL_KEYWORDS.items():
             if kw in line_l:
                 return mat
-    title_lower = title.lower()
+    title_lower = (title or "").lower()
     for kw, mat in _TITLE_MATERIAL_KEYWORDS.items():
         if kw in title_lower:
             return mat
-    return _GPC_MATERIAL_MAP.get(gpc_code, "")
+    # GPC defaults only for apparel codes — never Polyester-stamp home/electronics
+    from .feed_quality import is_apparel_like
+
+    if is_apparel_like(gpc_code=gpc_code or "", title=title or ""):
+        return _GPC_MATERIAL_MAP.get(gpc_code, "")
+    return ""
 
 
 # 尺码标准化映射
@@ -1151,10 +1195,30 @@ def _build_color_image_map(colors: list[str], all_images: list[str]) -> dict[str
 # 三段式流水线：段3 — Feed XML 生成（纯静态读取）
 # ─────────────────────────────────────────────────
 
+def build_feed_rows_for_store(
+    store_id: str,
+    country: str = "US",
+    product_ids: list[str] = None,
+) -> list[dict]:
+    """Canonical Chinese-key rows for one store/country (same path as Google XML).
+
+    Does not write feed files. Used by Merchant API push when body.rows is empty.
+    """
+    result = generate_feed_for_store(
+        store_id,
+        countries=[country],
+        platforms=["google"],
+        product_ids=product_ids,
+        write_files=False,
+    )
+    return list(result.get("rows") or [])
+
+
 def generate_feed_for_store(store_id: str, countries: list[str] = None,
                             skip_out_of_stock: bool = False,
                             platforms: list[str] = None,
-                            product_ids: list[str] = None) -> dict:
+                            product_ids: list[str] = None,
+                            write_files: bool = True) -> dict:
     """段3: Feed XML 生成 — 只读 feed_enabled=1 且 ai_status=ready 的产品
 
     默认不调用标题/GPC AI。
@@ -1165,9 +1229,10 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
         skip_out_of_stock: True 时跳过库存=0的变体，不输出到 Feed
         platforms: 目标平台列表，可选值: ["google", "meta", "tiktok"]
                    默认只生成 Google Feed
+        write_files: False → skip XML/CSV write; return google plat_rows in ``rows``
 
     Returns:
-        {"feed_urls": [...], "total_items": N}
+        {"feed_urls": [...], "total_items": N} (+ optional ``rows`` when write_files=False)
     """
     from . import store_db
     from .config import FEEDS_DIR, PUBLIC_BASE_URL
@@ -1209,12 +1274,15 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
         products = [p for p in products if p.id in allow]
     if not products:
         print(f"[FeedGen] No feed-enabled products for store {store_id}")
-        return {
+        out = {
             "feed_urls": [],
             "total_items": 0,
             "message": "No feed-enabled products",
             "blocked_countries": [],
         }
+        if not write_files:
+            out["rows"] = []
+        return out
 
     print(f"\n[FeedGen] Generating feed for {store.shop_name} — {len(products)} products, {len(countries)} countries, platforms: {', '.join(platforms)}")
 
@@ -1222,6 +1290,7 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
     blocked_countries = []
     quality_acc = None
     title_compare_rows: list = []
+    collected_rows: list = []
     site_url = store.site_url or PUBLIC_BASE_URL
     public_base = PUBLIC_BASE_URL
     total_items = 0
@@ -1323,6 +1392,8 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                         "feed_image_url": getattr(v, "feed_image_url", None) or "",
                         "feed_title": getattr(v, "feed_title", None) or "",
                         "barcode": getattr(v, "barcode", None) or "",
+                        "weight": getattr(v, "weight", None),
+                        "weight_unit": getattr(v, "weight_unit", None) or "kg",
                     }
                     vid = (v.shopify_variant_id or "").strip()
                     entry = pricing_by_variant.get(vid) if vid else None
@@ -1488,6 +1559,10 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                     style_skel = style_skeletons[style_key]
                     row_title = apply_style_skeleton(opt_title or "", style_skel)
 
+                ship_w = _variant_shipping_weight(
+                    v_data.get("weight"), v_data.get("weight_unit") or "kg"
+                )
+
                 rows.append({
                     "SKU": variant_sku,
                     "优化后标题": row_title,
@@ -1521,6 +1596,9 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                     "ai_tags": "",
                     "description_snippet": "",
                     "水印检测": "OK",
+                    "shipping_weight": ship_w,
+                    # adult = adult *content* (Google), not age_group=adult. Default no.
+                    "adult": "no",
                     "custom_label_0": cleaned.get("g_pattern") or "",
                     "custom_label_1": "",
                     "custom_label_2": "",
@@ -1597,6 +1675,15 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
                 r.pop("_feed_title", None)
                 plat_rows.append(r)
 
+            if plat == "google" and not write_files:
+                # Push / dry-run: keep first country's google rows (caller uses one country)
+                if not collected_rows:
+                    collected_rows = plat_rows
+
+            if not write_files:
+                total_items += len(plat_rows)
+                continue
+
             feed_path = durable_feed_path(FEEDS_DIR, store_id, plat, cu)
             from .feed_snapshots import maybe_snapshot_current
             maybe_snapshot_current(store_id, plat, cu, feed_path)
@@ -1647,7 +1734,9 @@ def generate_feed_for_store(store_id: str, countries: list[str] = None,
         "blocked_countries": blocked_countries,
         "quality_report": quality_report,
     }
-    if blocked_countries and not feed_urls:
+    if not write_files:
+        result["rows"] = collected_rows
+    if blocked_countries and not feed_urls and (write_files or not collected_rows):
         result["message"] = blocked_countries[0].get("message", "Currency preflight blocked feed generation")
     elif quality_report.get("summary", {}).get("fatals"):
         result["message"] = (

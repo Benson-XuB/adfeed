@@ -213,10 +213,35 @@ CREATE TABLE IF NOT EXISTS google_merchant_accounts (
     store_id TEXT NOT NULL REFERENCES stores(id),
     merchant_id TEXT NOT NULL,
     display_name TEXT DEFAULT '',
+    data_source_name TEXT DEFAULT '',
     is_selected INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(store_id, merchant_id)
 );
+
+CREATE TABLE IF NOT EXISTS google_push_runs (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    merchant_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    ok_count INTEGER DEFAULT 0,
+    fail_count INTEGER DEFAULT 0,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS google_push_items (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES google_push_runs(id),
+    offer_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT '',
+    error_code TEXT DEFAULT '',
+    error_text TEXT DEFAULT '',
+    raw_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_google_push_runs_store ON google_push_runs(store_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_google_push_items_run ON google_push_items(run_id);
 
 CREATE TABLE IF NOT EXISTS gmc_product_issues (
     id TEXT PRIMARY KEY,
@@ -346,6 +371,7 @@ def init_store_schema():
             "ALTER TABLE product_variants ADD COLUMN feed_title TEXT",
             "ALTER TABLE stores ADD COLUMN refresh_token TEXT",
             "ALTER TABLE stores ADD COLUMN token_expires_at TEXT",
+            "ALTER TABLE google_merchant_accounts ADD COLUMN data_source_name TEXT DEFAULT ''",
         ]
         for sql in migrations:
             try:
@@ -1645,6 +1671,12 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM feed_configs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM products WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM gmc_product_issues WHERE store_id = ?", (store_id,))
+        c.execute(
+            """DELETE FROM google_push_items WHERE run_id IN
+               (SELECT id FROM google_push_runs WHERE store_id = ?)""",
+            (store_id,),
+        )
+        c.execute("DELETE FROM google_push_runs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM google_oauth_tokens WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
@@ -1680,7 +1712,7 @@ def purge_store_data(store_id: str) -> bool:
 
 
 # ─────────────────────────────────────────────
-# Google OAuth / GMC issues / Ads metrics
+# Google OAuth / GMC issues / Ads metrics / API push runs
 # ─────────────────────────────────────────────
 
 def upsert_google_oauth_token(store_id: str, refresh_token_enc: str, scopes: str) -> None:
@@ -1711,6 +1743,12 @@ def get_google_oauth_token(store_id: str) -> Optional[dict]:
 def delete_google_oauth_token(store_id: str) -> None:
     with _conn() as c:
         c.execute("DELETE FROM google_oauth_tokens WHERE store_id = ?", (store_id,))
+        c.execute(
+            """DELETE FROM google_push_items WHERE run_id IN
+               (SELECT id FROM google_push_runs WHERE store_id = ?)""",
+            (store_id,),
+        )
+        c.execute("DELETE FROM google_push_runs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM gmc_product_issues WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
@@ -1784,6 +1822,135 @@ def get_selected_merchant_id(store_id: str) -> Optional[str]:
             (store_id,),
         ).fetchone()
         return row["merchant_id"] if row else None
+
+
+def set_merchant_data_source(store_id: str, merchant_id: str, data_source_name: str) -> dict:
+    mid = str(merchant_id).strip()
+    ds = (data_source_name or "").strip()
+    with _conn() as c:
+        c.execute(
+            """
+            UPDATE google_merchant_accounts
+            SET data_source_name = ?
+            WHERE store_id = ? AND merchant_id = ?
+            """,
+            (ds, store_id, mid),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM google_merchant_accounts WHERE store_id = ? AND merchant_id = ?",
+            (store_id, mid),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"merchant not found: store={store_id} merchant={mid}")
+        return dict(row)
+
+
+def create_push_run(store_id: str, merchant_id: str) -> dict:
+    mid = str(merchant_id).strip()
+    run_id = str(uuid.uuid4())
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO google_push_runs
+              (id, store_id, merchant_id, status, ok_count, fail_count, started_at)
+            VALUES (?, ?, ?, 'running', 0, 0, datetime('now'))
+            """,
+            (run_id, store_id, mid),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM google_push_runs WHERE id = ?",
+            (run_id,),
+        ).fetchone()
+        return dict(row)
+
+
+def add_push_item(
+    run_id: str,
+    *,
+    offer_id: str,
+    status: str = "",
+    error_code: str = "",
+    error_text: str = "",
+    raw_json: Optional[str] = None,
+) -> dict:
+    """Insert one push item. Raises ValueError if offer_id is empty after strip."""
+    oid = str(offer_id or "").strip()
+    if not oid:
+        raise ValueError("offer_id is required")
+    item_id = str(uuid.uuid4())
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO google_push_items
+              (id, run_id, offer_id, status, error_code, error_text, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                item_id,
+                run_id,
+                oid,
+                status or "",
+                error_code or "",
+                error_text or "",
+                raw_json,
+            ),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM google_push_items WHERE id = ?",
+            (item_id,),
+        ).fetchone()
+        return dict(row)
+
+
+def finish_push_run(
+    run_id: str,
+    *,
+    ok_count: int = 0,
+    fail_count: int = 0,
+    status: str = "done",
+) -> dict:
+    with _conn() as c:
+        c.execute(
+            """
+            UPDATE google_push_runs
+            SET status = ?, ok_count = ?, fail_count = ?, finished_at = datetime('now')
+            WHERE id = ?
+            """,
+            (status or "done", int(ok_count), int(fail_count), run_id),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM google_push_runs WHERE id = ?",
+            (run_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"push run not found: {run_id}")
+        return dict(row)
+
+
+def get_push_run(run_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM google_push_runs WHERE id = ?",
+            (run_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_push_items(run_id: str) -> list[dict]:
+    with _conn() as c:
+        rows = c.execute(
+            """
+            SELECT * FROM google_push_items
+            WHERE run_id = ?
+            ORDER BY offer_id ASC
+            """,
+            (run_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def replace_gmc_product_issues(store_id: str, merchant_id: str, issues: list[dict]) -> int:

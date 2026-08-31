@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Optional
+import json
+import os
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
@@ -12,6 +14,15 @@ from adfeed.shopify_auth import require_store
 from adfeed.store_db import Store as StoreModel
 
 router = APIRouter(tags=["google"])
+
+
+def google_push_enabled() -> bool:
+    """Truthy env gate for sandbox Merchant API push (1/true/yes)."""
+    return (os.getenv("GOOGLE_PUSH_ENABLED") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 @router.get("/api/app/google/status")
@@ -36,6 +47,7 @@ async def app_google_status(store: StoreModel = Depends(require_store)):
         "has_ads_scope": SCOPE_ADWORDS in scopes,
         "merchants": merchants,
         "selected_merchant_id": store_db.get_selected_merchant_id(store.id),
+        "push_enabled": google_push_enabled(),
     }
 
 
@@ -343,3 +355,241 @@ async def app_google_ads_sync(
     except RuntimeError as e:
         raise HTTPException(502, str(e)) from e
     return result
+
+
+class GoogleDataSourceSelectBody(BaseModel):
+    data_source_name: str
+    merchant_id: Optional[str] = None
+    # CI: list of dataSource dicts, or truthy 1/true to use fake_ci_data_sources
+    mock_result: Optional[Any] = None
+
+
+def _resolve_mock_data_sources(mock_result: Any) -> Optional[list[dict]]:
+    """Return mock list when mock_result is set; None means use live API."""
+    from adfeed.platforms.google.datasources import fake_ci_data_sources
+
+    if mock_result is None:
+        return None
+    if isinstance(mock_result, str):
+        raw = mock_result.strip()
+        if not raw:
+            return None
+        if raw.lower() in ("1", "true", "yes"):
+            return fake_ci_data_sources()
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise HTTPException(400, f"mock_result must be JSON or 1: {e}") from e
+        if not isinstance(parsed, list):
+            raise HTTPException(400, "mock_result JSON must be a list")
+        return parsed
+    if isinstance(mock_result, (int, bool)):
+        if mock_result:
+            return fake_ci_data_sources()
+        return None
+    if isinstance(mock_result, list):
+        return mock_result
+    raise HTTPException(400, "mock_result must be a list, 1/true, or JSON string")
+
+
+@router.get("/api/app/google/datasources")
+async def app_google_datasources(
+    store: StoreModel = Depends(require_store),
+    merchant_id: Optional[str] = None,
+    mock_result: Optional[str] = None,
+):
+    """List API Input Primary/Supplemental dataSources for the selected merchant.
+
+    ``mock_result`` query: ``1`` / ``true`` uses a fixed CI list; a JSON array
+    string is returned as-is (still gated by OAuth).
+    """
+    from adfeed import store_db
+    from adfeed.platforms.google.datasources import list_api_data_sources
+    from adfeed.platforms.google.oauth import access_token_for_store
+
+    if not store_db.get_google_oauth_token(store.id):
+        raise HTTPException(400, "Connect Google first")
+
+    mid = (merchant_id or "").strip() or store_db.get_selected_merchant_id(store.id)
+    if not mid:
+        raise HTTPException(400, "Select a Merchant account first")
+
+    mock_sources = _resolve_mock_data_sources(mock_result)
+    if mock_sources is not None:
+        return {"merchant_id": mid, "data_sources": mock_sources}
+
+    try:
+        access, _ = access_token_for_store(store.id)
+        sources = list_api_data_sources(mid, access)
+    except RuntimeError as e:
+        raise HTTPException(502, str(e)) from e
+    return {"merchant_id": mid, "data_sources": sources}
+
+
+@router.post("/api/app/google/datasources/select")
+async def app_google_datasources_select(
+    body: GoogleDataSourceSelectBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Persist selected API dataSource name on the merchant row (OAuth required).
+
+    Name must appear in the API-filtered list (or mock_result list for CI).
+    """
+    from adfeed import store_db
+    from adfeed.platforms.google.datasources import (
+        filter_api_product_data_sources,
+        list_api_data_sources,
+    )
+    from adfeed.platforms.google.oauth import access_token_for_store
+
+    if not store_db.get_google_oauth_token(store.id):
+        raise HTTPException(400, "Connect Google first")
+
+    mid = (body.merchant_id or "").strip() or store_db.get_selected_merchant_id(store.id)
+    if not mid:
+        raise HTTPException(400, "Select a Merchant account first")
+
+    ds = (body.data_source_name or "").strip()
+    if not ds:
+        raise HTTPException(400, "data_source_name required")
+
+    mock_sources = _resolve_mock_data_sources(body.mock_result)
+    if mock_sources is not None:
+        # CI path: allow names from the provided mock list (still filter to API shape when possible)
+        allowed = filter_api_product_data_sources(mock_sources)
+        if not allowed:
+            # mock list may be bare name-only dicts for tests
+            allowed = [s for s in mock_sources if isinstance(s, dict) and (s.get("name") or "").strip()]
+        allowed_names = {(s.get("name") or "").strip() for s in allowed}
+    else:
+        try:
+            access, _ = access_token_for_store(store.id)
+            allowed = list_api_data_sources(mid, access)
+        except RuntimeError as e:
+            raise HTTPException(502, str(e)) from e
+        allowed_names = {(s.get("name") or "").strip() for s in allowed}
+
+    if ds not in allowed_names:
+        raise HTTPException(400, "dataSource not in API list for this merchant")
+
+    try:
+        row = store_db.set_merchant_data_source(store.id, mid, ds)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ok": True, "merchant": row}
+
+
+class GooglePushBody(BaseModel):
+    rows: Optional[list[dict[str, Any]]] = None
+    mock_result: Optional[dict] = None
+    use_fake: bool = False
+    merchant_id: Optional[str] = None
+    channel: str = "online"
+    content_language: str = "en"
+    feed_label: str = "US"
+
+
+class _FakeProductPushClient:
+    """CI / sandbox stub — always succeeds without calling Google."""
+
+    def insert_product_input(
+        self,
+        *,
+        merchant_id: str,
+        data_source: str,
+        product_input: dict,
+    ) -> dict:
+        offer = product_input.get("offerId") or ""
+        return {
+            "name": f"accounts/{merchant_id}/productInputs/{offer}",
+            "offerId": offer,
+        }
+
+
+@router.post("/api/app/google/push")
+async def app_google_push(
+    body: GooglePushBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Push canonical rows to Merchant productInputs (feature-flagged)."""
+    from adfeed import store_db
+    from adfeed.platforms.google.oauth import access_token_for_store
+    from adfeed.platforms.google.product_push import (
+        LiveProductPushClient,
+        push_canonical_rows,
+    )
+
+    if not google_push_enabled():
+        raise HTTPException(503, "Google push is disabled (GOOGLE_PUSH_ENABLED).")
+
+    mid = (body.merchant_id or "").strip() or store_db.get_selected_merchant_id(store.id)
+    if not mid:
+        raise HTTPException(400, "Select a Merchant account first")
+
+    merchants = {
+        m["merchant_id"]: m for m in store_db.list_google_merchant_accounts(store.id)
+    }
+    merchant = merchants.get(mid)
+    if not merchant:
+        raise HTTPException(400, "Merchant account not found")
+    data_source = (merchant.get("data_source_name") or "").strip()
+    if not data_source:
+        raise HTTPException(400, "Select an API dataSource first")
+
+    if body.rows is None or (isinstance(body.rows, list) and len(body.rows) == 0):
+        from adfeed.pipeline import build_feed_rows_for_store
+
+        country = (body.feed_label or "US").strip().upper() or "US"
+        rows = build_feed_rows_for_store(store.id, country=country)
+        if not rows:
+            raise HTTPException(
+                400,
+                "No feed rows to push — enable ready products for this store, or pass rows.",
+            )
+    else:
+        rows = body.rows
+
+    use_fake = bool(body.use_fake) or body.mock_result is not None
+    if not use_fake and not store_db.get_google_oauth_token(store.id):
+        raise HTTPException(400, "Connect Google first")
+
+    if use_fake:
+        client = _FakeProductPushClient()
+    else:
+        try:
+            access, _ = access_token_for_store(store.id)
+            client = LiveProductPushClient(access)
+        except RuntimeError as e:
+            raise HTTPException(502, str(e)) from e
+
+    try:
+        result = push_canonical_rows(
+            store.id,
+            mid,
+            data_source,
+            rows,
+            client=client,
+            channel=body.channel or "online",
+            content_language=body.content_language or "en",
+            feed_label=body.feed_label or "US",
+        )
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(502, str(e)) from e
+    return result
+
+
+@router.get("/api/app/google/push/runs/{run_id}")
+async def app_google_push_run(
+    run_id: str,
+    store: StoreModel = Depends(require_store),
+):
+    from adfeed import store_db
+
+    if not google_push_enabled():
+        raise HTTPException(503, "Google push is disabled (GOOGLE_PUSH_ENABLED).")
+
+    run = store_db.get_push_run(run_id)
+    if not run or run.get("store_id") != store.id:
+        raise HTTPException(404, "Push run not found")
+    items = store_db.list_push_items(run_id)
+    return {**run, "items": items}
