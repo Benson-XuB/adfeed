@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AdFeed AI — Google Shopping feeds for 1688 → Shopify stores</title>
+  <meta name="description" content="Turn 1688-imported Shopify products into a Google Shopping data feed. Confirm your ad brand, generate, and paste a persistent feed URL into Merchant Center." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="index.html">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a class="hide-sm" href="#how">How it works</a>
+        <a class="hide-sm" href="#pricing">Pricing</a>
+        <a href="support.html">Support</a>
+        <a class="btn btn-primary" href="#how">Get started</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap">
+        <p class="eyebrow reveal">Shopify app · Google Shopping feed</p>
+        <h1 id="hero-title" class="reveal reveal-d1">Turn 1688 imports into a shopping-ready Google feed.</h1>
+        <p class="lede reveal reveal-d2">
+          Confirm an ad brand (not the supplier name), pick products, generate, then copy a persistent feed URL into Google Merchant Center.
+        </p>
+        <div class="cta-row reveal reveal-d3">
+          <a class="btn btn-primary" href="#how">See how to set it up</a>
+          <a class="btn btn-ghost" href="mailto:support@deltfu.com">support@deltfu.com</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="for" aria-labelledby="for-title">
+      <div class="wrap">
+        <p class="section-label">Who it’s for</p>
+        <h2 id="for-title">Built for stores that import from 1688 into Shopify</h2>
+        <p class="section-intro">
+          AdFeed AI is not a generic catalog tool. It focuses on cleaning shopping titles and attributes for catalogs that started as 1688 imports, then handing you a feed Google Merchant Center can fetch.
+        </p>
+      </div>
+    </section>
+
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <p class="section-label">What you get</p>
+        <h2 id="features-title">What ships in the Shopify app today</h2>
+        <div class="feature-grid">
+          <article class="feature">
+            <h3>Confirm ad brand</h3>
+            <p>Keep 1688 supplier names out of Google brand. Confirm the brand you actually advertise with.</p>
+          </article>
+          <article class="feature">
+            <h3>Optional color &amp; size tips</h3>
+            <p>When variants have Color/Size options, the app can hint before you generate. Missing tips do not block generation.</p>
+          </article>
+          <article class="feature">
+            <h3>Feed image picker</h3>
+            <p>Recommend and pick which product image goes into the feed—without AI photo editing.</p>
+          </article>
+          <article class="feature">
+            <h3>Persistent feed URL</h3>
+            <p>Copy one URL into Merchant Center. Regenerate updates the same hosted feed path.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section howto" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="section-label">How it works</p>
+        <h2 id="how-title">From install to Merchant Center—step by step</h2>
+        <p class="section-intro">
+          Follow these steps in order. You only need Shopify Admin—no separate AdFeed login.
+        </p>
+
+        <ol class="steps">
+          <li class="step" data-step>
+            <div class="step-copy">
+              <span class="step-num">1</span>
+              <h3>Install AdFeed AI</h3>
+              <p>
+                In Shopify Admin, open <strong>Apps</strong> and install <strong>AdFeed AI</strong>.
+                The app opens as an embedded App Home (Home / Plans). There is no extra AdFeed username or password.
+              </p>
+            </div>
+            <div class="step-media" aria-hidden="true">
+              <img src="assets/02-product-list.png" alt="" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step" data-step>
+            <div class="step-copy">
+              <span class="step-num">2</span>
+              <h3>Confirm your ad brand</h3>
+              <p>
+                Under <strong>Ad brand</strong>, enter the brand shoppers should see in Google—not the 1688 factory or supplier name.
+                Click <strong>Confirm brand</strong>.
+              </p>
+              <p class="step-note">Wrong brand is one of the fastest ways to look untrustworthy in Shopping ads.</p>
+            </div>
+            <div class="step-media">
+              <img src="assets/01-confirm-brand.png" alt="AdFeed AI App Home showing Confirm brand" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step" data-step>
+            <div class="step-copy">
+              <span class="step-num">3</span>
+              <h3>Choose your market</h3>
+              <p>
+                Select the country you will advertise in (for example <strong>United States</strong>).
+                Feed currency and market pricing follow that choice where available.
+              </p>
+            </div>
+            <div class="step-media" aria-hidden="true">
+              <img src="assets/02-product-list.png" alt="" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step" data-step>
+            <div class="step-copy">
+              <span class="step-num">4</span>
+              <h3>Select products</h3>
+              <p>
+                Check the products you want in the feed. Review optional color/size tips if shown.
+                You can also pick which image should be the feed main image for a SKU.
+              </p>
+              <p class="step-note">Products without Color/Size options can still generate. The app does not invent barcodes (GTIN) or cost.</p>
+            </div>
+            <div class="step-media">
+              <img src="assets/02-product-list.png" alt="Product list with selection in AdFeed AI" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step" data-step>
+            <div class="step-copy">
+              <span class="step-num">5</span>
+              <h3>Generate the feed</h3>
+              <p>
+                Click <strong>Generate feed</strong>, confirm the selection, and wait until generation finishes.
+                In the sidebar, use <strong>Copy</strong> on the feed URL. Open it in a browser—you should see your product feed XML (not a 404).
+              </p>
+            </div>
+            <div class="step-media">
+              <img src="assets/04-copy-url.png" alt="Copy persistent Google feed URL" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step" data-step>
+            <div class="step-copy">
+              <span class="step-num">6</span>
+              <h3>Upload the feed URL in Google Merchant Center</h3>
+              <p>
+                You do not upload a file from your laptop. You give Google a <strong>scheduled URL</strong> that AdFeed hosts.
+              </p>
+              <div class="gmc-box">
+                <strong>In Google Merchant Center</strong>
+                <ol>
+                  <li>Open <strong>Products</strong> → <strong>Feeds</strong> (or Add products / Data sources, depending on your MC UI).</li>
+                  <li>Create or edit a feed for your target country.</li>
+                  <li>Choose input method <strong>Scheduled fetch</strong> / <strong>Fetch from URL</strong>.</li>
+                  <li>Paste the AdFeed feed URL you copied. Set a fetch schedule (daily is common).</li>
+                  <li>Save. Google will fetch and review products—initial review can take days. Approval is Google’s decision.</li>
+                </ol>
+              </div>
+              <p class="step-note">After you regenerate in AdFeed, the same URL updates; you usually do not need a new MC feed entry.</p>
+            </div>
+            <div class="step-media" aria-hidden="true">
+              <img src="assets/04-copy-url.png" alt="" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+        </ol>
+
+        <div class="cta-row" style="margin-top: 2.5rem">
+          <a class="btn btn-primary" href="mailto:support@deltfu.com?subject=AdFeed%20AI%20setup%20help">Email setup help</a>
+          <a class="btn btn-ghost" href="support.html">Support &amp; FAQ</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="never" aria-labelledby="never-title">
+      <div class="wrap">
+        <p class="section-label">Honesty</p>
+        <h2 id="never-title">What we never do</h2>
+        <div class="never-list">
+          <div class="never-item">
+            <h3>No fake barcodes</h3>
+            <p>We do not invent GTIN / barcodes or COGS. Use the no-identifier path when you have no real GTIN.</p>
+          </div>
+          <div class="never-item">
+            <h3>No approval guarantee</h3>
+            <p>We improve feed readiness. Merchant Center approval is always Google’s call.</p>
+          </div>
+          <div class="never-item">
+            <h3>No ad buying for you</h3>
+            <p>AdFeed generates and hosts the product feed. It does not place bids or run campaigns for you.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="pricing" aria-labelledby="pricing-title">
+      <div class="wrap">
+        <p class="section-label">Pricing</p>
+        <h2 id="pricing-title">Plans billed in Shopify Admin</h2>
+        <p class="section-intro">
+          Change plan in App Home without reinstalling. One generate uses one unit per selected SKU × selected market. Unused units do not roll over.
+        </p>
+        <div class="price-grid">
+          <article class="price-card">
+            <h3>Free</h3>
+            <p class="amount">$0</p>
+            <p class="meta">3 generate units / month</p>
+          </article>
+          <article class="price-card">
+            <h3>Starter</h3>
+            <p class="amount">$14.99</p>
+            <p class="meta">USD / month · 50 generate units</p>
+          </article>
+          <article class="price-card">
+            <h3>Growth</h3>
+            <p class="amount">$39</p>
+            <p class="meta">USD / month · 200 generate units</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <a class="logo" href="index.html">AdFeed <span style="color:#5fd4bd">AI</span></a>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="#how">How it works</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="terms.html">Terms</a>
+          <a href="support.html">Support</a>
+          <a href="mailto:support@deltfu.com">support@deltfu.com</a>
+        </nav>
+      </div>
+      <p class="footer-copy">© <span id="y"></span> AdFeed AI. Product feeds for Shopify stores importing from 1688.</p>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("y").textContent = String(new Date().getFullYear());
+    const steps = document.querySelectorAll("[data-step]");
+    if (steps.length && "IntersectionObserver" in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((e) => {
+            if (e.isIntersecting) e.target.classList.add("in");
+          });
+        },
+        { threshold: 0.18 }
+      );
+      steps.forEach((el) => io.observe(el));
+    } else {
+      steps.forEach((el) => el.classList.add("in"));
+    }
+  </script>
+</body>
+</html>
