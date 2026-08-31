@@ -65,3 +65,25 @@ def test_http_ads_client_calls_search():
         rows = client.list_product_metrics("1234567890")
     assert rows[0]["offer_id"] == "SKU-1"
     assert "googleAds:search" in inst.post.call_args[0][0]
+    body = inst.post.call_args.kwargs["json"]
+    assert "LAST_7_DAYS" in body["query"]
+
+
+def test_http_ads_client_window_30_uses_last_30_days():
+    from adfeed.google_ads_client import HttpAdsMetricsClient
+
+    resp = MagicMock(status_code=200)
+    resp.json.return_value = {"results": []}
+    with patch("adfeed.platforms.google.ads_client.httpx.Client") as Client:
+        inst = Client.return_value.__enter__.return_value
+        inst.post.return_value = resp
+        client = HttpAdsMetricsClient(
+            access_token="tok",
+            developer_token="dev",
+        )
+        client.list_product_metrics("1234567890", window_days=30)
+    # First call is product GAQL; may fall through to campaign — both must use 30
+    for call in inst.post.call_args_list:
+        q = call.kwargs["json"]["query"]
+        assert "LAST_30_DAYS" in q
+        assert "LAST_7_DAYS" not in q

@@ -7,6 +7,7 @@
 Field contract: docs/plans/2026-08-14-feed-field-contract.md
 North Star: docs/plans/2026-08-12-mvp-north-star.md
 Design: docs/plans/2026-08-31-google-api-push-dual-export-design.md
+Ads P2-A: docs/plans/2026-09-01-google-ads-metrics-p2a-design.md
 ```
 
 ## 已实现（本分支）
@@ -17,6 +18,17 @@ Design: docs/plans/2026-08-31-google-api-push-dual-export-design.md
 - [x] Ads metrics sync（mock）+ 降级标志  
 - [x] API：`/api/app/google/*`（OAuth start 需 env；issues sync 可用 `mock_issues`）  
 - [x] UI：`GmcIssuesPanel`「过审问题」  
+
+## Phase 2-A — Ads 只读指标（7 / 30 可切换）
+
+**禁止 shopify app deploy / 生产部署**
+
+- [ ] GAQL `LAST_7_DAYS` / `LAST_30_DAYS` via `window_days`  
+- [ ] `ads_metrics_daily.window_days` 分窗落库，7 与 30 互不覆盖  
+- [ ] `google_ads_settings` 持久化 `ads_customer_id` + `window_days`  
+- [ ] GET metrics 返回 `summary` + `degraded`；POST sync 写入 settings  
+- [ ] UI：窗口切换、汇总条、链到「过审问题」(`#gmc-issues-heading`)  
+- [ ] 无 `shopify app deploy` / 无生产 toml / 隐私 / listing 改动  
 
 ## Google API push（沙盒 / 本分支）
 
@@ -38,7 +50,7 @@ Design: docs/plans/2026-08-31-google-api-push-dual-export-design.md
 ## 本地测
 
 ```bash
-cd phase0 && .venv/bin/pytest tests/test_google_*.py tests/test_feed_field_fixes.py tests/test_mock_catalog*.py -q
+cd phase0 && .venv/bin/pytest tests/test_google_ads*.py tests/test_google_push_api.py -q
 ```
 
 确认：`git diff --stat phase0/add-feed-ai/shopify.app.toml` 无输出。

@@ -38,6 +38,7 @@ async def app_google_status(store: StoreModel = Depends(require_store)):
     tok = store_db.get_google_oauth_token(store.id)
     scopes = (tok or {}).get("scopes") or ""
     merchants = store_db.list_google_merchant_accounts(store.id)
+    ads_settings = store_db.get_google_ads_settings(store.id) or {}
     return {
         "oauth_configured": google_oauth_configured(),
         "ads_api_configured": ads_api_configured(),
@@ -48,6 +49,8 @@ async def app_google_status(store: StoreModel = Depends(require_store)):
         "merchants": merchants,
         "selected_merchant_id": store_db.get_selected_merchant_id(store.id),
         "push_enabled": google_push_enabled(),
+        "ads_customer_id": ads_settings.get("ads_customer_id"),
+        "ads_window_days": ads_settings.get("window_days") or 7,
     }
 
 
@@ -290,24 +293,65 @@ async def app_google_issues_sync(
 async def app_google_ads_metrics(
     store: StoreModel = Depends(require_store),
     ads_customer_id: str = "",
+    window_days: int = 7,
 ):
     from adfeed import store_db
+    from adfeed.platforms.google.ads_client import normalize_window_days
 
     cid = (ads_customer_id or "").strip()
+    wd = normalize_window_days(window_days)
     if not cid:
-        return {"ads_customer_id": None, "rows": [], "product_level": 0, "degraded": False}
-    rows = store_db.list_ads_metrics_daily(store.id, cid)
+        return {
+            "ads_customer_id": None,
+            "window_days": wd,
+            "rows": [],
+            "product_level": 0,
+            "degraded": False,
+            "summary": {
+                "impressions": 0,
+                "clicks": 0,
+                "cost_micros": 0,
+                "conversions": 0.0,
+            },
+        }
+    rows = store_db.list_ads_metrics_daily(store.id, cid, window_days=wd)
     product_level = sum(1 for r in rows if r.get("offer_id"))
+    summary = {
+        "impressions": sum(int(r.get("impressions") or 0) for r in rows),
+        "clicks": sum(int(r.get("clicks") or 0) for r in rows),
+        "cost_micros": sum(int(r.get("cost_micros") or 0) for r in rows),
+        "conversions": float(sum(float(r.get("conversions") or 0) for r in rows)),
+    }
     return {
         "ads_customer_id": cid,
+        "window_days": wd,
         "rows": rows,
         "product_level": product_level,
         "degraded": bool(rows) and product_level == 0,
+        "summary": summary,
+    }
+
+
+@router.get("/api/app/google/ads/settings")
+async def app_google_ads_settings(store: StoreModel = Depends(require_store)):
+    from adfeed import store_db
+
+    settings = store_db.get_google_ads_settings(store.id)
+    if not settings:
+        return {
+            "ads_customer_id": None,
+            "window_days": 7,
+        }
+    return {
+        "ads_customer_id": settings.get("ads_customer_id"),
+        "window_days": int(settings.get("window_days") or 7),
+        "updated_at": settings.get("updated_at"),
     }
 
 
 class GoogleAdsSyncBody(BaseModel):
     ads_customer_id: str
+    window_days: int = 7
     mock_rows: Optional[list[dict]] = None
 
 
@@ -317,13 +361,18 @@ async def app_google_ads_sync(
     store: StoreModel = Depends(require_store),
 ):
     from adfeed import store_db
-    from adfeed.platforms.google.ads_client import HttpAdsMetricsClient, ads_api_configured
+    from adfeed.platforms.google.ads_client import (
+        HttpAdsMetricsClient,
+        ads_api_configured,
+        normalize_window_days,
+    )
     from adfeed.platforms.google.ads_sync import sync_ads_metrics
     from adfeed.platforms.google.oauth import SCOPE_ADWORDS, access_token_for_store
 
     cid = (body.ads_customer_id or "").strip().replace("-", "")
     if not cid:
         raise HTTPException(400, "ads_customer_id required")
+    wd = normalize_window_days(body.window_days)
     tok = store_db.get_google_oauth_token(store.id)
     if not tok and body.mock_rows is None:
         raise HTTPException(400, "Connect Google first")
@@ -338,7 +387,7 @@ async def app_google_ads_sync(
         def __init__(self, rows):
             self._rows = rows
 
-        def list_product_metrics(self, ads_customer_id: str):
+        def list_product_metrics(self, ads_customer_id: str, window_days: int = 7):
             return self._rows
 
     if body.mock_rows is not None:
@@ -351,9 +400,12 @@ async def app_google_ads_sync(
             raise HTTPException(502, str(e)) from e
 
     try:
-        result = sync_ads_metrics(store.id, cid, client)
+        result = sync_ads_metrics(store.id, cid, client, window_days=wd)
     except RuntimeError as e:
         raise HTTPException(502, str(e)) from e
+    store_db.upsert_google_ads_settings(
+        store.id, ads_customer_id=cid, window_days=wd
+    )
     return result
 
 

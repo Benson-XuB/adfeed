@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+
 # Pin a stable Ads API version; bump intentionally when Google deprecates.
 _ADS_API_VERSION = os.getenv("GOOGLE_ADS_API_VERSION", "v19")
 _SEARCH = (
@@ -14,7 +15,24 @@ _SEARCH = (
     "customers/{customer_id}/googleAds:search"
 )
 
-_PRODUCT_GAQL = """
+
+def normalize_window_days(window_days: int | None) -> int:
+    """Only 7 or 30 are supported; anything else → 7."""
+    try:
+        wd = int(window_days) if window_days is not None else 7
+    except (TypeError, ValueError):
+        return 7
+    return 30 if wd == 30 else 7
+
+
+def _during_clause(window_days: int) -> str:
+    wd = normalize_window_days(window_days)
+    return f"LAST_{wd}_DAYS"
+
+
+def build_product_gaql(window_days: int = 7) -> str:
+    during = _during_clause(window_days)
+    return f"""
 SELECT
   segments.date,
   segments.product_item_id,
@@ -23,10 +41,13 @@ SELECT
   metrics.cost_micros,
   metrics.conversions
 FROM shopping_performance_view
-WHERE segments.date DURING LAST_7_DAYS
+WHERE segments.date DURING {during}
 """.strip()
 
-_CAMPAIGN_FALLBACK_GAQL = """
+
+def build_campaign_fallback_gaql(window_days: int = 7) -> str:
+    during = _during_clause(window_days)
+    return f"""
 SELECT
   segments.date,
   campaign.id,
@@ -35,7 +56,7 @@ SELECT
   metrics.cost_micros,
   metrics.conversions
 FROM campaign
-WHERE segments.date DURING LAST_7_DAYS
+WHERE segments.date DURING {during}
 """.strip()
 
 
@@ -118,15 +139,20 @@ class HttpAdsMetricsClient:
                     break
         return results
 
-    def list_product_metrics(self, ads_customer_id: str) -> list[dict]:
+    def list_product_metrics(
+        self, ads_customer_id: str, window_days: int = 7
+    ) -> list[dict]:
+        wd = normalize_window_days(window_days)
+        product_q = build_product_gaql(wd)
+        campaign_q = build_campaign_fallback_gaql(wd)
         try:
-            rows = self._search(ads_customer_id, _PRODUCT_GAQL)
+            rows = self._search(ads_customer_id, product_q)
             parsed = metrics_from_search_rows(rows)
             if parsed:
                 return parsed
         except RuntimeError:
             # Soft-degrade to campaign totals (Spec 4B)
-            rows = self._search(ads_customer_id, _CAMPAIGN_FALLBACK_GAQL)
+            rows = self._search(ads_customer_id, campaign_q)
             return metrics_from_search_rows(rows)
-        rows = self._search(ads_customer_id, _CAMPAIGN_FALLBACK_GAQL)
+        rows = self._search(ads_customer_id, campaign_q)
         return metrics_from_search_rows(rows)

@@ -617,6 +617,8 @@ export type GoogleStatus = {
   selected_merchant_id: string | null;
   /** GOOGLE_PUSH_ENABLED env gate — sandbox Merchant API productInputs push */
   push_enabled?: boolean;
+  ads_customer_id?: string | null;
+  ads_window_days?: number;
 };
 
 export type GoogleDataSource = {
@@ -808,20 +810,43 @@ export type AdsMetricsRow = {
   clicks: number;
   cost_micros: number;
   conversions: number;
+  window_days?: number;
 };
+
+export type AdsMetricsSummary = {
+  impressions: number;
+  clicks: number;
+  cost_micros: number;
+  conversions: number;
+};
+
+export type AdsSettings = {
+  ads_customer_id: string | null;
+  window_days: number;
+  updated_at?: string;
+};
+
+export async function fetchAdsSettings(token: string): Promise<AdsSettings> {
+  const res = await backendFetch("/api/app/google/ads/settings", token);
+  return jsonOrThrow(res, "Ads settings failed");
+}
 
 export async function fetchAdsMetrics(
   token: string,
   adsCustomerId: string,
+  windowDays: number = 7,
 ): Promise<{
   ads_customer_id: string | null;
+  window_days: number;
   rows: AdsMetricsRow[];
   product_level: number;
   degraded: boolean;
+  summary: AdsMetricsSummary;
 }> {
-  const q = adsCustomerId
-    ? `?ads_customer_id=${encodeURIComponent(adsCustomerId)}`
-    : "";
+  const params = new URLSearchParams();
+  if (adsCustomerId) params.set("ads_customer_id", adsCustomerId);
+  params.set("window_days", String(windowDays === 30 ? 30 : 7));
+  const q = params.toString() ? `?${params.toString()}` : "";
   const res = await backendFetch(`/api/app/google/ads/metrics${q}`, token);
   return jsonOrThrow(res, "Ads metrics failed");
 }
@@ -829,14 +854,19 @@ export async function fetchAdsMetrics(
 export async function syncAdsMetrics(
   token: string,
   adsCustomerId: string,
+  windowDays: number = 7,
 ): Promise<{
   written: number;
   product_level: number;
   degraded: boolean;
+  window_days?: number;
 }> {
   const res = await backendFetch("/api/app/google/ads/sync", token, {
     method: "POST",
-    body: JSON.stringify({ ads_customer_id: adsCustomerId }),
+    body: JSON.stringify({
+      ads_customer_id: adsCustomerId,
+      window_days: windowDays === 30 ? 30 : 7,
+    }),
   });
   return jsonOrThrow(res, "Ads sync failed");
 }

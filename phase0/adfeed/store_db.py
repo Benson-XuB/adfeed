@@ -260,6 +260,7 @@ CREATE TABLE IF NOT EXISTS ads_metrics_daily (
     id TEXT PRIMARY KEY,
     store_id TEXT NOT NULL REFERENCES stores(id),
     ads_customer_id TEXT NOT NULL,
+    window_days INTEGER NOT NULL DEFAULT 7,
     date TEXT NOT NULL,
     offer_id TEXT,
     campaign_id TEXT,
@@ -270,9 +271,16 @@ CREATE TABLE IF NOT EXISTS ads_metrics_daily (
     synced_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS google_ads_settings (
+    store_id TEXT PRIMARY KEY REFERENCES stores(id),
+    ads_customer_id TEXT,
+    window_days INTEGER NOT NULL DEFAULT 7,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_gmc_issues_store ON gmc_product_issues(store_id, merchant_id);
 CREATE INDEX IF NOT EXISTS idx_gmc_merchants_store ON google_merchant_accounts(store_id);
-CREATE INDEX IF NOT EXISTS idx_ads_metrics_store ON ads_metrics_daily(store_id, ads_customer_id, date);
+CREATE INDEX IF NOT EXISTS idx_ads_metrics_store ON ads_metrics_daily(store_id, ads_customer_id, window_days, date);
 
 -- Meta Catalog (OAuth + selected catalogs)
 CREATE TABLE IF NOT EXISTS meta_oauth_tokens (
@@ -372,6 +380,7 @@ def init_store_schema():
             "ALTER TABLE stores ADD COLUMN refresh_token TEXT",
             "ALTER TABLE stores ADD COLUMN token_expires_at TEXT",
             "ALTER TABLE google_merchant_accounts ADD COLUMN data_source_name TEXT DEFAULT ''",
+            "ALTER TABLE ads_metrics_daily ADD COLUMN window_days INTEGER NOT NULL DEFAULT 7",
         ]
         for sql in migrations:
             try:
@@ -1680,6 +1689,7 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM google_oauth_tokens WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM google_ads_settings WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_catalogs WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_oauth_tokens WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM meta_product_issues WHERE store_id = ?", (store_id,))
@@ -1752,6 +1762,7 @@ def delete_google_oauth_token(store_id: str) -> None:
         c.execute("DELETE FROM google_merchant_accounts WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM gmc_product_issues WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM ads_metrics_daily WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM google_ads_settings WHERE store_id = ?", (store_id,))
         c.commit()
 
 
@@ -2005,26 +2016,42 @@ def list_gmc_product_issues(store_id: str, merchant_id: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def replace_ads_metrics_daily(store_id: str, ads_customer_id: str, rows: list[dict]) -> int:
+def replace_ads_metrics_daily(
+    store_id: str,
+    ads_customer_id: str,
+    rows: list[dict],
+    *,
+    window_days: int = 7,
+) -> int:
     cid = str(ads_customer_id).strip()
+    try:
+        wd = int(window_days)
+    except (TypeError, ValueError):
+        wd = 7
+    if wd not in (7, 30):
+        wd = 7
     with _conn() as c:
         c.execute(
-            "DELETE FROM ads_metrics_daily WHERE store_id = ? AND ads_customer_id = ?",
-            (store_id, cid),
+            """
+            DELETE FROM ads_metrics_daily
+            WHERE store_id = ? AND ads_customer_id = ? AND window_days = ?
+            """,
+            (store_id, cid, wd),
         )
         n = 0
         for it in rows:
             c.execute(
                 """
                 INSERT INTO ads_metrics_daily
-                  (id, store_id, ads_customer_id, date, offer_id, campaign_id,
+                  (id, store_id, ads_customer_id, window_days, date, offer_id, campaign_id,
                    impressions, clicks, cost_micros, conversions, synced_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
                     str(uuid.uuid4()),
                     store_id,
                     cid,
+                    wd,
                     str(it.get("date") or ""),
                     it.get("offer_id"),
                     it.get("campaign_id"),
@@ -2044,28 +2071,78 @@ def list_ads_metrics_daily(
     ads_customer_id: str,
     *,
     product_level_only: bool = False,
+    window_days: int | None = None,
 ) -> list[dict]:
     with _conn() as c:
+        clauses = ["store_id = ?", "ads_customer_id = ?"]
+        params: list = [store_id, ads_customer_id]
+        if window_days is not None:
+            try:
+                wd = int(window_days)
+            except (TypeError, ValueError):
+                wd = 7
+            if wd not in (7, 30):
+                wd = 7
+            clauses.append("window_days = ?")
+            params.append(wd)
         if product_level_only:
-            rows = c.execute(
-                """
-                SELECT * FROM ads_metrics_daily
-                WHERE store_id = ? AND ads_customer_id = ?
-                  AND offer_id IS NOT NULL AND offer_id != ''
-                ORDER BY date DESC, clicks DESC
-                """,
-                (store_id, ads_customer_id),
-            ).fetchall()
-        else:
-            rows = c.execute(
-                """
-                SELECT * FROM ads_metrics_daily
-                WHERE store_id = ? AND ads_customer_id = ?
-                ORDER BY date DESC, clicks DESC
-                """,
-                (store_id, ads_customer_id),
-            ).fetchall()
+            clauses.append("offer_id IS NOT NULL AND offer_id != ''")
+        where = " AND ".join(clauses)
+        rows = c.execute(
+            f"""
+            SELECT * FROM ads_metrics_daily
+            WHERE {where}
+            ORDER BY date DESC, clicks DESC
+            """,
+            tuple(params),
+        ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_google_ads_settings(store_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM google_ads_settings WHERE store_id = ?",
+            (store_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def upsert_google_ads_settings(
+    store_id: str,
+    *,
+    ads_customer_id: str | None = None,
+    window_days: int = 7,
+) -> dict:
+    try:
+        wd = int(window_days)
+    except (TypeError, ValueError):
+        wd = 7
+    if wd not in (7, 30):
+        wd = 7
+    cid = (ads_customer_id or "").strip() or None
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO google_ads_settings (store_id, ads_customer_id, window_days, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id) DO UPDATE SET
+              ads_customer_id = COALESCE(excluded.ads_customer_id, google_ads_settings.ads_customer_id),
+              window_days = excluded.window_days,
+              updated_at = datetime('now')
+            """,
+            (store_id, cid, wd),
+        )
+        c.commit()
+        row = c.execute(
+            "SELECT * FROM google_ads_settings WHERE store_id = ?",
+            (store_id,),
+        ).fetchone()
+        return dict(row) if row else {
+            "store_id": store_id,
+            "ads_customer_id": cid,
+            "window_days": wd,
+        }
 
 
 def list_store_skus(store_id: str) -> set[str]:

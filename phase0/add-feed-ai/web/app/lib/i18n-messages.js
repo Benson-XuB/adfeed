@@ -40,7 +40,16 @@ export const messages = {
     "degraded": "No product-level rows — showing campaign/account totals.",
     "productLevel": "{{n}} product-level rows",
     "rowStats": "{{imps}} imps · {{clicks}} clicks · {{cost}}",
-    "empty": "No cached metrics yet."
+    "empty": "No cached metrics yet.",
+    "windowLabel": "Date window",
+    "window7": "7 days",
+    "window30": "30 days",
+    "linkGmcIssues": "Review issues",
+    "summaryLabel": "Totals for window",
+    "summaryImps": "{{n}} imps",
+    "summaryClicks": "{{n}} clicks",
+    "summaryCost": "{{n}} spend",
+    "summaryConv": "{{n}} conv"
   },
   "meta": {
     "catalogTitle": "Meta catalog",
@@ -888,7 +897,16 @@ export const messages = {
     "degraded": "暂无商品级数据，已降级为系列/账户汇总。",
     "productLevel": "{{n}} 条商品级记录",
     "rowStats": "{{imps}} 展示 · {{clicks}} 点击 · {{cost}}",
-    "empty": "暂无缓存效果数据。"
+    "empty": "暂无缓存效果数据。",
+    "windowLabel": "时间窗口",
+    "window7": "近 7 天",
+    "window30": "近 30 天",
+    "linkGmcIssues": "过审问题",
+    "summaryLabel": "当前窗口汇总",
+    "summaryImps": "{{n}} 展示",
+    "summaryClicks": "{{n}} 点击",
+    "summaryCost": "花费 {{n}}",
+    "summaryConv": "{{n}} 转化"
   },
   "meta": {
     "catalogTitle": "Meta 目录",

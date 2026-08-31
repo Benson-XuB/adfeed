@@ -38,6 +38,36 @@
   padding: 0.35rem 0.5rem;
 }
 
+.windowToggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.windowBtn,
+.windowActive {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  border: 1px solid #c9cccf;
+  background: #fff;
+  color: #202223;
+  cursor: pointer;
+}
+
+.windowActive {
+  border-color: #202223;
+  font-weight: 600;
+}
+
+.summaryStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.875rem;
+  color: #202223;
+}
+
 .err {
   color: #d72c0d;
   font-size: 0.875rem;
