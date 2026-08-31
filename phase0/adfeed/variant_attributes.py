@@ -63,10 +63,16 @@ def _clean_color(
     extract_color_fn: Optional[Callable[[str, str], str]] = None,
 ) -> tuple[str, str]:
     """Return (color, source) source in variant|dict|llm|fallback."""
-    from .attribute_normalizer import normalize_color, resolve_gmc_color
+    from .attribute_normalizer import normalize_color, resolve_gmc_color, resolve_gmc_color_and_pattern
 
     cleaned = _strip_noise(raw)
     if cleaned:
+        # Split print words out of color option (Pink Floral → Pink)
+        hue, _pat = resolve_gmc_color_and_pattern(
+            cleaned, description=description, title=title,
+        )
+        if hue and hue != "Multicolor":
+            return hue, "variant"
         mapped = normalize_color(cleaned, "US")
         if mapped and mapped != "Multicolor":
             return mapped, "variant"
@@ -135,17 +141,21 @@ def clean_variant_attributes(
     # Opaque Style/Design/Type axis → split item groups later; force real hue
     style_axis_key = opaque_style_axis_key(color_raw)
     if style_axis_key:
-        if hue_from_raw:
+        if hue_from_raw and hue_from_raw != "Multicolor":
             g_color = hue_from_raw
             color_source = "dict"
         g_pattern = g_pattern or ""  # never invent Style N as pattern
 
-    # Non-apparel with empty color: leave empty (don't force Multicolor)
-    if not apparel and not color_before and g_color == "Multicolor" and color_source == "fallback":
-        # Only force Multicolor for apparel; for non-apparel keep Black path if provided
-        if not _strip_noise(color_raw):
-            g_color = ""
-            color_source = "variant"
+    # Pure hue must never land in pattern (field contract)
+    if g_color and g_pattern and g_pattern.lower() == g_color.lower():
+        g_pattern = ""
+    if g_color and g_color != "Multicolor" and (color_raw or "").strip().lower() == g_color.lower():
+        g_pattern = ""
+
+    # Non-apparel: never force Multicolor when the variant had no color
+    if not apparel and g_color == "Multicolor" and not color_before:
+        g_color = ""
+        color_source = "variant"
 
     if apparel and not color_before and g_color == "Multicolor":
         events.append(QualityEvent(

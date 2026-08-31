@@ -52,6 +52,10 @@ _ENGLISH_COLORS = {
     "orange", "gray", "grey", "brown", "beige", "khaki", "navy", "camel",
     "burgundy", "gold", "silver", "clear", "transparent", "multicolor",
     "rose gold", "light blue", "dark blue", "sky blue", "army green",
+    # Common shopping hues (must stay in color, never pattern)
+    "cream", "ivory", "sage", "emerald", "plum", "charcoal", "olive",
+    "forest", "coral", "mint", "teal", "natural", "nude", "apricot",
+    "champagne", "taupe", "maroon", "mustard", "lavender", "turquoise",
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -172,6 +176,9 @@ _GMC_KNOWN_COLORS = [
     "Purple", "Orange", "Brown", "Grey", "Gray", "Beige", "Khaki",
     "Navy", "Camel", "Burgundy", "Gold", "Silver", "Clear",
     "Multicolor", "Apricot", "Transparent", "Nude",
+    "Cream", "Ivory", "Sage", "Emerald", "Plum", "Charcoal", "Olive",
+    "Forest", "Coral", "Mint", "Teal", "Natural", "Champagne", "Taupe",
+    "Maroon", "Mustard", "Lavender", "Turquoise",
 ]
 
 # Phrases meaning "unnameable many colors" → Multicolor (not GMC hues).
@@ -405,7 +412,7 @@ def resolve_gmc_color_and_pattern(
     description: str = "",
     title: str = "",
 ) -> tuple[str, str]:
-    """Return (gmc_color, pattern). Pattern empty when none."""
+    """Return (gmc_color, pattern). Pattern empty when none / pure hue."""
     raw = (raw_color or "").strip()
     listed = parse_listed_colors(description)
     context_blob = f"{title or ''} {re.sub(r'<[^>]+>', ' ', description or '')}"[:500]
@@ -421,7 +428,12 @@ def resolve_gmc_color_and_pattern(
         if hit:
             hue = hit
         else:
-            hue = _from_context()
+            # English / mapped hues not yet in GMC list (e.g. Cream before expand)
+            mapped = normalize_color(raw, "US")
+            if mapped and mapped.lower() != "multicolor" and not _is_multicolor_synonym(mapped):
+                hue = mapped if mapped[:1].isupper() else mapped.title()
+            else:
+                hue = _from_context()
     elif listed:
         idx = _style_index(raw) if raw else 0
         if idx < 0:
@@ -434,6 +446,12 @@ def resolve_gmc_color_and_pattern(
         hue = _from_context()
 
     pattern = extract_pattern_from_color_raw(raw, hue=hue if hue != "Multicolor" else "")
+    # Pure color option → never mirror the hue into pattern
+    if hue and hue != "Multicolor":
+        if not raw or raw.strip().lower() == hue.lower():
+            pattern = ""
+        elif pattern and pattern.lower() == hue.lower():
+            pattern = ""
     return hue, pattern
 
 

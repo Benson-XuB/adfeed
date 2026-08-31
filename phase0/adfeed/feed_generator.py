@@ -433,6 +433,32 @@ DEFAULT_SHIPPING = {
 }
 
 
+def apply_shipping_weight_default(row: dict) -> str:
+    """Use real shipping_weight when present; apparel-path heuristic only; else empty.
+
+    Never invent a universal 300g for home/electronics/beauty (field contract).
+    Mutates row['shipping_weight'] when filling an apparel heuristic.
+    """
+    raw = str(row.get("shipping_weight", "") or "").strip()
+    if raw and raw.lower() != "nan":
+        return raw
+    gpc_path_val = str(row.get("GPC路径") or row.get("gpc_path") or "").lower()
+    filled = ""
+    if any(k in gpc_path_val for k in ["coat", "jacket", "outerwear"]):
+        filled = "800.0 g"
+    elif any(k in gpc_path_val for k in ["jean", "pant", "dress", "skirt"]):
+        filled = "400.0 g"
+    elif any(k in gpc_path_val for k in ["shirt", "top", "blouse", "vest", "sweater"]):
+        filled = "250.0 g"
+    elif any(k in gpc_path_val for k in ["sock", "underwear"]):
+        filled = "100.0 g"
+    elif any(k in gpc_path_val for k in ["jumpsuit", "romper"]):
+        filled = "350.0 g"
+    # Non-apparel / unknown path: leave empty — do not fake 300g
+    row["shipping_weight"] = filled
+    return filled
+
+
 def _convert_price(price_usd: float, country: str):
     """DEPRECATED — do not use for GMC/Meta/TikTok submit feeds.
 
@@ -567,14 +593,27 @@ def generate(df: pd.DataFrame, country: str = "US", site_link: str = "https://ad
 
         # v4.0: 中文颜色/材质自动翻译英文（GMC 合规）
         # P0: Style/脏后缀 → 基础色（结合描述 Color: 列表）
+        # Empty color stays empty — never invent Multicolor from title/desc (field contract).
         from .attribute_normalizer import resolve_gmc_color
         raw_color = str(row.get("颜色", "")) if pd.notna(row.get("颜色")) else ""
+        raw_color = raw_color.strip()
+        if raw_color.lower() in ("", "nan", "none"):
+            raw_color = ""
         raw_material = str(row.get("材质", "")) if pd.notna(row.get("材质")) else ""
         ctx_desc = str(row.get("描述", "") or "")
         ctx_title = str(row.get("标题", "") or row.get("优化后标题", "") or "")
-        en_color = resolve_gmc_color(raw_color, description=ctx_desc, title=ctx_title)
-        if not en_color:
-            en_color = _extract_dominant_color(_translate_color(raw_color))
+        if raw_color:
+            en_color = resolve_gmc_color(raw_color, description=ctx_desc, title=ctx_title)
+            if not en_color:
+                en_color = _extract_dominant_color(_translate_color(raw_color))
+            if en_color == "Multicolor" and raw_color.lower() not in (
+                "multicolor", "colourful", "colorful", "mixed colors", "花色", "多彩",
+            ):
+                # Named hue mis-resolved → keep cleaned raw / dominant, not Multicolor
+                fallback = _extract_dominant_color(_translate_color(raw_color)) or raw_color
+                en_color = fallback if fallback != "Multicolor" else raw_color
+        else:
+            en_color = ""
         en_material = _translate_material(raw_material)
 
         # v4.0: title 增强 — 追加品牌 + 颜色 + 材质卖点 + 品类纪律
@@ -648,22 +687,8 @@ def generate(df: pd.DataFrame, country: str = "US", site_link: str = "https://ad
                 raw_shipping_service = default_ship["service"]
                 raw_shipping_price = f"{default_ship['price']:.2f}"
 
-        # v4.1: shipping_weight 默认值（按品类推断，避免 GMC 缺失警告）
-        raw_shipping_weight = str(row.get("shipping_weight", "")).strip()
-        if not raw_shipping_weight or raw_shipping_weight == "nan":
-            gpc_path_val = str(row.get("GPC路径", "")).lower()
-            if any(k in gpc_path_val for k in ["coat", "jacket", "outerwear"]):
-                raw_shipping_weight = "800.0 g"
-            elif any(k in gpc_path_val for k in ["jean", "pant", "dress"]):
-                raw_shipping_weight = "400.0 g"
-            elif any(k in gpc_path_val for k in ["shirt", "top", "blouse", "vest"]):
-                raw_shipping_weight = "250.0 g"
-            elif any(k in gpc_path_val for k in ["sock", "underwear"]):
-                raw_shipping_weight = "100.0 g"
-            elif any(k in gpc_path_val for k in ["jumpsuit", "romper"]):
-                raw_shipping_weight = "350.0 g"
-            else:
-                raw_shipping_weight = "300.0 g"  # 通用默认值
+        # shipping_weight: real value > apparel-path heuristic > empty (no universal 300g)
+        raw_shipping_weight = apply_shipping_weight_default(row)
 
         # v4.0: additional_image_link 解析
         additional_images_raw = str(row.get("附加图片", ""))
@@ -833,22 +858,11 @@ def generate_from_memory(
             pattern=_safe_str(p.get("pattern", ""), "") or _safe_str(p.get("custom_label_0", ""), ""),
         )
 
-        # v4.1: shipping_weight 默认值
-        sw = _safe_str(p.get("shipping_weight", ""), "").strip()
-        if not sw:
-            gpc_path_val = _safe_str(p.get("gpc_path", ""), "").lower()
-            if any(k in gpc_path_val for k in ["coat", "jacket", "outerwear"]):
-                sw = "800.0 g"
-            elif any(k in gpc_path_val for k in ["jean", "pant", "dress"]):
-                sw = "400.0 g"
-            elif any(k in gpc_path_val for k in ["shirt", "top", "blouse", "vest"]):
-                sw = "250.0 g"
-            elif any(k in gpc_path_val for k in ["sock", "underwear"]):
-                sw = "100.0 g"
-            elif any(k in gpc_path_val for k in ["jumpsuit", "romper"]):
-                sw = "350.0 g"
-            else:
-                sw = "300.0 g"
+        # shipping_weight: real > apparel heuristic > empty
+        sw = apply_shipping_weight_default({
+            "shipping_weight": p.get("shipping_weight", ""),
+            "GPC路径": p.get("gpc_path", ""),
+        })
 
         products.append({
             "sku": p.get("product_id", ""),

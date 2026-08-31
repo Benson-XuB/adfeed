@@ -6,6 +6,7 @@ import csv
 import html
 import io
 import json
+import re
 from pathlib import Path
 
 TIKTOK_CSV_FIELDS = [
@@ -32,12 +33,18 @@ TIKTOK_CSV_FIELDS = [
     "Material",
 ]
 
+# Code map aligned with AdFeed gpc_matcher aliases (not always official Google IDs).
+# Prefer path keywords in _gpc_to_tiktok_category when both are present.
 _GPC_TO_TIKTOK_CATEGORY = {
     "4174": "Women's Clothing > Dresses",
-    "2271": "Women's Clothing > Tops",
-    "209": "Women's Clothing > Jeans",
+    "2271": "Women's Clothing > Dresses",
+    "204": "Women's Clothing > Pants",
+    "209": "Socks & Hosiery",
+    "212": "Women's Clothing > Tops",
+    "1831": "Women's Clothing > Jackets & Coats",
+    "5250": "Women's Clothing > Jumpsuits & Rompers",
     "5423": "Women's Clothing > Jackets & Coats",
-    "5598": "Women's Clothing > Sweaters",
+    "5598": "Women's Clothing > Jackets & Coats",
     "6228": "Women's Clothing > Skirts",
     "3913": "Women's Clothing > Pants",
     "207": "Women's Clothing > Shirts & Blouses",
@@ -46,13 +53,65 @@ _GPC_TO_TIKTOK_CATEGORY = {
     "2923": "Socks & Hosiery",
 }
 
+# Path needles → TikTok category. Order matters (more specific first).
+_GPC_PATH_TO_TIKTOK = (
+    ("jumpsuit", "Women's Clothing > Jumpsuits & Rompers"),
+    ("romper", "Women's Clothing > Jumpsuits & Rompers"),
+    ("one-pieces", "Women's Clothing > Jumpsuits & Rompers"),
+    ("dresses", "Women's Clothing > Dresses"),
+    ("dress", "Women's Clothing > Dresses"),
+    ("jeans", "Women's Clothing > Jeans"),
+    ("skirts", "Women's Clothing > Skirts"),
+    ("skirt", "Women's Clothing > Skirts"),
+    ("vests", "Women's Clothing > Jackets & Coats"),
+    ("vest", "Women's Clothing > Jackets & Coats"),
+    ("coats & jackets", "Women's Clothing > Jackets & Coats"),
+    ("jackets", "Women's Clothing > Jackets & Coats"),
+    ("jacket", "Women's Clothing > Jackets & Coats"),
+    ("coats", "Women's Clothing > Jackets & Coats"),
+    ("socks", "Socks & Hosiery"),
+    ("sweaters", "Women's Clothing > Sweaters"),
+    ("sweater", "Women's Clothing > Sweaters"),
+    ("pants", "Women's Clothing > Pants"),
+    ("shirts & tops", "Women's Clothing > Tops"),
+    ("shirts", "Women's Clothing > Shirts & Blouses"),
+    ("tops", "Women's Clothing > Tops"),
+)
 
-def _gpc_to_tiktok_category(gpc_code: str, gpc_path: str = "") -> str:
-    if gpc_code in _GPC_TO_TIKTOK_CATEGORY:
-        return _GPC_TO_TIKTOK_CATEGORY[gpc_code]
-    if gpc_path:
-        return gpc_path
-    return "General"
+
+_JEANS_HINT = re.compile(r"\b(jeans?|denim)\b|牛仔", re.I)
+
+
+def _looks_like_jeans(*texts: str) -> bool:
+    blob = " ".join(t for t in texts if t)
+    return bool(_JEANS_HINT.search(blob))
+
+
+def _gpc_to_tiktok_category(
+    gpc_code: str, gpc_path: str = "", *, title: str = ""
+) -> str:
+    """Map Google GPC → TikTok category.
+
+    Google taxonomy has no Jeans leaf (jeans alias → Pants/204). When the
+    mapped category is Pants but the title signals jeans/denim, use TikTok's
+    Jeans category — Google/Meta feeds stay on GPC 204.
+    """
+    path_l = (gpc_path or "").lower()
+    cat = ""
+    for needle, mapped in _GPC_PATH_TO_TIKTOK:
+        if needle in path_l:
+            cat = mapped
+            break
+    if not cat and gpc_code in _GPC_TO_TIKTOK_CATEGORY:
+        cat = _GPC_TO_TIKTOK_CATEGORY[gpc_code]
+    if not cat and gpc_path:
+        cat = gpc_path
+    if not cat:
+        cat = "General"
+
+    if cat == "Women's Clothing > Pants" and _looks_like_jeans(title, gpc_path):
+        return "Women's Clothing > Jeans"
+    return cat
 
 
 def _weight_kg_from_row(row: dict) -> str:
@@ -100,6 +159,7 @@ def generate_tiktok_feed(rows: list[dict], shop_name: str = "") -> str:
         category = _gpc_to_tiktok_category(
             str(first.get("GPC代码", "")),
             str(first.get("GPC路径", "")),
+            title=product_name,
         )
         main_image = str(first.get("图片链接", ""))
 
