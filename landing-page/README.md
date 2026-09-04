@@ -4,11 +4,29 @@ English marketing site for App Store V1.0 capabilities.
 
 ## Preview locally
 
+Waitlist signup needs the API. Use the dev server (proxies `/api/*` like production nginx):
+
+```bash
+# Terminal 1 — API
+cd phase0
+.venv/bin/uvicorn adfeed.api:app --reload --port 8000
+
+# Terminal 2 — landing + /api proxy
+cd landing-page
+python3 dev_server.py
+# open http://127.0.0.1:8765/
+```
+
+Static-only preview (no waitlist POST):
+
 ```bash
 cd landing-page
 python3 -m http.server 8765
-# open http://127.0.0.1:8765/
 ```
+
+## Production
+
+Served on **https://deltfu.com/** (nginx). Static files under `/lp-assets/` and `/styles.css` so they do not clash with the Shopify app’s `/assets/`. App routes (`/app`, `/auth`, …) and `/api/*` are unchanged. Listing privacy/support stay at `/privacy` and `/support` (FastAPI); marketing copies are `/privacy.html` and `/support.html`.
 
 ## Pages
 

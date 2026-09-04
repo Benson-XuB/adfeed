@@ -8,7 +8,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Req
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, HTMLResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("adfeed-api")
@@ -17,6 +17,7 @@ from .db import (
     User, Job, get_user, list_jobs, get_job, create_job, update_job,
     get_user_by_email, increment_quota,
     get_shopify_connection, delete_shopify_connection,
+    add_waitlist_email, waitlist_email_exists,
 )
 from .auth import (
     create_jwt, decode_jwt, google_login, send_magic_link_email,
@@ -71,6 +72,61 @@ async def log_requests(request: Request, call_next):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "ts": datetime.now(timezone.utc).isoformat()}
+
+
+class WaitlistRequest(BaseModel):
+    email: EmailStr
+    source: str = "landing"
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v):
+        if not isinstance(v, str):
+            return v
+        cleaned = v.strip().lower()
+        if len(cleaned) > 254:
+            raise ValueError("Email is too long")
+        if " " in cleaned or ".." in cleaned:
+            raise ValueError("Invalid email address")
+        return cleaned
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, v):
+        if v is None:
+            return "landing"
+        s = str(v).strip()[:64]
+        return s or "landing"
+
+
+@app.post("/api/waitlist")
+async def waitlist_signup(body: WaitlistRequest):
+    """Public landing-page pre-register. Saves email for launch notification."""
+    email = str(body.email).strip().lower()
+    if waitlist_email_exists(email):
+        return {
+            "ok": True,
+            "created": False,
+            "status": "already_registered",
+            "message": "This email is already on the list. No need to submit again — we'll email you at launch.",
+        }
+
+    created = add_waitlist_email(email, source=body.source)
+    if not created:
+        # Race: inserted between exists check and insert
+        return {
+            "ok": True,
+            "created": False,
+            "status": "already_registered",
+            "message": "This email is already on the list. No need to submit again — we'll email you at launch.",
+        }
+
+    return {
+        "ok": True,
+        "created": True,
+        "status": "created",
+        "message": "You're on the list! We'll email you at launch with your bonus generate units.",
+    }
 
 
 @app.get("/")

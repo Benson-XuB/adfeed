@@ -83,6 +83,14 @@ CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_magic_links_token ON magic_links(token);
 CREATE INDEX IF NOT EXISTS idx_users_google ON users(google_id);
 CREATE INDEX IF NOT EXISTS idx_shopify_user ON shopify_connections(user_id);
+
+CREATE TABLE IF NOT EXISTS launch_waitlist (
+    id            TEXT PRIMARY KEY,
+    email         TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    source        TEXT DEFAULT 'landing',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_waitlist_created ON launch_waitlist(created_at DESC);
 """
 
 
@@ -295,6 +303,43 @@ def _row_to_job(r) -> Job:
         error_msg=r["error_msg"],
         created_at=r["created_at"], updated_at=r["updated_at"],
     )
+
+
+# ── Launch waitlist ──
+
+def waitlist_email_exists(email: str) -> bool:
+    normalized = email.strip().lower()
+    with _conn() as c:
+        row = c.execute(
+            "SELECT 1 FROM launch_waitlist WHERE email = ? LIMIT 1",
+            (normalized,),
+        ).fetchone()
+    return row is not None
+
+
+def add_waitlist_email(email: str, source: str = "landing") -> bool:
+    """Insert email. Returns True if newly added, False if already on the list."""
+    normalized = email.strip().lower()
+    uid = str(uuid.uuid4())
+    with _conn() as c:
+        try:
+            c.execute(
+                "INSERT INTO launch_waitlist (id, email, source) VALUES (?,?,?)",
+                (uid, normalized, source),
+            )
+            c.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def list_waitlist_emails(limit: int = 500) -> list[str]:
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT email FROM launch_waitlist ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [r["email"] for r in rows]
 
 
 init_db()
