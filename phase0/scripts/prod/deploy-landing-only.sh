@@ -81,8 +81,12 @@ rsync -avz -e "$RSYNC_RSH" \
 ssh_cmd "sudo cp /tmp/adfeed-api.waitlist.py ${REMOTE_DIR}/phase0/adfeed/api.py && sudo cp /tmp/adfeed-db.waitlist.py ${REMOTE_DIR}/phase0/adfeed/db.py && sudo chown adfeed:adfeed ${REMOTE_DIR}/phase0/adfeed/api.py ${REMOTE_DIR}/phase0/adfeed/db.py"
 
 echo ""
-echo "━━━ [3/4] Nginx (landing vs App Home split) ━━━"
+echo "━━━ [3/4] Nginx (landing vs App Home split, keep TLS) ━━━"
 if [[ -f "${REPO}/nginx/deltfu.com.conf" ]]; then
+  if ! grep -q "listen 443 ssl" "${REPO}/nginx/deltfu.com.conf"; then
+    echo "ERROR: repo nginx/deltfu.com.conf is missing HTTPS (listen 443). Abort to avoid breaking the App."
+    exit 1
+  fi
   rsync -avz -e "$RSYNC_RSH" \
     "${REPO}/nginx/deltfu.com.conf" "${REPO}/nginx/deltfu-feeds.conf" \
     "${SSH_TARGET}:/tmp/"
@@ -93,6 +97,7 @@ cp /tmp/deltfu-feeds.conf /etc/nginx/snippets/deltfu-feeds.conf
 cp /tmp/deltfu.com.conf /etc/nginx/sites-available/deltfu.com
 ln -sf /etc/nginx/sites-available/deltfu.com /etc/nginx/sites-enabled/deltfu.com
 nginx -t && systemctl reload nginx
+ss -lntp | grep -E ':443\b' >/dev/null
 ENDSSH
 fi
 
