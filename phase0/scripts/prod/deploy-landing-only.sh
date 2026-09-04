@@ -21,7 +21,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-PHASE0="$REPO/phase0"
 
 SERVER="${SERVER:-47.237.157.77}"
 SSH_USER="${SSH_USER:-admin}"
@@ -36,10 +35,9 @@ RSYNC_RSH="ssh ${SSH_OPTS[*]}"
 
 ssh_cmd() { ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "$@"; }
 
-# Prefer the dedicated landing/waitlist commit (no App fix hunks in api.py).
 LANDING_COMMIT="${LANDING_COMMIT:-}"
 if [[ -z "$LANDING_COMMIT" ]]; then
-  LANDING_COMMIT="$(git -C "$REPO" log --oneline --grep='waitlist signup, and safe nginx split' -n 1 --format=%H || true)"
+  LANDING_COMMIT="$(git -C "$REPO" log --grep='waitlist signup, and safe nginx split' -n 1 --format=%H || true)"
 fi
 if [[ -z "$LANDING_COMMIT" ]]; then
   echo "ERROR: cannot find landing/waitlist commit. Set LANDING_COMMIT=<sha>."
