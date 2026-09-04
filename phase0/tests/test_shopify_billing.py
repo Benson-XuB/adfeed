@@ -17,7 +17,7 @@ def app_client(monkeypatch, tmp_path):
     monkeypatch.setenv("ADFEED_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SHOPIFY_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("SHOPIFY_CLIENT_SECRET", "test-client-secret")
-    monkeypatch.setenv("ADFEED_QUOTA_FREE", "3")
+    monkeypatch.setenv("ADFEED_QUOTA_FREE", "20")
     monkeypatch.setenv("ADFEED_QUOTA_STARTER", "50")
     monkeypatch.setenv("ADFEED_QUOTA_GROWTH", "200")
 
@@ -63,7 +63,7 @@ def _token(shop="demo.myshopify.com"):
 
 def test_plan_quota_mapping(app_client):
     _, _, billing = app_client
-    assert billing.quota_for_plan("free") == 3
+    assert billing.quota_for_plan("free") == 20
     assert billing.quota_for_plan("starter") == 50
     assert billing.quota_for_plan("growth") == 200
     assert billing.normalize_plan_name("AdFeed Starter") == "starter"

@@ -214,7 +214,10 @@ export const messages = {
     "heading": "Quota",
     "remaining": "{{used}} / {{total}} ({{left}} left)",
     "estimate": "Estimated use: {{skus}} SKUs × {{platforms}} platforms × {{markets}} markets =",
-    "insufficient": " — not enough quota, please upgrade"
+    "insufficient": " — not enough quota, please upgrade",
+    "bannerTitle": "Not enough generate units",
+    "bannerBody": "This generate needs {{need}}; you have {{left}} left this month.",
+    "bannerBodyZero": "You have {{left}} generate units left this month. Upgrade to generate again."
   },
   "billing": {
     "current": "Plan: {{plan}} · {{left}} / {{total}} generate units left",
@@ -240,7 +243,7 @@ export const messages = {
       "free": {
         "name": "Free",
         "price": "$0 / month",
-        "quota": "3 generate units / month",
+        "quota": "20 generate units / month",
         "blurb": "Try the flow on a small catalog."
       },
       "starter": {
@@ -262,6 +265,7 @@ export const messages = {
     "help": "This is the store-wide brand written to every feed item (g:brand). Shopify product Vendor is often a supplier name (e.g. eprolo) — we do not copy it automatically. Confirm once; only tap again if you change it.",
     "warn": "Ad brand not confirmed. Enter it and tap Confirm brand, or feed generation stays blocked (avoids Missing brand disapprovals).",
     "confirmed": "Ad brand: {{brand}}",
+    "confirmedHint": "Written to Google Shopping — not the 1688 supplier name.",
     "label": "Ad brand",
     "placeholder": "e.g. your store name or own brand",
     "saving": "Saving…",
@@ -378,6 +382,14 @@ export const messages = {
     "actionGenerateFeed": "Generate feed",
     "tagInFeed": "Feed · {{n}} variants",
     "tagFailed": "Generation failed",
+    "generateAgain": "Generate again",
+    "regenHintLine": "{{detail}}",
+    "regenHintCta": "Generate again",
+    "genFailedDetail": "Generation failed: {{detail}}",
+    "failedHintLine": "Fix: {{detail}}",
+    "openProductInShopify": "Open product in Shopify",
+    "shopifyProductLinkMissing": "Could not open Shopify product — refresh and try again",
+    "hintFailedGeneric": "Open this product in Shopify to fix what Google will reject",
     "defectsLine": "Suggested: {{list}}",
     "fixThenGenerate": "Fix & generate",
     "fixOptional": "optional fix",
@@ -394,7 +406,7 @@ export const messages = {
     "needsBanner": "{{n}} products are missing color and/or size in Shopify variants — fix in Shopify or edit after generate. Use the chip to filter.",
     "hintMissingColor": "Missing color",
     "hintMissingSize": "Missing size",
-    "hintMissingImage": "Main image needs a better pick",
+    "hintMissingImage": "No main image — add one in Shopify, then Generate again",
     "fixColorTitle": "Add color: {{title}}",
     "fixSizeTitle": "Add size: {{title}}",
     "fixColorHelp": "Enter a real color (e.g. Black). It will apply to this product’s variants.",
@@ -991,7 +1003,10 @@ export const messages = {
     "heading": "配额",
     "remaining": "{{used}} / {{total}}（剩余 {{left}}）",
     "estimate": "预估消耗：{{skus}} SKU × {{platforms}} 平台 × {{markets}} 市场 =",
-    "insufficient": " — 配额不足，请升级"
+    "insufficient": " — 配额不足，请升级",
+    "bannerTitle": "生成配额不足",
+    "bannerBody": "本次生成需要 {{need}}，本月剩余 {{left}}。",
+    "bannerBodyZero": "本月剩余 {{left}} 次生成。升级套餐后可继续生成。"
   },
   "billing": {
     "current": "套餐：{{plan}} · 剩余 {{left}} / {{total}} 次生成",
@@ -1017,7 +1032,7 @@ export const messages = {
       "free": {
         "name": "免费",
         "price": "$0 / 月",
-        "quota": "每月 3 次生成",
+        "quota": "每月 20 次生成",
         "blurb": "适合先跑通小目录。"
       },
       "starter": {
@@ -1039,6 +1054,7 @@ export const messages = {
     "help": "这是整店写入 Feed 的 g:brand（消费者认的店牌）。Shopify 商品上的 Vendor 经常是供应商名（如 eprolo），不会自动当广告品牌。确认过一次即可；只有要改名时再点下面按钮。",
     "warn": "尚未确认广告品牌。请填写后点「确认品牌」，否则无法开始安检生成 Feed（避免 Missing brand 拒审）。",
     "confirmed": "广告品牌：{{brand}}",
+    "confirmedHint": "会写入 Google Shopping — 不要用 1688 供应商名。",
     "label": "广告品牌",
     "placeholder": "例如你的店名或自有品牌",
     "saving": "保存中…",
@@ -1155,6 +1171,14 @@ export const messages = {
     "actionGenerateFeed": "生成到 Feed",
     "tagInFeed": "Feed · {{n}}变体",
     "tagFailed": "生成失败",
+    "generateAgain": "重新生成",
+    "regenHintLine": "{{detail}}",
+    "regenHintCta": "重新生成",
+    "genFailedDetail": "生成失败: {{detail}}",
+    "failedHintLine": "请修复：{{detail}}",
+    "openProductInShopify": "在 Shopify 打开该商品",
+    "shopifyProductLinkMissing": "无法打开 Shopify 商品，请刷新后重试",
+    "hintFailedGeneric": "请到 Shopify 打开该商品，修复 Google 可能拒收的项",
     "defectsLine": "建议补充：{{list}}",
     "fixThenGenerate": "修复后生成",
     "fixOptional": "可选修复",
@@ -1171,7 +1195,7 @@ export const messages = {
     "needsBanner": "有 {{n}} 件商品在 Shopify 变体里缺颜色和/或尺码 — 可先去店铺补全，或生成后再改。点上方筛选只看这些。",
     "hintMissingColor": "缺颜色",
     "hintMissingSize": "缺尺码",
-    "hintMissingImage": "主图建议换一张更干净的",
+    "hintMissingImage": "缺主图 — 请在 Shopify 上传后重新 Generate",
     "fixColorTitle": "添加颜色：{{title}}",
     "fixSizeTitle": "添加尺码：{{title}}",
     "fixColorHelp": "填写真实颜色（如 Black）。会应用到这件商品的变体。",

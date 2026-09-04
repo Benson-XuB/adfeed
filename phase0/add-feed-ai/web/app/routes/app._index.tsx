@@ -466,6 +466,9 @@ export default function Home() {
 
   const planKey = String(billing?.plan || "free").toLowerCase();
   const affordable = estimate?.affordable !== false;
+  const quotaBlocked =
+    billing != null &&
+    (Number(billing.quota_remaining) <= 0 || estimate?.affordable === false);
   const steps = pipelineSteps();
 
   return (
@@ -560,6 +563,26 @@ export default function Home() {
             copyUrl={copyUrl}
             setupSlot={
               <s-stack gap="small">
+                {quotaBlocked ? (
+                  <s-banner tone="warning">
+                    <s-stack gap="small">
+                      <s-text type="strong">{t("quota.bannerTitle")}</s-text>
+                      <s-text>
+                        {estimate
+                          ? t("quota.bannerBody", {
+                              need: String(estimate.estimate),
+                              left: String(estimate.quota_remaining),
+                            })
+                          : t("quota.bannerBodyZero", {
+                              left: String(billing?.quota_remaining ?? 0),
+                            })}
+                      </s-text>
+                      <s-button variant="primary" href="/app/plans">
+                        {t("billing.plans.open")}
+                      </s-button>
+                    </s-stack>
+                  </s-banner>
+                ) : null}
                 {SHOW_PLATFORM_PICKER ? (
                   <s-stack gap="small">
                     <s-text type="strong">{t("setup.platforms")}</s-text>
@@ -580,41 +603,21 @@ export default function Home() {
                   </s-stack>
                 ) : null}
                 <s-stack gap="small">
-                  <s-text type="strong">{t("setup.markets")}</s-text>
-                  <MarketMultiSelect
-                    markets={readyMarketOptions}
-                    selected={languages}
-                    disabled={generating}
-                    onToggle={toggleMarket}
-                  />
-                  {compatibleMarkets?.length === 0 ? (
-                    <s-banner tone="warning">
-                      <s-text>{t("setup.noCompatibleMarkets")}</s-text>
-                    </s-banner>
-                  ) : null}
-                  {marketHint ? (
-                    <s-banner tone="warning">
-                      <s-text>{marketHint}</s-text>
-                    </s-banner>
-                  ) : null}
-                </s-stack>
-                <s-stack gap="small">
                   {adBrandConfirmed && !brandEditOpen ? (
-                    <s-stack
-                      direction="inline"
-                      gap="small"
-                      alignItems="center"
-                    >
-                      <s-text tone="success">
-                        {t("brand.confirmed", { brand: adBrand })}
-                      </s-text>
-                      <s-button
-                        variant="tertiary"
-                        onClick={() => setBrandEditOpen(true)}
-                      >
-                        {t("brand.change")}
-                      </s-button>
-                    </s-stack>
+                    <>
+                      <s-text type="strong">{t("brand.label")}</s-text>
+                      <div className={setupStyles.brandCard}>
+                        <div className={setupStyles.brandCardTop}>
+                          <p className={setupStyles.brandValue}>{adBrand}</p>
+                          <s-button
+                            variant="secondary"
+                            onClick={() => setBrandEditOpen(true)}
+                          >
+                            {t("brand.change")}
+                          </s-button>
+                        </div>
+                      </div>
+                    </>
                   ) : (
                     <s-stack gap="small">
                       <s-text-field
@@ -653,11 +656,29 @@ export default function Home() {
                       )}
                     </s-stack>
                   )}
+                </s-stack>
+                <s-stack gap="small">
+                  <s-text type="strong">{t("setup.markets")}</s-text>
+                  <MarketMultiSelect
+                    markets={readyMarketOptions}
+                    selected={languages}
+                    disabled={generating}
+                    onToggle={toggleMarket}
+                  />
+                  {compatibleMarkets?.length === 0 ? (
+                    <s-banner tone="warning">
+                      <s-text>{t("setup.noCompatibleMarkets")}</s-text>
+                    </s-banner>
+                  ) : null}
+                  {marketHint ? (
+                    <s-banner tone="warning">
+                      <s-text>{marketHint}</s-text>
+                    </s-banner>
+                  ) : null}
+                </s-stack>
+                <s-stack gap="small">
                   {selected.size === 0 ? (
                     <s-text tone="caution">{t("hub.needProducts")}</s-text>
-                  ) : null}
-                  {billing && !affordable ? (
-                    <s-text tone="caution">{t("quota.insufficient")}</s-text>
                   ) : null}
                   <div className={setupStyles.generateCtaRow}>
                     <button
@@ -670,7 +691,8 @@ export default function Home() {
                         !productIds.length ||
                         !platformList.length ||
                         !countryList.length ||
-                        !affordable
+                        !affordable ||
+                        quotaBlocked
                       }
                     >
                       {generating ? t("cta.generating") : t("cta.generate")}

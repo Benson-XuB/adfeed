@@ -299,8 +299,14 @@ def _sku_sets_from_quality(quality_report: Optional[dict]) -> dict[str, set[str]
         if not isinstance(ev, dict):
             continue
         sku = str(ev.get("sku") or "").strip()
-        if sku:
-            fatal.add(sku)
+        if not sku:
+            continue
+        fatal.add(sku)
+        rule = str(ev.get("rule_id") or "").upper()
+        field = str(ev.get("field") or "").lower()
+        # Surface image fatals as need_image so the workbench can explain "Generation failed".
+        if rule in {"I01", "I02"} or "image" in field:
+            image.add(sku)
     return {
         "color": color,
         "size": size,
@@ -349,13 +355,58 @@ def build_workbench_product_rows(
             if any(_feed_item_size_gap(it) for it in matched):
                 need_size = True
         need_image = any(s in sku_sets["image"] for s in skus)
+        # Empty durable image_link is a hard GMC fail even if quality snapshot is stale.
+        feed_missing_image = any(
+            not str(it.get("image_link") or it.get("image_url") or "").strip()
+            for it in matched
+        )
+        shopify_has_image = bool(str(p.get("image_url") or "").strip())
+        needs_regenerate = bool(matched and feed_missing_image and shopify_has_image)
+        if feed_missing_image and not shopify_has_image:
+            need_image = True
+        elif feed_missing_image and shopify_has_image:
+            # Merchant already fixed Shopify; feed XML is stale until Generate.
+            need_image = False
         has_fatal = any(s in sku_sets["fatal"] for s in skus) or any(
             (issues.get(s) or "").startswith("fatal") for s in skus
         )
+        # Stale I01 alone should not keep a red "failed" once Shopify has an image.
+        if needs_regenerate and has_fatal:
+            only_stale_image = True
+            for s in skus:
+                msg = str(issues.get(s) or "").lower()
+                if not msg:
+                    continue
+                if "main image is empty" in msg:
+                    continue
+                if msg.startswith("fatal"):
+                    only_stale_image = False
+                    break
+            if only_stale_image:
+                has_fatal = False
         has_warn = any(s in sku_sets["warn"] for s in skus)
         needs_attrs = need_color or need_size or need_image
+        fail_reason = ""
+        if needs_regenerate:
+            # Soft WARNs (e.g. missing material) must not ride along as if they
+            # were still blocking after the merchant already fixed the image.
+            fail_reason = (
+                "Store image is up to date — click Generate again to refresh the feed"
+            )
+        elif has_fatal or need_image:
+            for s in skus:
+                msg = str(issues.get(s) or "").strip()
+                if msg.lower().startswith("fatal"):
+                    # issues values look like "fatal: Main image is empty"
+                    fail_reason = msg.split(":", 1)[-1].strip() or msg
+                    break
+            if not fail_reason and need_image:
+                fail_reason = "Main image is empty"
         if not matched:
             # Not in feed yet — keep pending, but still flag Shopify option gaps.
+            status = "pending"
+        elif needs_regenerate and not has_fatal:
+            # Treat as actionable regenerate, not a hard failure.
             status = "pending"
         elif has_fatal:
             status = "missing"
@@ -370,7 +421,11 @@ def build_workbench_product_rows(
             "need_color": need_color,
             "need_size": need_size,
             "need_image": need_image,
-            "needs_attention": bool(needs_attrs or has_fatal or has_warn),
+            "needs_regenerate": needs_regenerate,
+            "fail_reason": fail_reason,
+            "needs_attention": bool(
+                needs_attrs or has_fatal or has_warn or needs_regenerate
+            ),
         })
     return out
 

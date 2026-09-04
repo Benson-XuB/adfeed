@@ -5,6 +5,7 @@ Apparel-like products with empty size → One Size (logged as autofix).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -25,6 +26,12 @@ APPAREL_TITLE_HINTS = (
     # Common ZH apparel tokens (store titles often Chinese)
     "裙", "裤", "袜", "鞋", "靴", "夹克", "外套", "大衣", "帽", "手套",
     "内衣", "文胸", "衬衫", "T恤", "卫衣", "毛衣", "短裤", "连衣裙", "船袜",
+)
+
+# Hard goods often mis-tagged under *Bags / Accessories* GPC — do not run apparel rules.
+_HARDGOOD_TITLE_HINTS = (
+    "snowboard", "skateboard", "surfboard", "bicycle", "bike", "scooter",
+    "tent", "kayak", "canoe", "dumbbell", "barbell",
 )
 
 # Size aliases that mean One Size Fits All — normalize to "One Size"
@@ -90,6 +97,17 @@ def traffic_light(report: QualityReport) -> str:
     return "green"
 
 
+def _hint_in_text(hint: str, blob: str) -> bool:
+    """Match apparel hints on word boundaries (avoid 'bag' inside 'bags' path noise is OK;
+    avoid matching inside unrelated tokens where possible)."""
+    h = (hint or "").strip().lower()
+    if not h:
+        return False
+    if any("\u4e00" <= ch <= "\u9fff" for ch in h):
+        return h in blob
+    return re.search(rf"(?<![a-z0-9]){re.escape(h)}s?(?![a-z0-9])", blob) is not None
+
+
 def is_apparel_like(
     gpc_path: str = "",
     gpc_code: str = "",
@@ -97,10 +115,29 @@ def is_apparel_like(
     product_type: str = "",
 ) -> bool:
     """True for clothing, shoes, accessories — size often required by Google."""
+    title_l = (title or "").lower()
+    # Snowboard / bike / etc. titles are hard goods even if GPC landed on *Bags*.
+    if any(_hint_in_text(h, title_l) for h in _HARDGOOD_TITLE_HINTS):
+        clothing_in_title = any(
+            _hint_in_text(h, title_l)
+            for h in APPAREL_TITLE_HINTS
+            if h not in {"bag", "boot", "glove", "hat", "short", "top", "belt"}
+        )
+        if not clothing_in_title:
+            return False
+
     blob = f"{gpc_path} {product_type} {title}".lower()
-    if any(h in blob for h in APPAREL_PATH_HINTS):
+    if any(_hint_in_text(h, blob) for h in APPAREL_PATH_HINTS):
+        # Sporting-goods equipment bags are not apparel fabric rules.
+        if "sporting goods" in blob and "apparel" not in blob and "clothing" not in blob:
+            if _hint_in_text("bag", blob) and not any(
+                _hint_in_text(h, blob)
+                for h in APPAREL_PATH_HINTS
+                if h not in {"bag", "handbag", "accessory", "glove", "hat", "boot", "belt"}
+            ):
+                return False
         return True
-    if any(h in blob for h in APPAREL_TITLE_HINTS):
+    if any(_hint_in_text(h, blob) for h in APPAREL_TITLE_HINTS):
         return True
     # Common apparel GPC roots (Google taxonomy numeric prefixes vary; path is primary)
     code = str(gpc_code or "").strip()

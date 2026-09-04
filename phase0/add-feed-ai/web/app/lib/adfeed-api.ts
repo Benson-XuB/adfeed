@@ -469,6 +469,8 @@ export type WorkbenchProduct = AppProduct & {
   need_size?: boolean;
   need_image?: boolean;
   needs_attention?: boolean;
+  needs_regenerate?: boolean;
+  fail_reason?: string;
   variant_skus?: string[];
 };
 

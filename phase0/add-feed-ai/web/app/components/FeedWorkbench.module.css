@@ -291,6 +291,42 @@
   gap: 6px;
 }
 
+/* Confirmed ad brand — labeled card, calm weight */
+.brandCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #e3e5e4;
+  border-radius: 8px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.brandCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.brandValue {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: #1a1c1b;
+  word-break: break-word;
+}
+
+.brandHint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #5a6b63;
+}
+
 .marketSelect {
   position: relative;
   width: 100%;
@@ -720,6 +756,21 @@
   color: #b91c1c;
 }
 
+.statusActionFailed {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+  white-space: nowrap;
+  max-width: none;
+  text-align: center;
+}
+
+.statusActionFailed:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #991b1b;
+}
+
 .defectText {
   font-size: 12px;
   color: #dc2626;
@@ -728,22 +779,49 @@
 
 .defectFixBtn {
   appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
   margin: 0;
-  color: #b98900;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
+  color: #b91c1c;
   text-align: left;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   line-height: 1.35;
 }
 
 .defectFixBtn:hover {
-  color: #8a6800;
+  color: #991b1b;
+  text-decoration: underline;
+}
+
+.regenHintBtn {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3d4742;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.regenHintBtn:hover {
+  color: #126b4a;
+  text-decoration: underline;
+}
+
+.defectShopifyCta {
+  color: #126b4a;
+  font-weight: 700;
 }
 
 .quickFixError {

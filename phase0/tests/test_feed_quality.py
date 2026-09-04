@@ -37,6 +37,17 @@ def test_socks_title_is_apparel_like():
     assert is_apparel_like(gpc_path="Apparel & Accessories > Clothing > Socks")
 
 
+def test_snowboard_not_apparel_even_if_gpc_says_bags():
+    assert not is_apparel_like(
+        gpc_path=(
+            "Sporting Goods > Outdoor Recreation > Winter Sports & Activities > "
+            "Skiing & Snowboarding > Ski & Snowboard Bags"
+        ),
+        gpc_code="7224",
+        title="The Minimal Snowboard",
+    )
+
+
 def test_electronics_not_forced_apparel():
     assert not is_apparel_like(title="USB-C Charging Cable 2m", gpc_path="Electronics > Communications")
 

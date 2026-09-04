@@ -15,7 +15,7 @@ logger = logging.getLogger("adfeed-billing")
 
 # Plan name → monthly quota (env-configurable)
 PLAN_QUOTAS = {
-    "free": int(os.getenv("ADFEED_QUOTA_FREE", "3")),
+    "free": int(os.getenv("ADFEED_QUOTA_FREE", "20")),
     "starter": int(os.getenv("ADFEED_QUOTA_STARTER", "50")),
     "growth": int(os.getenv("ADFEED_QUOTA_GROWTH", "200")),
 }

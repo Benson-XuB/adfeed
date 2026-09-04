@@ -45,21 +45,30 @@ type Props = {
   onGenerateOne?: (productId: string) => void;
 };
 
-function feedStatusTag(p: WorkbenchProduct): {
-  kind: "generated" | "pending" | "error";
-  label: string;
-} {
-  const status = p.feed_status || "pending";
-  if (status === "pending") {
-    return { kind: "pending", label: t("workbench.tagPending") };
-  }
-  if (status === "missing") {
-    return { kind: "error", label: t("workbench.tagFailed") };
-  }
-  return {
-    kind: "generated",
-    label: t("workbench.tagInFeed", { n: p.feed_item_count ?? 0 }),
-  };
+function shopifyAdminProductHref(productId: string): string {
+  const raw = String(productId || "").trim();
+  if (!raw) return "";
+  // Workbench ids are Shopify product GIDs or numeric ids.
+  const digits = raw.includes("/")
+    ? raw.split("/").pop() || ""
+    : raw.replace(/\D/g, "") || raw;
+  const id = String(digits || "").trim();
+  if (!id) return "";
+  return `shopify:admin/products/${id}`;
+}
+
+function openProductInShopify(productId: string): boolean {
+  const href = shopifyAdminProductHref(productId);
+  if (!href || typeof window === "undefined") return false;
+  // Embedded Admin: same deep-link pattern as Store checklist.
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = "_top";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  return true;
 }
 
 function defectParts(p: WorkbenchProduct): string[] {
@@ -68,6 +77,45 @@ function defectParts(p: WorkbenchProduct): string[] {
   if (p.need_size) out.push(t("workbench.hintMissingSize"));
   if (p.need_image) out.push(t("workbench.hintMissingImage"));
   return out;
+}
+
+function feedFailDetail(p: WorkbenchProduct): string {
+  const fromApi = String(p.fail_reason || "").trim();
+  if (fromApi) {
+    // Drop leading "fatal:" noise; keep merchant-facing clauses.
+    return fromApi
+      .replace(/^fatal:\s*/i, "")
+      .replace(/;\s*fatal:\s*/gi, "; ")
+      .trim();
+  }
+  const defects = defectParts(p);
+  if (defects.length) return defects.join(", ");
+  return t("workbench.hintFailedGeneric");
+}
+
+function feedStatusTag(p: WorkbenchProduct): {
+  kind: "generated" | "pending" | "error";
+  label: string;
+} {
+  const status = p.feed_status || "pending";
+  if (p.needs_regenerate || status === "pending") {
+    return {
+      kind: "pending",
+      label: p.needs_regenerate
+        ? t("workbench.generateAgain")
+        : t("workbench.tagPending"),
+    };
+  }
+  if (status === "missing") {
+    return {
+      kind: "error",
+      label: t("workbench.tagFailed"),
+    };
+  }
+  return {
+    kind: "generated",
+    label: t("workbench.tagInFeed", { n: p.feed_item_count ?? 0 }),
+  };
 }
 
 function hasMandatoryGaps(_p: WorkbenchProduct): boolean {
@@ -246,17 +294,24 @@ export function FeedWorkbench(props: Props) {
   };
 
   const openRowFix = (p: WorkbenchProduct) => {
+    // Shopify image already fixed — regenerate feed instead of bouncing to Admin.
+    if (p.needs_regenerate) {
+      onGenerateOne?.(p.id);
+      return;
+    }
+    // Image / hard quality fails must be fixed on the Shopify product itself.
+    if (p.need_image || (p.feed_status || "") === "missing") {
+      if (!openProductInShopify(p.id)) {
+        onMessage(t("workbench.shopifyProductLinkMissing"), "warning");
+      }
+      return;
+    }
     if (p.need_color) {
       openAttrFix(p, "color");
       return;
     }
     if (p.need_size) {
       openAttrFix(p, "size");
-      return;
-    }
-    if (p.need_image) {
-      setEditFocus(null);
-      setEditing(p);
       return;
     }
     setEditing(p);
@@ -477,7 +532,9 @@ export function FeedWorkbench(props: Props) {
             <s-stack gap="small">
               {filtered.map((p) => {
                 const checked = selected.has(p.id);
-                const pending = (p.feed_status || "pending") === "pending";
+                const pending =
+                  (p.feed_status || "pending") === "pending" ||
+                  Boolean(p.needs_regenerate);
                 const fixFirst = needsFixBeforeGenerate(p);
                 const selectBlocked = blockGenerateSelect(p);
                 const optionalFix = hasOptionalFix(p);
@@ -488,20 +545,36 @@ export function FeedWorkbench(props: Props) {
                   : tag.label;
                 const actionClass = fixFirst
                   ? styles.statusActionFix
-                  : pending
-                    ? styles.statusActionPending
-                    : styles.statusActionInFeed;
+                  : tag.kind === "error"
+                    ? styles.statusActionFailed
+                    : tag.kind === "pending"
+                      ? styles.statusActionPending
+                      : styles.statusActionInFeed;
                 const onStatusAction = () => {
                   if (fixFirst) {
                     openRowFix(p);
                     return;
                   }
-                  if (pending) {
+                  if (tag.kind === "error") {
+                    openRowFix(p);
+                    return;
+                  }
+                  if (pending || tag.kind === "pending") {
                     onGenerateOne?.(p.id);
                     return;
                   }
                   setEditing(p);
                 };
+                const hintLine =
+                  tag.kind === "error" || p.needs_regenerate
+                    ? feedFailDetail(p)
+                    : defects.length
+                      ? defects.join("、")
+                      : "";
+                const shopifyHref =
+                  tag.kind === "error" && !p.needs_regenerate
+                    ? shopifyAdminProductHref(p.id)
+                    : "";
                 return (
                   <div key={p.id} className={styles.productCard}>
                     <div
@@ -532,20 +605,58 @@ export function FeedWorkbench(props: Props) {
                           <h4 className={styles.productTitle}>
                             {p.title || p.id}
                           </h4>
-                          {defects.length ? (
+                          {hintLine ? (
                             <div className={styles.statusRow}>
-                              <button
-                                type="button"
-                                className={styles.defectFixBtn}
-                                onClick={() => openRowFix(p)}
-                              >
-                                {t("workbench.defectsLine", {
-                                  list: defects.join("、"),
-                                })}
-                                {optionalFix
-                                  ? ` · ${t("workbench.fixOptional")}`
-                                  : ""}
-                              </button>
+                              {shopifyHref ? (
+                                <a
+                                  className={styles.defectFixBtn}
+                                  href={shopifyHref}
+                                  target="_top"
+                                  rel="noopener noreferrer"
+                                  title={t("workbench.openProductInShopify")}
+                                >
+                                  {t("workbench.failedHintLine", {
+                                    detail: hintLine,
+                                  })}
+                                  <span className={styles.defectShopifyCta}>
+                                    {" · "}
+                                    {t("workbench.openProductInShopify")}
+                                  </span>
+                                </a>
+                              ) : p.needs_regenerate ? (
+                                <button
+                                  type="button"
+                                  className={styles.regenHintBtn}
+                                  onClick={() => openRowFix(p)}
+                                  title={hintLine}
+                                >
+                                  {t("workbench.regenHintLine", {
+                                    detail: hintLine,
+                                  })}
+                                  <span className={styles.defectShopifyCta}>
+                                    {" · "}
+                                    {t("workbench.regenHintCta")}
+                                  </span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={styles.defectFixBtn}
+                                  onClick={() => openRowFix(p)}
+                                  title={hintLine}
+                                >
+                                  {tag.kind === "error"
+                                    ? t("workbench.failedHintLine", {
+                                        detail: hintLine,
+                                      })
+                                    : t("workbench.defectsLine", {
+                                        list: hintLine,
+                                      })}
+                                  {optionalFix && tag.kind !== "error"
+                                    ? ` · ${t("workbench.fixOptional")}`
+                                    : ""}
+                                </button>
+                              )}
                             </div>
                           ) : null}
                         </div>

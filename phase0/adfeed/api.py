@@ -614,6 +614,14 @@ async def app_generate(
                     countries=languages,
                 )
                 write_ids = list(existing | set(internal_ids))
+            # Remove-from-feed is sticky for *other* merges; explicit Generate of
+            # these products means the merchant wants them back in the XML.
+            store_db.clear_feed_exclusions_for_products(
+                store_id,
+                internal_ids,
+                countries=languages,
+                platforms=platforms,
+            )
             feeds = generate_feed_for_store(
                 store_id=store_id,
                 countries=languages,

@@ -1082,7 +1082,11 @@ def add_feed_excluded_skus(
     country: str,
     platform: str = "google",
 ) -> int:
-    """Record SKUs removed from feed so regenerate does not add them back."""
+    """Record SKUs removed from feed so *other* merge regenerates do not add them back.
+
+    Explicit Generate of the same products clears these via
+    clear_feed_exclusions_for_products.
+    """
     init_store_schema()
     plat = (platform or "google").lower()
     cu = (country or "US").upper()
@@ -1103,6 +1107,63 @@ def add_feed_excluded_skus(
                 added += 1
         c.commit()
     return added
+
+
+def remove_feed_excluded_skus(
+    store_id: str,
+    skus: list[str],
+    country: str,
+    platform: str = "google",
+) -> int:
+    """Drop exclusion rows so those SKUs may re-enter the durable feed."""
+    init_store_schema()
+    plat = (platform or "google").lower()
+    cu = (country or "US").upper()
+    targets = [str(s).strip() for s in (skus or []) if str(s).strip()]
+    if not targets:
+        return 0
+    with _conn() as c:
+        placeholders = ",".join("?" * len(targets))
+        cur = c.execute(
+            f"""DELETE FROM feed_excluded_skus
+                WHERE store_id = ? AND platform = ? AND country = ?
+                  AND sku IN ({placeholders})""",
+            (store_id, plat, cu, *targets),
+        )
+        c.commit()
+        return int(cur.rowcount or 0)
+
+
+def clear_feed_exclusions_for_products(
+    store_id: str,
+    product_ids: list[str],
+    *,
+    countries: list[str] | None = None,
+    platforms: list[str] | None = None,
+) -> int:
+    """Merchant re-generated these products → allow their SKUs back into the feed."""
+    init_store_schema()
+    plats = [p.lower() for p in (platforms or ["google"]) if p]
+    countries_u = [c.upper() for c in (countries or ["US"]) if c]
+    if not plats:
+        plats = ["google"]
+    if not countries_u:
+        countries_u = ["US"]
+
+    skus: list[str] = []
+    for pid in product_ids or []:
+        for v in get_product_variants(str(pid)):
+            sku = (getattr(v, "sku", None) or "").strip()
+            if sku:
+                skus.append(sku)
+    if not skus:
+        return 0
+
+    cleared = 0
+    for plat in plats:
+        for cu in countries_u:
+            cleared += remove_feed_excluded_skus(store_id, skus, cu, plat)
+    return cleared
 
 
 def save_feed_file(store_id: str, country: str, file_path: str,
