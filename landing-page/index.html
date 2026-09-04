@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AdFeed AI — Fix 1688 imports that limit Google Shopping ads</title>
-  <meta name="description" content="1688-to-Shopify catalogs get Google Shopping ads limited. AdFeed cleans supplier brands, messy titles, and broken variants—then gives you a stable, always-synced feed URL. No fake barcodes. No risky AI photo editing." />
+  <meta name="description" content="Clean your 1688→Shopify catalog for Google Shopping. Stable feed URL, no fake barcodes, no risky AI photo edits. Free plan available — get early access." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
@@ -18,8 +18,8 @@
         <a class="hide-sm" href="#demo">Demo</a>
         <a class="hide-sm" href="#how">How it works</a>
         <a class="hide-sm" href="#pricing">Pricing</a>
-        <a href="/support.html">Support</a>
-        <a class="btn btn-primary" href="#demo">Watch demo</a>
+        <a href="/setup.html">Setup guide</a>
+        <a class="btn btn-primary" href="#waitlist">Get early access</a>
       </nav>
     </div>
   </header>
@@ -29,16 +29,17 @@
       <div class="wrap hero-wrap">
         <p class="eyebrow reveal">1688 → Shopify → Google Shopping</p>
         <h1 id="hero-title" class="reveal reveal-d1">Importing from 1688? Google Shopping ads getting limited?</h1>
-        <div class="lede-block reveal reveal-d2">
-          <p class="lede">
-            Supplier brands, messy titles, and broken color/size wreck Merchant Center.
-          </p>
-          <p class="lede">
-            AdFeed cleans the catalog and gives you a stable, always-synced feed URL—so you can restore Shopping reach.
-          </p>
-          <p class="trust-line">
-            <strong>No fake barcodes.</strong> <strong>No risky AI photo editing.</strong>
-          </p>
+        <p class="hero-benefit reveal reveal-d1">
+          Clean your 1688–Shopify feed to unlock Shopping reach—with a stable, always-synced feed URL.
+        </p>
+        <p class="hero-support reveal reveal-d2">
+          Supplier brands, messy titles, and broken color/size wreck Merchant Center. AdFeed fixes the catalog at the source.
+        </p>
+
+        <div class="trust-pills reveal reveal-d2" aria-label="Trust promises">
+          <span class="trust-pill">Free plan available</span>
+          <span class="trust-pill">No fake barcodes</span>
+          <span class="trust-pill">No risky AI photo editing</span>
         </div>
 
         <div class="compare reveal reveal-d2" aria-label="Before and after feed quality">
@@ -66,6 +67,7 @@
         </div>
 
         <form class="waitlist reveal reveal-d3" id="waitlist-form" novalidate>
+          <div id="waitlist" class="waitlist-anchor" tabindex="-1"></div>
           <div class="waitlist-row">
             <label class="visually-hidden" for="waitlist-email">Email address</label>
             <input
@@ -79,20 +81,47 @@
             />
             <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
           </div>
-          <p class="waitlist-note" id="waitlist-note">Pre-register for launch — get <strong>40 extra free generate units</strong> when we go live. By submitting you agree we may email you about launch access.</p>
+          <p class="waitlist-note" id="waitlist-note">
+            Pre-register for launch — get <strong>40 extra free generate units</strong> when we go live.
+            By submitting you agree we may email you about launch access.
+          </p>
           <p class="waitlist-msg" id="waitlist-msg" role="status" aria-live="polite" hidden></p>
         </form>
+      </div>
+    </section>
+
+    <section class="section trust-band" id="trust" aria-labelledby="trust-title">
+      <div class="wrap">
+        <p class="section-label">Why sellers trust AdFeed</p>
+        <h2 id="trust-title">Honest feed rules—built for Merchant Center risk</h2>
+        <div class="trust-grid">
+          <article class="trust-card">
+            <h3>No fake barcodes</h3>
+            <p>We never invent GTIN or COGS. No barcode? We use the compliant no-ID path.</p>
+          </article>
+          <article class="trust-card">
+            <h3>No risky AI photo edits</h3>
+            <p>Pick a better image from your existing gallery. We do not rewrite pixels or strip watermarks with AI.</p>
+          </article>
+          <article class="trust-card">
+            <h3>No approval guarantee</h3>
+            <p>We improve feed readiness. Final Merchant Center approval is always Google’s decision.</p>
+          </article>
+        </div>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-ghost" href="#demo">Watch 1‑min demo</a>
+        </div>
       </div>
     </section>
 
     <section class="section demo" id="demo" aria-labelledby="demo-title">
       <div class="wrap demo-split">
         <div class="demo-copy">
-          <p class="section-label">Product demo</p>
-          <h2 id="demo-title">What AdFeed AI does</h2>
+          <p class="section-label">1‑minute demo</p>
+          <h2 id="demo-title">See the App Home walkthrough</h2>
           <p class="demo-lede">
-            AdFeed turns your Shopify catalog—especially products imported from 1688—into a clean Google Shopping feed.
-            Confirm the brand you advertise with, generate once, then paste one persistent URL into Merchant Center.
+            Confirm ad brand, select products, generate, then copy one hosted feed URL for Google Merchant Center.
           </p>
           <ul class="demo-points">
             <li>Confirm ad brand (not the supplier name)</li>
@@ -101,8 +130,8 @@
             <li>Copy the hosted feed URL for Google</li>
           </ul>
           <div class="cta-row">
-            <a class="btn btn-primary" href="#how">Full setup steps</a>
-            <a class="btn btn-ghost" href="mailto:support@deltfu.com">Ask a question</a>
+            <a class="btn btn-primary" href="#waitlist">Get early access</a>
+            <a class="btn btn-ghost" href="/setup.html">Full setup guide</a>
           </div>
         </div>
         <div class="demo-media">
@@ -118,7 +147,7 @@
               <source src="/lp-assets/setup-demo.mp4" type="video/mp4" />
               Your browser does not support the video tag.
             </video>
-            <figcaption>About 1 minute · App walkthrough with voiceover</figcaption>
+            <figcaption>Watch 1‑min demo · App walkthrough with voiceover</figcaption>
           </figure>
         </div>
       </div>
@@ -127,134 +156,36 @@
     <section class="section howto" id="how" aria-labelledby="how-title">
       <div class="wrap">
         <p class="section-label">How it works</p>
-        <h2 id="how-title">From install to Merchant Center—step by step</h2>
+        <h2 id="how-title">Three moves from catalog to Merchant Center</h2>
         <p class="section-intro">
-          Follow these steps in order. You only need Shopify Admin—no separate AdFeed login.
+          Enough to decide if AdFeed fits. Full install detail lives in the setup guide.
         </p>
-
-        <ol class="steps">
-          <li class="step" data-step>
-            <div class="step-copy">
-              <span class="step-num">1</span>
-              <h3>Install AdFeed AI</h3>
-              <p>
-                In Shopify Admin, open <strong>Apps</strong> and install <strong>AdFeed AI</strong>.
-                The app opens as an embedded App Home (Home / Plans). There is no extra AdFeed username or password.
-              </p>
-            </div>
-            <div class="step-media" aria-hidden="true">
-              <img src="/lp-assets/02-product-list.png" alt="" width="960" height="600" loading="lazy" />
-            </div>
-          </li>
-
-          <li class="step" data-step>
-            <div class="step-copy">
-              <span class="step-num">2</span>
+        <ol class="how-simple">
+          <li>
+            <span class="how-num">1</span>
+            <div>
               <h3>Confirm your ad brand</h3>
-              <p>
-                In the right sidebar, find <strong>Ad brand</strong> (next to <strong>Change</strong>).
-                Set the brand shoppers should see in Google—not the 1688 factory or supplier name—then confirm.
-              </p>
-              <p class="step-note">Wrong brand is one of the fastest ways to look untrustworthy in Shopping ads.</p>
-            </div>
-            <div class="step-media step-media--brand">
-              <img src="/lp-assets/02-ad-brand-sidebar.png" alt="Sidebar: Ad brand with Change, Countries, and Generate feed" width="636" height="590" loading="lazy" />
-              <p class="media-caption"><span class="media-mark">Ad brand</span> Confirm here, then choose market and generate</p>
+              <p>Use the brand shoppers should see—not the 1688 factory or supplier name.</p>
             </div>
           </li>
-
-          <li class="step" data-step>
-            <div class="step-copy">
-              <span class="step-num">3</span>
-              <h3>Choose your market</h3>
-              <p>
-                Select the country you will advertise in (for example <strong>United States</strong>).
-                Feed currency and market pricing follow that choice where available.
-              </p>
-            </div>
-            <div class="step-media" aria-hidden="true">
-              <img src="/lp-assets/02-product-list.png" alt="" width="960" height="600" loading="lazy" />
+          <li>
+            <span class="how-num">2</span>
+            <div>
+              <h3>Generate a clean feed</h3>
+              <p>Select products and markets. AdFeed cleans titles and variants, then hosts the feed.</p>
             </div>
           </li>
-
-          <li class="step" data-step>
-            <div class="step-copy">
-              <span class="step-num">4</span>
-              <h3>Select products</h3>
-              <p>
-                Check the products you want in the feed. Review optional color/size tips if shown.
-                You can also pick which image should be the feed main image for a SKU.
-              </p>
-              <p class="step-note">Products without Color/Size options can still generate. The app does not invent barcodes (GTIN) or cost.</p>
-            </div>
-            <div class="step-media">
-              <img src="/lp-assets/02-product-list.png" alt="Product list with selection in AdFeed AI" width="960" height="600" loading="lazy" />
-            </div>
-          </li>
-
-          <li class="step" data-step>
-            <div class="step-copy">
-              <span class="step-num">5</span>
-              <h3>Generate the feed</h3>
-              <p>
-                Click <strong>Generate feed</strong>, confirm the selection, and wait until generation finishes.
-                In the sidebar, use <strong>Copy</strong> on the feed URL. Open it in a browser—you should see your product feed XML (not a 404).
-              </p>
-            </div>
-            <div class="step-media">
-              <img src="/lp-assets/04-copy-url.png" alt="Copy persistent Google feed URL" width="960" height="600" loading="lazy" />
-            </div>
-          </li>
-
-          <li class="step" data-step>
-            <div class="step-copy">
-              <span class="step-num">6</span>
-              <h3>Upload the feed URL in Google Merchant Center</h3>
-              <p>
-                You do not upload a file from your laptop. You give Google a <strong>scheduled URL</strong> that AdFeed hosts.
-              </p>
-              <div class="gmc-box">
-                <strong>In Google Merchant Center</strong>
-                <ol>
-                  <li>Open <strong>Products</strong> → <strong>Feeds</strong> (or Add products / Data sources, depending on your MC UI).</li>
-                  <li>Create or edit a feed for your target country.</li>
-                  <li>Choose input method <strong>Scheduled fetch</strong> / <strong>Fetch from URL</strong>.</li>
-                  <li>Paste the AdFeed feed URL you copied. Set a fetch schedule (daily is common).</li>
-                  <li>Save. Google will fetch and review products—initial review can take days. Approval is Google’s decision.</li>
-                </ol>
-              </div>
-              <p class="step-note">After you regenerate in AdFeed, the same URL updates; you usually do not need a new MC feed entry.</p>
-            </div>
-            <div class="step-media" aria-hidden="true">
-              <img src="/lp-assets/04-copy-url.png" alt="" width="960" height="600" loading="lazy" />
+          <li>
+            <span class="how-num">3</span>
+            <div>
+              <h3>Paste one URL into Google</h3>
+              <p>Copy the stable feed URL into Merchant Center scheduled fetch. Regenerate updates the same URL.</p>
             </div>
           </li>
         </ol>
-
-        <div class="cta-row" style="margin-top: 2.5rem">
-          <a class="btn btn-primary" href="mailto:support@deltfu.com?subject=AdFeed%20AI%20setup%20help">Email setup help</a>
-          <a class="btn btn-ghost" href="/support.html">Support &amp; FAQ</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="never" aria-labelledby="never-title">
-      <div class="wrap">
-        <p class="section-label">Honesty</p>
-        <h2 id="never-title">What we never do</h2>
-        <div class="never-list">
-          <div class="never-item">
-            <h3>No fake barcodes</h3>
-            <p>We do not invent GTIN / barcodes or COGS. Use the no-identifier path when you have no real GTIN.</p>
-          </div>
-          <div class="never-item">
-            <h3>No approval guarantee</h3>
-            <p>We improve feed readiness. Merchant Center approval is always Google’s call.</p>
-          </div>
-          <div class="never-item">
-            <h3>No ad buying for you</h3>
-            <p>AdFeed generates and hosts the product feed. It does not place bids or run campaigns for you.</p>
-          </div>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-ghost" href="/setup.html">Read full setup guide</a>
         </div>
       </div>
     </section>
@@ -262,26 +193,37 @@
     <section class="section" id="pricing" aria-labelledby="pricing-title">
       <div class="wrap">
         <p class="section-label">Pricing</p>
-        <h2 id="pricing-title">Plans billed in Shopify Admin</h2>
+        <h2 id="pricing-title">Simple plans in Shopify Admin</h2>
         <p class="section-intro">
-          Change plan in App Home without reinstalling. One generate uses one unit per selected SKU × selected market. Unused units do not roll over.
+          Change plan in App Home without reinstalling. One generate uses one unit per selected SKU × selected market.
         </p>
         <div class="price-grid">
           <article class="price-card">
             <h3>Free</h3>
             <p class="amount">$0</p>
             <p class="meta">20 generate units / month</p>
+            <p class="price-fine">Unused units do not roll over.</p>
           </article>
-          <article class="price-card">
+          <article class="price-card price-card--featured">
+            <p class="price-badge">Most sellers start here</p>
             <h3>Starter</h3>
             <p class="amount">$14.99</p>
             <p class="meta">USD / month · 50 generate units</p>
+            <p class="price-fine">Unused units do not roll over.</p>
           </article>
           <article class="price-card">
             <h3>Growth</h3>
             <p class="amount">$39</p>
             <p class="meta">USD / month · 200 generate units</p>
+            <p class="price-fine">Unused units do not roll over.</p>
           </article>
+        </div>
+        <p class="price-disclaimer">
+          Feed readiness is our job. Merchant Center approval is Google’s decision—we never claim guaranteed approval.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-ghost" href="/support.html">Support &amp; FAQ</a>
         </div>
       </div>
     </section>
@@ -293,6 +235,7 @@
         <a class="logo" href="/">AdFeed <span style="color:#5fd4bd">AI</span></a>
         <nav class="footer-links" aria-label="Footer">
           <a href="#how">How it works</a>
+          <a href="/setup.html">Setup guide</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
           <a href="/support.html">Support</a>
@@ -303,114 +246,9 @@
     </div>
   </footer>
 
+  <script src="/waitlist.js" defer></script>
   <script>
     document.getElementById("y").textContent = String(new Date().getFullYear());
-
-    (function () {
-      const form = document.getElementById("waitlist-form");
-      const msg = document.getElementById("waitlist-msg");
-      const note = document.getElementById("waitlist-note");
-      const input = document.getElementById("waitlist-email");
-      const btn = document.getElementById("waitlist-btn");
-      if (!form || !msg || !btn || !input) return;
-
-      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-      function showError(text) {
-        form.classList.remove("waitlist--ok", "waitlist--dup");
-        msg.className = "waitlist-msg waitlist-msg--err";
-        msg.textContent = text;
-        msg.hidden = false;
-        if (note) note.hidden = false;
-        btn.disabled = false;
-        btn.textContent = "Get early access";
-        input.readOnly = false;
-      }
-
-      function showDone({ duplicate, message, email }) {
-        form.classList.remove("waitlist--ok", "waitlist--dup");
-        form.classList.add(duplicate ? "waitlist--dup" : "waitlist--ok");
-        if (note) note.hidden = true;
-        msg.className =
-          "waitlist-msg " + (duplicate ? "waitlist-msg--dup" : "waitlist-msg--ok");
-        msg.innerHTML =
-          '<span class="waitlist-check" aria-hidden="true">' +
-          (duplicate ? "!" : "✓") +
-          "</span> " +
-          message;
-        msg.hidden = false;
-        btn.textContent = duplicate ? "Already registered" : "You're on the list ✓";
-        btn.disabled = true;
-        input.value = email;
-        input.readOnly = true;
-      }
-
-      function isValidEmail(email) {
-        if (!email || email.length > 254) return false;
-        if (email.includes("..") || email.includes(" ")) return false;
-        return EMAIL_RE.test(email);
-      }
-
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const email = input.value.trim().toLowerCase();
-        if (!isValidEmail(email)) {
-          showError("Enter a valid email address (example: you@company.com).");
-          input.focus();
-          return;
-        }
-
-        btn.disabled = true;
-        msg.hidden = true;
-        msg.className = "waitlist-msg";
-        form.classList.remove("waitlist--ok", "waitlist--dup");
-
-        try {
-          const res = await fetch("/api/waitlist", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, source: "landing-hero" }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            const detail = data.detail;
-            const errText = Array.isArray(detail)
-              ? detail.map((d) => d.msg || JSON.stringify(d)).join("; ")
-              : typeof detail === "string"
-                ? detail
-                : "Something went wrong. Try again.";
-            throw new Error(errText);
-          }
-          const duplicate =
-            data.status === "already_registered" || data.created === false;
-          showDone({
-            duplicate,
-            message:
-              data.message ||
-              (duplicate
-                ? "This email is already on the list."
-                : "You're on the list!"),
-            email,
-          });
-        } catch (err) {
-          showError(err.message || "Something went wrong. Try again.");
-        }
-      });
-    })();
-    const steps = document.querySelectorAll("[data-step]");
-    if (steps.length && "IntersectionObserver" in window) {
-      const io = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((e) => {
-            if (e.isIntersecting) e.target.classList.add("in");
-          });
-        },
-        { threshold: 0.18 }
-      );
-      steps.forEach((el) => io.observe(el));
-    } else {
-      steps.forEach((el) => el.classList.add("in"));
-    }
   </script>
 </body>
 </html>

@@ -32,10 +32,12 @@ Served on **https://deltfu.com/** (nginx). Static files under `/lp-assets/` and 
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Home + full How-to (install → Merchant Center URL) |
+| `index.html` | Marketing home: hero, trust, demo, 3-step how, pricing, waitlist |
+| `setup.html` | Full Merchant Center setup guide (6 steps) |
 | `privacy.html` | Privacy Policy |
 | `terms.html` | Terms of Use |
 | `support.html` | Support + FAQ · support@deltfu.com |
+| `waitlist.js` | Shared early-access form handler |
 
 ## Do not
 

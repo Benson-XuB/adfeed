@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Setup guide — AdFeed AI</title>
+  <meta name="description" content="Step-by-step: install AdFeed AI, confirm ad brand, generate a Google Shopping feed, and paste the feed URL into Merchant Center." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links">
+        <a href="/#waitlist">Get early access</a>
+        <a href="/">← Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section howto" id="how" aria-labelledby="how-title" style="border-top: none">
+      <div class="wrap">
+        <p class="section-label">Setup guide</p>
+        <h1 id="how-title" style="font-size: clamp(1.9rem, 4vw, 2.6rem)">From install to Merchant Center</h1>
+        <p class="section-intro">
+          Follow these steps in order. You only need Shopify Admin—no separate AdFeed login.
+          Approval timing and outcomes are Google’s decision.
+        </p>
+
+        <ol class="steps">
+          <li class="step in" data-step>
+            <div class="step-copy">
+              <span class="step-num">1</span>
+              <h3>Install AdFeed AI</h3>
+              <p>
+                In Shopify Admin, open <strong>Apps</strong> and install <strong>AdFeed AI</strong>.
+                The app opens as an embedded App Home (Home / Plans). There is no extra AdFeed username or password.
+              </p>
+            </div>
+            <div class="step-media" aria-hidden="true">
+              <img src="/lp-assets/02-product-list.png" alt="" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step in" data-step>
+            <div class="step-copy">
+              <span class="step-num">2</span>
+              <h3>Confirm your ad brand</h3>
+              <p>
+                In the right sidebar, find <strong>Ad brand</strong> (next to <strong>Change</strong>).
+                Set the brand shoppers should see in Google—not the 1688 factory or supplier name—then confirm.
+              </p>
+              <p class="step-note">Wrong brand is one of the fastest ways to look untrustworthy in Shopping ads.</p>
+            </div>
+            <div class="step-media step-media--brand">
+              <img src="/lp-assets/02-ad-brand-sidebar.png" alt="Sidebar: Ad brand with Change, Countries, and Generate feed" width="636" height="590" loading="lazy" />
+              <p class="media-caption"><span class="media-mark">Ad brand</span> Confirm here, then choose market and generate</p>
+            </div>
+          </li>
+
+          <li class="step in" data-step>
+            <div class="step-copy">
+              <span class="step-num">3</span>
+              <h3>Choose your market</h3>
+              <p>
+                Select the country you will advertise in (for example <strong>United States</strong>).
+                Feed currency and market pricing follow that choice where available.
+              </p>
+            </div>
+            <div class="step-media" aria-hidden="true">
+              <img src="/lp-assets/02-product-list.png" alt="" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step in" data-step>
+            <div class="step-copy">
+              <span class="step-num">4</span>
+              <h3>Select products</h3>
+              <p>
+                Check the products you want in the feed. Review optional color/size tips if shown.
+                You can also pick which image should be the feed main image for a SKU.
+              </p>
+              <p class="step-note">Products without Color/Size options can still generate. The app does not invent barcodes (GTIN) or cost.</p>
+            </div>
+            <div class="step-media">
+              <img src="/lp-assets/02-product-list.png" alt="Product list with selection in AdFeed AI" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step in" data-step>
+            <div class="step-copy">
+              <span class="step-num">5</span>
+              <h3>Generate the feed</h3>
+              <p>
+                Click <strong>Generate feed</strong>, confirm the selection, and wait until generation finishes.
+                In the sidebar, use <strong>Copy</strong> on the feed URL. Open it in a browser—you should see your product feed XML (not a 404).
+              </p>
+            </div>
+            <div class="step-media">
+              <img src="/lp-assets/04-copy-url.png" alt="Copy persistent Google feed URL" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+
+          <li class="step in" data-step>
+            <div class="step-copy">
+              <span class="step-num">6</span>
+              <h3>Upload the feed URL in Google Merchant Center</h3>
+              <p>
+                You do not upload a file from your laptop. You give Google a <strong>scheduled URL</strong> that AdFeed hosts.
+              </p>
+              <div class="gmc-box">
+                <strong>In Google Merchant Center</strong>
+                <ol>
+                  <li>Open <strong>Products</strong> → <strong>Feeds</strong> (or Add products / Data sources, depending on your MC UI).</li>
+                  <li>Create or edit a feed for your target country.</li>
+                  <li>Choose input method <strong>Scheduled fetch</strong> / <strong>Fetch from URL</strong>.</li>
+                  <li>Paste the AdFeed feed URL you copied. Set a fetch schedule (daily is common).</li>
+                  <li>Save. Google will fetch and review products—initial review can take days. Approval is Google’s decision.</li>
+                </ol>
+              </div>
+              <p class="step-note">After you regenerate in AdFeed, the same URL updates; you usually do not need a new MC feed entry.</p>
+            </div>
+            <div class="step-media" aria-hidden="true">
+              <img src="/lp-assets/04-copy-url.png" alt="" width="960" height="600" loading="lazy" />
+            </div>
+          </li>
+        </ol>
+
+        <div class="cta-row" style="margin-top: 2.5rem">
+          <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+          <a class="btn btn-ghost" href="/support.html">Support &amp; FAQ</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <nav class="footer-links">
+        <a href="/">Home</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/support.html">Support</a>
+        <a href="mailto:support@deltfu.com">support@deltfu.com</a>
+      </nav>
+      <p class="footer-copy">© 2026 AdFeed AI</p>
+    </div>
+  </footer>
+</body>
+</html>
