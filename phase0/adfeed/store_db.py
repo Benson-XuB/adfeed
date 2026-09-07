@@ -189,6 +189,30 @@ CREATE TABLE IF NOT EXISTS store_jobs (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Google MC Push（App 内 OAuth + API data source）
+CREATE TABLE IF NOT EXISTS store_google_mc (
+    store_id TEXT PRIMARY KEY REFERENCES stores(id),
+    refresh_token TEXT,
+    access_token TEXT,
+    token_expiry TEXT,
+    merchant_id TEXT,
+    data_source_id TEXT,
+    data_source_name TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS store_google_mc_push_runs (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id),
+    merchant_id TEXT,
+    data_source_id TEXT,
+    status TEXT,
+    success_count INTEGER DEFAULT 0,
+    failure_count INTEGER DEFAULT 0,
+    failures_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_products_store ON products(store_id, status);
 CREATE INDEX IF NOT EXISTS idx_products_gpc ON products(gpc_code);
@@ -199,6 +223,7 @@ CREATE INDEX IF NOT EXISTS idx_feed_files_store ON feed_files(store_id, country)
 CREATE INDEX IF NOT EXISTS idx_product_assets_store ON product_assets(store_id, platform, language);
 CREATE INDEX IF NOT EXISTS idx_usage_ledger_store ON usage_ledger(store_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_store_jobs_store ON store_jobs(store_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_google_mc_push_runs_store ON store_google_mc_push_runs(store_id, created_at DESC);
 """
 
 
@@ -1582,6 +1607,8 @@ def purge_store_data(store_id: str) -> bool:
         c.execute("DELETE FROM feed_files WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM feed_excluded_skus WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM feed_configs WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM store_google_mc_push_runs WHERE store_id = ?", (store_id,))
+        c.execute("DELETE FROM store_google_mc WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM products WHERE store_id = ?", (store_id,))
         c.execute("DELETE FROM stores WHERE id = ?", (store_id,))
         c.commit()
@@ -1606,6 +1633,108 @@ def purge_store_data(store_id: str) -> bool:
         pass
     shutil.rmtree(DATA_DIR / "processed_images" / store_id, ignore_errors=True)
     return True
+
+
+# ─────────────────────────────────────────────
+# Google MC Push connection + runs
+# ─────────────────────────────────────────────
+
+def get_google_connection(store_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM store_google_mc WHERE store_id = ?",
+            (store_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_google_connection(store_id: str, **fields) -> dict:
+    """Upsert OAuth / merchant / data-source fields for a store."""
+    allowed = {
+        "refresh_token",
+        "access_token",
+        "token_expiry",
+        "merchant_id",
+        "data_source_id",
+        "data_source_name",
+    }
+    patch = {k: v for k, v in fields.items() if k in allowed}
+    if not patch:
+        existing = get_google_connection(store_id)
+        return existing or {"store_id": store_id}
+
+    cols = ", ".join(patch.keys())
+    placeholders = ", ".join("?" for _ in patch)
+    updates = ", ".join(f"{k}=excluded.{k}" for k in patch)
+    with _conn() as c:
+        c.execute(
+            f"""
+            INSERT INTO store_google_mc (store_id, {cols}, updated_at)
+            VALUES (?, {placeholders}, datetime('now'))
+            ON CONFLICT(store_id) DO UPDATE SET
+              {updates},
+              updated_at=datetime('now')
+            """,
+            (store_id, *patch.values()),
+        )
+        c.commit()
+    return get_google_connection(store_id) or {"store_id": store_id}
+
+
+def clear_google_connection(store_id: str) -> None:
+    with _conn() as c:
+        c.execute("DELETE FROM store_google_mc WHERE store_id = ?", (store_id,))
+        c.commit()
+
+
+def save_google_push_run(
+    store_id: str,
+    *,
+    merchant_id: Optional[str] = None,
+    data_source_id: Optional[str] = None,
+    status: str = "completed",
+    success_count: int = 0,
+    failure_count: int = 0,
+    failures: Optional[list] = None,
+) -> str:
+    import json as _json
+    import uuid as _uuid
+
+    rid = str(_uuid.uuid4())
+    with _conn() as c:
+        c.execute(
+            """
+            INSERT INTO store_google_mc_push_runs (
+              id, store_id, merchant_id, data_source_id, status,
+              success_count, failure_count, failures_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rid,
+                store_id,
+                merchant_id,
+                data_source_id,
+                status,
+                int(success_count),
+                int(failure_count),
+                _json.dumps(failures or [], ensure_ascii=False),
+            ),
+        )
+        c.commit()
+    return rid
+
+
+def latest_google_push_run(store_id: str) -> Optional[dict]:
+    with _conn() as c:
+        row = c.execute(
+            """
+            SELECT * FROM store_google_mc_push_runs
+            WHERE store_id = ?
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (store_id,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 # ─────────────────────────────────────────────
