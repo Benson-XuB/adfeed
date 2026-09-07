@@ -1,8 +1,9 @@
 # 下一步优先：GMC 拒审读回闭环
 
 **日期：** 2026-09-04  
-**状态：** **LOCKED — 下一程产品主线**  
-**决定：** 审核稳定后 / 本地可并行的下一功能，优先攻克 **Merchant Center 拒审原因读回 → App 内可见 → 引导改字段 → 再生成**（北星支柱③的「读真实 Google 状态」半环）。
+**状态：** **SUPERSEDED IN PRIORITY（2026-09-07）** — 产品主交付改为 **Push to Google（API 写入）**；本文仍是 Push 之后的「读拒审」半环。  
+**见：** [`2026-09-07-google-mc-push-design.md`](./2026-09-07-google-mc-push-design.md) · [`2026-09-07-google-mc-push.md`](./2026-09-07-google-mc-push.md)  
+**原决定（仍有效作读侧规格）：** 审核稳定后 / Push 可用后，攻克 **Merchant Center 拒审原因读回 → App 内可见 → 引导改字段 → 再 Push/再生成**。
 
 ```
 Field contract: docs/plans/2026-08-14-feed-field-contract.md

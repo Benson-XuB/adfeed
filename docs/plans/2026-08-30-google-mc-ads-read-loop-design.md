@@ -34,8 +34,9 @@ North Star: docs/plans/2026-08-12-mvp-north-star.md
 1. **Phase 1（A）：** Merchant Center 商品审核状态 / 拒审原因 → 映射到本店 SKU → 引导改字段 / 再生成  
 2. **Phase 2（B）：** Google Ads 花费 / 点击 / 系列表现（只读报表）→ 链回 Phase 1 问题列表  
 
-**不做：** 代投、改出价、自动改 GMC 商品、保证过审、AI 修图、新开第二个 App。
+**不做：** 代投、改出价、**为对齐审查而自动改字段**、保证过审、AI 修图、新开第二个 App。  
 
+> **2026-09-07 更新：** 应用内 **Push to Google**（`productInputs.insert` 写入 AdFeed API data source）见 [`2026-09-07-google-mc-push-design.md`](./2026-09-07-google-mc-push-design.md)。本规格仍覆盖 **拒审只读**；Push 不替本规格的「读回 → 引导改主人字段」。
 ---
 
 ## 2. 与北星关系

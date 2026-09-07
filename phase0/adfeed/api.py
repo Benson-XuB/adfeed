@@ -2171,5 +2171,10 @@ for _gdpr_path in _GDPR_WEBHOOK_PATHS:
     app.add_api_route(_gdpr_path + "/", _webhook_gdpr_entry, methods=["POST"])
 
 
+# App Google MC Push (API write)
+from .google_mc_push.router import router as google_mc_push_router
+
+app.include_router(google_mc_push_router)
+
 # 保留 StaticFiles 作为回退（处理其他路径）
 app.mount("/feeds-static", StaticFiles(directory=str(FEEDS_DIR)), name="feeds")

@@ -11,6 +11,7 @@ import {
   fetchFeedPreview,
 } from "../lib/adfeed-api";
 import { ProductFeedDrawer } from "./ProductFeedDrawer";
+import { GooglePushPanel } from "./GooglePushPanel";
 import { localizeComplianceCheck } from "../lib/compliance-label";
 import styles from "./FeedWorkbench.module.css";
 
@@ -796,6 +797,12 @@ export function FeedWorkbench(props: Props) {
         ) : null}
 
         <div className={`${styles.sideCard} ${styles.sideCardLive}`}>
+          <GooglePushPanel
+            country={country}
+            feedReady={Boolean(feed?.url)}
+            withToken={withToken}
+            onMessage={onMessage}
+          />
           {feed?.url ? (
             <div className={styles.feedCard}>
               <a
@@ -805,7 +812,7 @@ export function FeedWorkbench(props: Props) {
                 rel="noopener noreferrer"
                 title={feed.url}
               >
-                <span className={styles.feedUrlLabel}>{t("feeds.urlLabel")}</span>
+                <span className={styles.feedUrlLabel}>{t("feeds.urlLabel")} (advanced)</span>
                 <span className={styles.feedUrlText}>{feed.url}</span>
               </a>
               <div className={styles.feedActions}>

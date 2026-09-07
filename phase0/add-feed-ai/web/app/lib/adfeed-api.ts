@@ -600,3 +600,68 @@ export function feedPublicFileUrl(storeRelativeOrAbsolute: string): string {
   const base = getBackendUrl();
   return `${base}${storeRelativeOrAbsolute.startsWith("/") ? "" : "/"}${storeRelativeOrAbsolute}`;
 }
+
+/** Google MC Push (API write) */
+export type GoogleMcStatus = {
+  configured: boolean;
+  connected: boolean;
+  merchant_id: string;
+  data_source_id: string;
+  data_source_name: string;
+  latest_push?: {
+    success_count?: number;
+    failure_count?: number;
+    created_at?: string;
+  } | null;
+};
+
+export type GoogleMcAccount = { merchant_id: string; display_name: string };
+
+export type GooglePushResult = {
+  ok: boolean;
+  success_count: number;
+  failure_count: number;
+  failures: { offer_id: string; error: string }[];
+  merchant_center_url?: string;
+  disclaimer?: string;
+  item_attempted?: number;
+};
+
+export async function fetchGoogleMcStatus(token: string): Promise<GoogleMcStatus> {
+  const res = await backendFetch("/api/app/google/status", token);
+  return jsonOrThrow(res, "Google status failed");
+}
+
+export async function fetchGoogleAuthorizeUrl(token: string): Promise<string> {
+  const res = await backendFetch("/api/app/google/oauth/start", token);
+  const data = await jsonOrThrow<{ authorize_url: string }>(res, "OAuth start failed");
+  return data.authorize_url;
+}
+
+export async function fetchGoogleAccounts(token: string): Promise<GoogleMcAccount[]> {
+  const res = await backendFetch("/api/app/google/accounts", token);
+  const data = await jsonOrThrow<{ accounts: GoogleMcAccount[] }>(res, "Accounts failed");
+  return data.accounts || [];
+}
+
+export async function selectGoogleMerchant(
+  token: string,
+  merchantId: string,
+): Promise<{ merchant_id: string; data_source_id: string }> {
+  const res = await backendFetch("/api/app/google/merchant", token, {
+    method: "POST",
+    body: JSON.stringify({ merchant_id: merchantId }),
+  });
+  return jsonOrThrow(res, "Select merchant failed");
+}
+
+export async function pushFeedToGoogle(
+  token: string,
+  body: { country?: string; feed_file_id?: string } = {},
+): Promise<GooglePushResult> {
+  const res = await backendFetch("/api/app/google/push", token, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return jsonOrThrow(res, "Push to Google failed");
+}
