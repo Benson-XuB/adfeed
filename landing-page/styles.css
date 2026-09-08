@@ -568,7 +568,7 @@ p {
 /* Hero */
 .hero {
   position: relative;
-  min-height: calc(100vh - var(--nav-h));
+  min-height: auto;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -603,7 +603,7 @@ p {
 .hero-wrap {
   position: relative;
   z-index: 1;
-  padding: 3.25rem 0 4.5rem;
+  padding: 3.5rem 0 3.25rem;
   max-width: min(100% - 2.5rem, 52rem);
   margin-inline: auto;
 }
@@ -802,6 +802,156 @@ p {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
 }
 
+.btn-ghost.btn-on-dark {
+  color: #e7efeb;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn-ghost.btn-on-dark:hover {
+  border-color: #5fd4bd;
+  color: #5fd4bd;
+}
+
+.decide-split {
+  display: grid;
+  gap: 1.75rem;
+  margin: 0 0 1.75rem;
+}
+
+@media (min-width: 800px) {
+  .decide-split {
+    grid-template-columns: 1fr 1fr;
+    gap: 2.5rem;
+  }
+}
+
+.decide-heading {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+  color: #5fd4bd;
+}
+
+.decide-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.decide-list li {
+  position: relative;
+  padding-left: 1.45rem;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  color: rgba(231, 239, 235, 0.86);
+}
+
+.decide-list--yes li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #5fd4bd;
+  font-weight: 700;
+}
+
+.decide-list--no li::before {
+  content: "✗";
+  position: absolute;
+  left: 0;
+  color: rgba(255, 170, 150, 0.9);
+  font-weight: 700;
+}
+
+.diagnose-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 800px) {
+  .diagnose-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+}
+
+.diagnose-card {
+  display: block;
+  padding: 1.35rem 1.4rem 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.diagnose-card:hover {
+  border-color: rgba(13, 107, 92, 0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(20, 25, 22, 0.06);
+}
+
+.diagnose-kicker {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.diagnose-card h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.2rem;
+}
+
+.diagnose-card p {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.diagnose-cta {
+  font-weight: 700;
+  color: var(--accent-deep);
+  font-size: 0.95rem;
+}
+
+.how-demo {
+  display: grid;
+  gap: 1.5rem;
+  align-items: center;
+  margin: 0 0 2rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(165deg, rgba(13, 107, 92, 0.05) 0%, transparent 50%),
+    var(--paper-2);
+}
+
+@media (min-width: 900px) {
+  .how-demo {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 2rem;
+    padding: 1.75rem;
+  }
+}
+
+.how-demo-copy h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1.25rem;
+}
+
+.how-demo-copy p {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+}
+
 .how-simple {
   list-style: none;
   margin: 0 0 1.75rem;
@@ -985,11 +1135,16 @@ p {
   color: var(--ink-soft);
 }
 
+.compare-section {
+  padding-top: 2.5rem;
+  padding-bottom: 3rem;
+}
+
 .compare {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.85rem;
-  margin: 0 0 0.25rem;
+  margin: 0 auto;
   max-width: 46rem;
 }
 

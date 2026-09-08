@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AdFeed — Clean Google Shopping feeds for Shopify (1688 → Google)</title>
-  <meta name="description" content="Clean your Google Shopping feed. From 1688 → Shopify → Google Shopping. AdFeed helps Shopify sellers clean product data and generate a stable feed without inventing product identifiers." />
+  <meta name="description" content="From 1688 → Shopify → Google Shopping. Clean product data, generate a stable feed, no fake GTINs. Free diagnostics for feed and Merchant Center issues." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
@@ -15,12 +15,10 @@
     <div class="wrap">
       <a class="logo" href="/">AdFeed <span>AI</span></a>
       <nav class="nav-links" aria-label="Primary">
-        <a class="hide-sm" href="/tools/">Tools</a>
-        <a class="hide-sm" href="/guides/">Guides</a>
-        <a class="hide-sm" href="#demo">Demo</a>
+        <a class="hide-sm" href="/tools/">Free tools</a>
         <a class="hide-sm" href="#how">How it works</a>
         <a class="hide-sm" href="#pricing">Pricing</a>
-        <a href="/setup.html">Setup guide</a>
+        <a class="hide-sm" href="/guides/">Guides</a>
         <a class="btn btn-primary" href="#waitlist">Get early access</a>
       </nav>
     </div>
@@ -29,44 +27,19 @@
   <main>
     <section class="hero" aria-labelledby="hero-title">
       <div class="wrap hero-wrap">
-        <p class="eyebrow reveal">Clean your Google Shopping feed</p>
+        <p class="eyebrow reveal">Clean Google Shopping feed</p>
         <h1 id="hero-title" class="reveal reveal-d1">From 1688 → Shopify → Google Shopping</h1>
         <p class="hero-benefit reveal reveal-d1">
-          AdFeed helps Shopify sellers clean product data and generate a stable Google Shopping feed—without inventing product identifiers.
+          From 1688 to Google Shopping—without messy product data.
         </p>
         <p class="hero-support reveal reveal-d2">
-          Supplier brands, messy titles, and broken color/size wreck Merchant Center.
-          You get an always-synced feed URL—no fake barcodes, no risky AI photo edits.
+          Clean supplier titles, brands, and variants before they reach your Google Shopping feed.
         </p>
 
         <div class="trust-pills reveal reveal-d2" aria-label="Trust promises">
-          <span class="trust-pill">No fake barcodes</span>
-          <span class="trust-pill">No risky AI photo editing</span>
+          <span class="trust-pill">No fake GTINs</span>
+          <span class="trust-pill">Shopify-synced</span>
           <span class="trust-pill">Free plan available</span>
-        </div>
-
-        <div class="compare reveal reveal-d2" aria-label="Before and after feed quality">
-          <p class="compare-scene">For 1688 → Shopify dropshipping catalogs</p>
-          <article class="compare-panel compare-panel--before">
-            <p class="compare-label">Before · raw supplier import</p>
-            <ul>
-              <li><span>Brand</span> factory / eprolo</li>
-              <li><span>Title</span> messy wall of supplier attributes</li>
-              <li><span>Variants</span> mixed-up color / size / style</li>
-              <li><span>GTIN</span> missing → fake / invented barcodes</li>
-              <li><span>Ads</span> Merchant Center limited / disapproved</li>
-            </ul>
-          </article>
-          <article class="compare-panel compare-panel--after">
-            <p class="compare-label">After · AdFeed clean feed</p>
-            <ul>
-              <li><span>Brand</span> your confirmed ad-ready brand</li>
-              <li><span>Title</span> concise Google Shopping–optimized title</li>
-              <li><span>Variants</span> clean split for color, size &amp; pattern</li>
-              <li><span>GTIN</span> compliant no-ID handling (no fake codes)</li>
-              <li><span>Ads</span> restore Shopping ad eligibility &amp; reach</li>
-            </ul>
-          </article>
         </div>
 
         <form
@@ -74,7 +47,7 @@
           id="waitlist-form"
           data-source="landing-hero"
           data-submit-label="Get early access"
-          data-success-demo="#demo"
+          data-success-demo="#how"
           novalidate
         >
           <div id="waitlist" class="waitlist-anchor" tabindex="-1"></div>
@@ -92,42 +65,141 @@
             <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
           </div>
           <p class="waitlist-note" id="waitlist-note">
-            Early beta access + <strong>40 bonus generate units</strong> at launch. No spam—product updates only.
+            Early beta access + <strong>40 bonus product-market generations</strong> at launch. No spam—product updates only.
           </p>
           <div class="waitlist-success" id="waitlist-success" hidden>
             <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
             <p class="waitlist-success-body" id="waitlist-success-body">
               We’ll email you as soon as beta spots open.
             </p>
-            <a class="btn btn-ghost" id="waitlist-demo-link" href="#demo">Meanwhile, watch the 1‑min demo →</a>
+            <a class="btn btn-ghost" id="waitlist-demo-link" href="#how">See how it works →</a>
           </div>
           <p class="waitlist-msg" id="waitlist-msg" role="status" aria-live="polite" hidden></p>
         </form>
         <p class="hero-secondary reveal reveal-d3">
-          <a href="#demo">Watch 1‑min demo</a>
+          Already advertising? <a href="/tools/feed-checker">Check my feed</a>
+          · <a href="/tools/google-issues">Diagnose Merchant Center issues</a>
         </p>
       </div>
     </section>
 
-    <section class="section demo" id="demo" aria-labelledby="demo-title">
-      <div class="wrap demo-split">
-        <div class="demo-copy">
-          <p class="section-label">1‑minute demo</p>
-          <h2 id="demo-title">See the App Home walkthrough</h2>
-          <p class="demo-lede">
-            Confirm brand → select products → generate → copy one hosted feed URL for Merchant Center.
-          </p>
-          <ul class="demo-points">
-            <li>Confirm ad brand (not the supplier name)</li>
-            <li>Generate a clean Google Shopping feed</li>
-            <li>Copy a stable, always-synced feed URL</li>
-          </ul>
-          <div class="cta-row">
-            <a class="btn btn-primary" href="#waitlist">Get Early Beta Access</a>
-            <a class="btn btn-ghost" href="/setup.html">Full setup guide</a>
+    <section class="section compare-section" id="compare" aria-label="Before and after feed quality">
+      <div class="wrap">
+        <div class="compare reveal">
+          <p class="compare-scene">For 1688 → Shopify dropshipping catalogs</p>
+          <article class="compare-panel compare-panel--before">
+            <p class="compare-label">Before · raw supplier import</p>
+            <ul>
+              <li><span>Brand</span> factory / eprolo</li>
+              <li><span>Title</span> messy wall of supplier attributes</li>
+              <li><span>Variants</span> mixed-up color / size / style</li>
+              <li><span>GTIN</span> missing → fake / invented barcodes</li>
+              <li><span>Ads</span> Merchant Center limited / disapproved</li>
+            </ul>
+          </article>
+          <article class="compare-panel compare-panel--after">
+            <p class="compare-label">After · AdFeed clean feed</p>
+            <ul>
+              <li><span>Brand</span> your confirmed product brand</li>
+              <li><span>Title</span> concise Google Shopping–ready title</li>
+              <li><span>Variants</span> clean split for color, size &amp; pattern</li>
+              <li><span>GTIN</span> compliant no-ID handling (no fake codes)</li>
+              <li><span>Ads</span> restore Shopping ad eligibility &amp; reach</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section diagnose" id="diagnose" aria-labelledby="diagnose-title">
+      <div class="wrap">
+        <p class="section-label">Diagnose</p>
+        <h2 id="diagnose-title">Already have products in Google Shopping?</h2>
+        <p class="section-intro">
+          Find whether the problem is your account or your feed—before you install anything.
+        </p>
+        <div class="diagnose-grid">
+          <a class="diagnose-card" href="/tools/google-issues">
+            <p class="diagnose-kicker">Account vs feed</p>
+            <h3>Check my Merchant Center issue</h3>
+            <p>Disapproved, limited, or suspended? See what the error usually means.</p>
+            <span class="diagnose-cta">Open free diagnostic →</span>
+          </a>
+          <a class="diagnose-card" href="/tools/feed-checker">
+            <p class="diagnose-kicker">Titles · Brand · GTIN · Variants</p>
+            <h3>Check my feed</h3>
+            <p>Spot missing attributes and invalid values before Merchant Center does.</p>
+            <span class="diagnose-cta">Open Feed Checker →</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section trust-band trust-band--dark" id="trust" aria-labelledby="trust-title">
+      <div class="wrap">
+        <p class="section-label">Fix · Decide</p>
+        <h2 id="trust-title">What AdFeed helps with—and what we never do</h2>
+        <div class="decide-split">
+          <div>
+            <h3 class="decide-heading">We help clean</h3>
+            <ul class="decide-list decide-list--yes">
+              <li>Supplier titles into Shopping-ready titles</li>
+              <li>Confirm your product brand (not the factory name)</li>
+              <li>Split color / size / pattern variants correctly</li>
+              <li>Generate compliant attributes for the feed</li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="decide-heading">We never</h3>
+            <ul class="decide-list decide-list--no">
+              <li>Invent GTINs or fake barcodes</li>
+              <li>Risk AI photo edits that strip watermarks</li>
+              <li>Guarantee Merchant Center approval</li>
+            </ul>
           </div>
         </div>
-        <div class="demo-media">
+        <div class="cta-row">
+          <a class="btn btn-primary btn-on-dark" href="#waitlist">Get early access</a>
+          <a class="btn btn-ghost btn-on-dark" href="#how">See how it works</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section howto" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="section-label">Generate · Publish</p>
+        <h2 id="how-title">Three moves. That’s it.</h2>
+        <ol class="how-simple">
+          <li>
+            <span class="how-num">1</span>
+            <div>
+              <h3>Confirm your product brand</h3>
+              <p>Don’t blindly use the 1688 factory name unless it’s the actual brand.</p>
+            </div>
+          </li>
+          <li>
+            <span class="how-num">2</span>
+            <div>
+              <h3>Generate your clean feed</h3>
+              <p>Clean titles and variants. Keep Shopify storefront data unchanged.</p>
+            </div>
+          </li>
+          <li>
+            <span class="how-num">3</span>
+            <div>
+              <h3>Paste one URL</h3>
+              <p>Add the hosted feed to Merchant Center scheduled fetch.</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="how-demo" id="demo">
+          <div class="how-demo-copy">
+            <p class="section-label">1‑minute demo</p>
+            <h3>Watch the App Home walkthrough</h3>
+            <p>Confirm brand → select products → generate → copy one hosted feed URL.</p>
+            <a class="btn btn-ghost" href="/setup.html">Full setup guide</a>
+          </div>
           <figure class="demo-player">
             <video
               controls
@@ -143,76 +215,10 @@
             <figcaption>Watch 1‑min demo · App walkthrough with voiceover</figcaption>
           </figure>
         </div>
-      </div>
-    </section>
 
-    <section class="section howto" id="how" aria-labelledby="how-title">
-      <div class="wrap">
-        <p class="section-label">How it works</p>
-        <h2 id="how-title">Three moves. That’s it.</h2>
-        <ol class="how-simple">
-          <li>
-            <span class="how-num">1</span>
-            <div>
-              <h3>Confirm ad brand</h3>
-              <p>Not the 1688 factory name.</p>
-            </div>
-          </li>
-          <li>
-            <span class="how-num">2</span>
-            <div>
-              <h3>Generate the feed</h3>
-              <p>Clean titles &amp; variants, hosted for you.</p>
-            </div>
-          </li>
-          <li>
-            <span class="how-num">3</span>
-            <div>
-              <h3>Paste one URL</h3>
-              <p>Into Merchant Center scheduled fetch.</p>
-            </div>
-          </li>
-        </ol>
-        <div class="how-tools">
-          <p class="how-tools-label">Already have a feed or Merchant Center account?</p>
-          <p class="how-tools-copy">
-            Use our free tools first—no Shopify install. Then get early access when you’re ready for a clean, synced feed.
-          </p>
-          <div class="how-tools-links">
-            <a href="/tools/feed-checker">Google Shopping Feed Checker →</a>
-            <a href="/tools/google-issues">Merchant Center Disapproval Checker →</a>
-          </div>
-        </div>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get Early Beta Access</a>
-          <a class="btn btn-ghost" href="/setup.html">Full setup guide</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="section trust-band trust-band--dark" id="trust" aria-labelledby="trust-title">
-      <div class="wrap">
-        <p class="section-label">What we never do</p>
-        <h2 id="trust-title">The promises that keep accounts safer</h2>
-        <p class="section-intro trust-intro">
-          Many 1688 feed tools invent barcodes or AI-edit images. That is a Merchant Center risk. We don’t.
-        </p>
-        <div class="trust-grid">
-          <article class="trust-card trust-card--dark">
-            <h3>No fake barcodes</h3>
-            <p>Never invent GTIN or COGS. No barcode? Compliant no-ID path.</p>
-          </article>
-          <article class="trust-card trust-card--dark">
-            <h3>No risky AI photo edits</h3>
-            <p>Choose from your gallery. We don’t rewrite pixels or strip watermarks with AI.</p>
-          </article>
-          <article class="trust-card trust-card--dark">
-            <h3>No approval guarantee</h3>
-            <p>We improve feed readiness. Final approval is always Google’s call.</p>
-          </article>
-        </div>
-        <div class="cta-row">
-          <a class="btn btn-primary btn-on-dark" href="#waitlist">Get Early Beta Access</a>
+          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-ghost" href="/tools/">Try free tools first</a>
         </div>
       </div>
     </section>
@@ -222,46 +228,46 @@
         <p class="section-label">Pricing</p>
         <h2 id="pricing-title">Simple plans in Shopify Admin</h2>
         <p class="section-intro">
-          Change plan in App Home without reinstalling. One generate = one unit per selected SKU × selected market.
+          Change plan in App Home without reinstalling. Limits are counted as products × markets per month.
         </p>
         <div class="price-grid">
           <article class="price-card">
             <h3>Free</h3>
             <p class="amount">$0</p>
-            <p class="meta">20 generate units / month</p>
+            <p class="meta">Up to 20 products × markets / month</p>
             <ul class="price-limits">
               <li>Best for testing a small catalog slice</li>
               <li>Same feed quality rules as paid</li>
-              <li>Unused units do not roll over</li>
+              <li>Unused allowance does not roll over</li>
             </ul>
           </article>
           <article class="price-card price-card--featured">
             <p class="price-badge">Most sellers start here</p>
             <h3>Starter</h3>
             <p class="amount">$14.99</p>
-            <p class="meta">USD / month · 50 generate units</p>
+            <p class="meta">USD / month · Up to 50 products × markets</p>
             <ul class="price-limits">
               <li>For growing 1688 → Shopping catalogs</li>
               <li>Change plan without reinstalling</li>
-              <li>Unused units do not roll over</li>
+              <li>Unused allowance does not roll over</li>
             </ul>
           </article>
           <article class="price-card">
             <h3>Growth</h3>
             <p class="amount">$39</p>
-            <p class="meta">USD / month · 200 generate units</p>
+            <p class="meta">USD / month · Up to 200 products × markets</p>
             <ul class="price-limits">
-              <li>Higher monthly generate volume</li>
+              <li>Higher monthly volume</li>
               <li>Same hosted feed URL workflow</li>
-              <li>Unused units do not roll over</li>
+              <li>Unused allowance does not roll over</li>
             </ul>
           </article>
         </div>
         <p class="price-disclaimer">
-          Feed readiness is our job. Merchant Center approval is Google’s decision—we never claim guaranteed approval.
+          Example: one SKU for US + UK = 2. Feed readiness is our job; Merchant Center approval is Google’s decision.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get Early Beta Access · Free plan available</a>
+          <a class="btn btn-primary" href="#waitlist">Get early access · Free plan available</a>
           <a class="btn btn-ghost" href="/support.html">Support &amp; FAQ</a>
         </div>
       </div>
@@ -284,9 +290,16 @@
             <summary>Do I upload a new file every time I regenerate?</summary>
             <p>Usually no. AdFeed hosts a stable feed URL. After you regenerate, Google can fetch the same URL on schedule.</p>
           </details>
+          <details class="faq-item">
+            <summary>What does “products × markets” mean?</summary>
+            <p>
+              Each generate counts one selected SKU in one selected market.
+              Example: 1 SKU for US, UK, and CA = 3. That is our billing unit under the hood.
+            </p>
+          </details>
         </div>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get Early Beta Access</a>
+          <a class="btn btn-primary" href="#waitlist">Get early access</a>
           <a class="btn btn-ghost" href="/setup.html">Read setup guide</a>
         </div>
       </div>
@@ -300,8 +313,9 @@
         <nav class="footer-links" aria-label="Footer">
           <a href="/tools/">Free tools</a>
           <a href="/guides/">Guides</a>
-          <a href="#waitlist">Early access</a>
           <a href="#how">How it works</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#waitlist">Early access</a>
           <a href="/setup.html">Setup guide</a>
           <a href="#faq">FAQ</a>
           <a href="/privacy.html">Privacy</a>
