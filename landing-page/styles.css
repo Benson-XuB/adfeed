@@ -851,6 +851,39 @@ p {
   color: var(--ink-soft);
 }
 
+.how-tools {
+  margin: 0 0 1.5rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--paper) 88%, var(--accent, #0d6b5c) 12%);
+}
+
+.how-tools-label {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.how-tools-copy {
+  margin: 0 0 0.75rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  max-width: 40rem;
+}
+
+.how-tools-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+
+.how-tools-links a {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .price-card--featured {
   border-color: rgba(13, 107, 92, 0.35);
   background: rgba(13, 107, 92, 0.06);
