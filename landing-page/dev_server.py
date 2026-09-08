@@ -43,6 +43,12 @@ class LandingHandler(http.server.SimpleHTTPRequestHandler):
             path = "/tools/feed-checker.html"
         elif bare == "/tools/google-issues":
             path = "/tools/google-issues.html"
+        elif bare in ("/guides", "/guides/"):
+            path = "/guides/index.html"
+        elif bare == "/guides/google-shopping-disapproved":
+            path = "/guides/google-shopping-disapproved.html"
+        elif bare == "/guides/google-shopping-feed-errors":
+            path = "/guides/google-shopping-feed-errors.html"
         elif bare.startswith("/lp-assets/"):
             path = "/assets/" + bare[len("/lp-assets/") :]
         return super().translate_path(path)
@@ -62,6 +68,12 @@ class LandingHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/tools/feed-checker.html" + q
         elif bare == "/tools/google-issues":
             self.path = "/tools/google-issues.html" + q
+        elif bare in ("/guides", "/guides/"):
+            self.path = "/guides/index.html" + q
+        elif bare == "/guides/google-shopping-disapproved":
+            self.path = "/guides/google-shopping-disapproved.html" + q
+        elif bare == "/guides/google-shopping-feed-errors":
+            self.path = "/guides/google-shopping-feed-errors.html" + q
         super().do_GET()
 
     def do_POST(self) -> None:

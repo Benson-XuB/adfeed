@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google Shopping Products Disapproved: What Each Error Means | AdFeed</title>
+  <meta name="description" content="Why Google Shopping products get disapproved: account policy vs missing data, brand, GTIN, variants, and misrepresentation. Free tools to diagnose account vs feed issues." />
+  <link rel="canonical" href="https://deltfu.com/guides/google-shopping-disapproved" />
+  <meta property="og:title" content="Google Shopping Products Disapproved: What Each Error Means" />
+  <meta property="og:description" content="Account-level vs feed issues—and how to diagnose before you guess." />
+  <meta property="og:url" content="https://deltfu.com/guides/google-shopping-disapproved" />
+  <meta property="og:type" content="article" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="guide-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Tools</a>
+        <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="guide wrap">
+    <p class="guide-kicker"><a href="/guides/">Guides</a> · Google Shopping</p>
+    <h1>Google Shopping Products Disapproved: What Each Error Means</h1>
+    <p class="guide-dek">
+      Short answer: some disapprovals are <strong>account policy</strong> problems; others are
+      <strong>product / feed data</strong> problems. Fixing the wrong layer wastes weeks.
+    </p>
+
+    <aside class="guide-callout">
+      <p><strong>Fast path:</strong> already connected to Merchant Center?</p>
+      <p><a class="btn btn-primary" href="/tools/google-issues">Free Google Shopping Issue Diagnostic →</a></p>
+      <p class="guide-callout-note">Read-only. Doesn’t change your products.</p>
+    </aside>
+
+    <h2>Why Google Shopping products get disapproved</h2>
+    <ol class="guide-ol">
+      <li><a href="#account">Account-level policy issues</a></li>
+      <li><a href="#missing">Missing product data</a></li>
+      <li><a href="#brand">Incorrect brand</a></li>
+      <li><a href="#gtin">GTIN / identifier issues</a></li>
+      <li><a href="#variant">Variant issues (color / size)</a></li>
+      <li><a href="#misrep">Misrepresentation</a></li>
+    </ol>
+
+    <h2 id="account">1. Account-level policy issues</h2>
+    <p>
+      These are not “one title is wrong.” Google may limit or suspend the whole Merchant Center for policy
+      (for example misrepresentation, counterfeit signals, or repeated violations). Cleaning a single SKU won’t clear it.
+    </p>
+    <p><strong>What to do:</strong> read the account notification in Merchant Center first; appeal or fix account compliance there.</p>
+
+    <h2 id="missing">2. Missing product data</h2>
+    <p>
+      Required Shopping attributes missing—image, price, availability, title, link—often show as item issues.
+      Catalogs imported from 1688 → Shopify are especially prone to empty or placeholder fields.
+    </p>
+
+    <h2 id="brand">3. Incorrect brand</h2>
+    <p>
+      Using a factory / supplier name as <code>brand</code> (or leaving brand blank when Google expects one)
+      is a common disapproval path for dropship and 1688-sourced catalogs.
+    </p>
+    <p><strong>What to do:</strong> use the brand shoppers recognize for your storefront—not the 1688 vendor string.</p>
+
+    <h2 id="gtin">4. GTIN / identifier issues</h2>
+    <p>
+      Fake or recycled barcodes are a hard risk. If you don’t have a real GTIN, use the compliant
+      <em>identifier exists = no</em> path with a real brand—don’t invent codes.
+    </p>
+
+    <h2 id="variant">5. Variant issues</h2>
+    <p>
+      Color and size that don’t match the offer, or “attribute walls” stuffed into titles, confuse matching and policy checks.
+      One clear color + one size per offer beats a supplier-style title dump.
+    </p>
+
+    <h2 id="misrep">6. Misrepresentation</h2>
+    <p>
+      Landing page, price, or product claims that don’t match the Shopping listing. Often account-level when systemic.
+    </p>
+
+    <h2 id="account-or-feed">How to tell whether it’s an account or feed problem</h2>
+    <ul>
+      <li><strong>Many SKUs, same policy code, or account banner</strong> → start with account.</li>
+      <li><strong>Scattered item issues (title, brand, GTIN, image)</strong> → start with feed / catalog data.</li>
+      <li><strong>Mixed</strong> → fix account blockers first, then clean the feed.</li>
+    </ul>
+
+    <aside class="guide-callout">
+      <p><strong>Diagnose with free tools</strong></p>
+      <p><a href="/tools/google-issues">→ Free Google Shopping Issue Diagnostic</a> (account vs feed)</p>
+      <p><a href="/tools/feed-checker">→ Free Feed Checker</a> (scan your XML / feed URL)</p>
+    </aside>
+
+    <h2>What AdFeed is for</h2>
+    <p>
+      AdFeed helps Shopify sellers clean product data and generate a stable Google Shopping feed—
+      especially messy 1688 → Shopify catalogs—without inventing GTINs or risky AI photo edits.
+      While the app is in review, you can use the free tools above and join the waitlist.
+    </p>
+    <p><a class="btn btn-primary" href="/#waitlist">Get early access →</a></p>
+
+    <nav class="guide-related" aria-label="Related">
+      <h2>Related</h2>
+      <ul>
+        <li><a href="/guides/google-shopping-feed-errors">Google Shopping feed errors guide</a></li>
+        <li><a href="/tools/">All free tools</a></li>
+      </ul>
+    </nav>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <a class="logo" href="/">AdFeed <span style="color:#5fd4bd">AI</span></a>
+      <nav class="footer-links">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Tools</a>
+        <a href="/#waitlist">Early access</a>
+        <a href="/privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

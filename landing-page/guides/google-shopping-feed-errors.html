@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google Shopping Feed Errors: How to Find and Fix Them | AdFeed</title>
+  <meta name="description" content="Common Google Shopping feed errors—noisy titles, missing brand, color/size gaps, identifiers, images—and how to check your feed before Merchant Center rejects products." />
+  <link rel="canonical" href="https://deltfu.com/guides/google-shopping-feed-errors" />
+  <meta property="og:title" content="Google Shopping Feed Errors: How to Find and Fix Them" />
+  <meta property="og:description" content="Validate your product feed before ads spend. Free checker included." />
+  <meta property="og:url" content="https://deltfu.com/guides/google-shopping-feed-errors" />
+  <meta property="og:type" content="article" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="guide-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Tools</a>
+        <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="guide wrap">
+    <p class="guide-kicker"><a href="/guides/">Guides</a> · Product feeds</p>
+    <h1>Google Shopping Feed Errors: How to Find and Fix Them</h1>
+    <p class="guide-dek">
+      Short answer: most feed problems show up as missing or dirty attributes—title, brand, image, color/size, identifiers—
+      long before you notice spend waste. Check the feed file itself first.
+    </p>
+
+    <aside class="guide-callout">
+      <p><strong>Check your feed now (no login)</strong></p>
+      <p><a class="btn btn-primary" href="/tools/feed-checker">Free Google Shopping Feed Checker →</a></p>
+      <p class="guide-callout-note">Paste a public feed URL or upload XML.</p>
+    </aside>
+
+    <h2>Common Google Shopping feed errors</h2>
+
+    <h3 id="title">Noisy or supplier-style titles</h3>
+    <p>
+      Titles stuffed with “hot sale,” factory codes, or every size in one string read like attribute walls.
+      Shoppers and Shopping surfaces need a short, clear product name—with this offer’s color/size once, not a dump.
+    </p>
+
+    <h3 id="brand">Missing or wrong brand</h3>
+    <p>
+      Empty brand, or a 1688 factory name as brand, is a frequent failure for import-heavy Shopify stores.
+      Use the brand your storefront actually sells under.
+    </p>
+
+    <h3 id="variants">Color / size gaps</h3>
+    <p>
+      Apparel and footwear usually need consistent <code>color</code> and <code>size</code> per offer.
+      Dirty option text (“Brown Style 1”) should not live in color—keep color clean; put pattern elsewhere.
+    </p>
+
+    <h3 id="gtin">Identifier / GTIN mistakes</h3>
+    <p>
+      Invented barcodes are worse than no barcode. If you lack a real GTIN, use compliant “identifier exists = no”
+      with a real brand—never fabricate codes to silence warnings.
+    </p>
+
+    <h3 id="image">Missing primary image</h3>
+    <p>No usable <code>image_link</code> (or broken URLs) blocks offers quickly. Main image must be fetchable.</p>
+
+    <h3 id="price">Price / availability mismatches</h3>
+    <p>
+      Feed price or stock that doesn’t match the landing page triggers issues and trust problems.
+      Keep the feed in sync with the live PDP.
+    </p>
+
+    <h2>How to diagnose the problem</h2>
+    <ol class="guide-ol">
+      <li>Run your public feed through the <a href="/tools/feed-checker">Feed Checker</a>.</li>
+      <li>If products are already in Merchant Center and disapproved, use the
+        <a href="/tools/google-issues">Issue Diagnostic</a> to see account vs feed patterns.</li>
+      <li>Fix catalog / feed data; regenerate; re-check before scaling ads.</li>
+    </ol>
+
+    <aside class="guide-callout">
+      <p><strong>Tools</strong></p>
+      <p><a href="/tools/feed-checker">→ Free Feed Checker</a></p>
+      <p><a href="/tools/google-issues">→ Free Disapproval Diagnostic</a></p>
+    </aside>
+
+    <h2>How to fix your product feed (Shopify)</h2>
+    <p>
+      For catalogs coming from 1688 → Shopify, the durable fix is cleaning brand, titles, and variants at the source,
+      then publishing a stable Shopping feed—not patching one XML by hand every week.
+    </p>
+    <p>
+      AdFeed is built for that workflow: clean product data, generate a synced Google Shopping feed,
+      without inventing identifiers. App Store review is in progress—use free tools now, or join the waitlist.
+    </p>
+    <p><a class="btn btn-primary" href="/#waitlist">Get early access →</a></p>
+
+    <nav class="guide-related" aria-label="Related">
+      <h2>Related</h2>
+      <ul>
+        <li><a href="/guides/google-shopping-disapproved">Google Shopping products disapproved guide</a></li>
+        <li><a href="/tools/">All free tools</a></li>
+      </ul>
+    </nav>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <a class="logo" href="/">AdFeed <span style="color:#5fd4bd">AI</span></a>
+      <nav class="footer-links">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Tools</a>
+        <a href="/#waitlist">Early access</a>
+        <a href="/privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
