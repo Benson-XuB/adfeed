@@ -77,6 +77,7 @@ async def health():
 class WaitlistRequest(BaseModel):
     email: EmailStr
     source: str = "landing"
+    shopify_url: Optional[str] = None
 
     @field_validator("email", mode="before")
     @classmethod
@@ -98,6 +99,20 @@ class WaitlistRequest(BaseModel):
         s = str(v).strip()[:64]
         return s or "landing"
 
+    @field_validator("shopify_url", mode="before")
+    @classmethod
+    def normalize_shopify_url(cls, v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        if len(s) > 255 or " " in s:
+            raise ValueError("Invalid store URL")
+        if not s.lower().startswith(("http://", "https://")):
+            s = "https://" + s
+        return s[:255]
+
 
 @app.post("/api/waitlist")
 async def waitlist_signup(body: WaitlistRequest):
@@ -108,24 +123,28 @@ async def waitlist_signup(body: WaitlistRequest):
             "ok": True,
             "created": False,
             "status": "already_registered",
-            "message": "This email is already on the list. No need to submit again — we'll email you at launch.",
+            "message": "You're already on the waitlist. We'll email you when beta spots open.",
         }
 
-    created = add_waitlist_email(email, source=body.source)
+    created = add_waitlist_email(
+        email,
+        source=body.source,
+        shopify_url=body.shopify_url,
+    )
     if not created:
         # Race: inserted between exists check and insert
         return {
             "ok": True,
             "created": False,
             "status": "already_registered",
-            "message": "This email is already on the list. No need to submit again — we'll email you at launch.",
+            "message": "You're already on the waitlist. We'll email you when beta spots open.",
         }
 
     return {
         "ok": True,
         "created": True,
         "status": "created",
-        "message": "You're on the list! We'll email you at launch with your bonus generate units.",
+        "message": "You're on the waitlist! We'll email you as soon as beta spots open.",
     }
 
 
@@ -2171,7 +2190,12 @@ for _gdpr_path in _GDPR_WEBHOOK_PATHS:
     app.add_api_route(_gdpr_path + "/", _webhook_gdpr_entry, methods=["POST"])
 
 
-# App Google MC Push (API write)
+# Marketing-site public tools (Feed Checker / later Google issues) — no Shopify session
+from .public_tools.router import router as public_tools_router
+
+app.include_router(public_tools_router)
+
+# App Google MC Push (API write) — Shopify session required on most routes
 from .google_mc_push.router import router as google_mc_push_router
 
 app.include_router(google_mc_push_router)

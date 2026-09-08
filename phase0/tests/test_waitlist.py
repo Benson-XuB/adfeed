@@ -63,3 +63,30 @@ def test_waitlist_rejects_email_with_spaces(waitlist_client):
     client, _ = waitlist_client
     res = client.post("/api/waitlist", json={"email": "bad address@example.com"})
     assert res.status_code == 422
+
+
+def test_waitlist_accepts_optional_shopify_url(waitlist_client, tmp_path, monkeypatch):
+    client, _ = waitlist_client
+    email = f"shop-{uuid.uuid4().hex[:8]}@example.com"
+    res = client.post(
+        "/api/waitlist",
+        json={
+            "email": email,
+            "source": "waitlist-page",
+            "shopify_url": "my-store.myshopify.com",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["created"] is True
+
+    from adfeed.db import _conn
+
+    with _conn() as c:
+        row = c.execute(
+            "SELECT shopify_url, source FROM launch_waitlist WHERE email = ?",
+            (email,),
+        ).fetchone()
+    assert row is not None
+    assert row["source"] == "waitlist-page"
+    assert row["shopify_url"].startswith("https://")
+    assert "my-store.myshopify.com" in row["shopify_url"]

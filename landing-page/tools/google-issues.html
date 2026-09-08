@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google Shopping disapproved? Account or feed? — AdFeed</title>
+  <meta name="description" content="Connect Merchant Center (read-only). In about 10 seconds, see whether Google Shopping issues look account-level or product-feed related—then what to do next." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="tools-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed</a>
+      <nav class="nav-links" aria-label="Primary">
+        <a class="hide-sm" href="/tools/">Tools</a>
+        <a class="hide-sm" href="/tools/feed-checker">Feed checker</a>
+        <a class="btn btn-primary" href="#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="tools-hero wrap gi-hero">
+      <h1>Google Shopping disapproved?</h1>
+      <p class="tools-lead gi-lead">
+        Find out whether the problem is your Merchant Center account or your product feed.
+      </p>
+
+      <div class="gi-panel" id="gi-panel" data-state="disconnected">
+        <div class="gi-panel-disconnected" id="gi-disconnected">
+          <h2 class="gi-panel-title">Connect your Merchant Center</h2>
+          <ul class="gi-trust">
+            <li>Read-only access</li>
+            <li>No products changed</li>
+            <li>~10 second diagnosis</li>
+          </ul>
+          <a class="btn btn-primary gi-connect" id="connect-btn" href="/api/public/google/oauth/start">Connect Google</a>
+          <p class="tools-status" id="gi-status" hidden></p>
+        </div>
+
+        <div class="gi-panel-connected" id="gi-connected" hidden>
+          <div class="gi-connected-bar">
+            <p class="gi-connected-ok" id="gi-connected-label">Google connected</p>
+            <button type="button" class="gi-disconnect" id="logout-btn">Disconnect</button>
+          </div>
+          <label class="gi-field-label" for="merchant-select">Merchant Center</label>
+          <div class="tools-row gi-diagnose-row">
+            <select id="merchant-select" aria-label="Merchant Center account"></select>
+            <input id="merchant-id" type="hidden" />
+            <button type="button" class="btn btn-primary" id="load-issues-btn">Diagnose</button>
+          </div>
+          <p class="gi-manual-hint">
+            Can’t see your account?
+            <button type="button" class="gi-linkish" id="gi-manual-toggle">Enter ID manually</button>
+          </p>
+          <div id="gi-manual" class="gi-manual" hidden>
+            <label class="visually-hidden" for="merchant-id-manual">Merchant Center ID</label>
+            <input id="merchant-id-manual" type="text" inputmode="numeric" placeholder="Merchant Center ID" />
+          </div>
+          <p class="tools-status" id="gi-status-connected" hidden></p>
+        </div>
+      </div>
+
+      <p class="gi-demo-bar">
+        Preview states (no login):
+        <button type="button" class="gi-linkish" data-demo="account">Account</button>
+        <button type="button" class="gi-linkish" data-demo="feed">Feed</button>
+        <button type="button" class="gi-linkish" data-demo="mixed">Mixed</button>
+      </p>
+    </section>
+
+    <!-- Unified Diagnosis Framework: conclusion → evidence → meaning → action → AdFeed -->
+    <section class="wrap" id="gi-report" hidden>
+      <article class="gi-dx" id="gi-dx" data-type="">
+        <header class="gi-dx-conclusion">
+          <p class="gi-dx-kicker">Diagnosis</p>
+          <p class="gi-dx-badge" id="gi-type-label"></p>
+          <h2 id="gi-headline"></h2>
+          <p class="gi-dx-takeaway" id="gi-takeaway"></p>
+        </header>
+
+        <section class="gi-dx-block" id="gi-evidence" aria-labelledby="gi-evidence-label">
+          <h3 class="gi-dx-label" id="gi-evidence-label">Evidence</h3>
+          <div id="gi-evidence-body"></div>
+        </section>
+
+        <section class="gi-dx-block" aria-labelledby="gi-means-label">
+          <h3 class="gi-dx-label" id="gi-means-label">What this means</h3>
+          <div id="gi-means" class="gi-means"></div>
+        </section>
+
+        <section class="gi-dx-block" aria-labelledby="gi-action-label">
+          <h3 class="gi-dx-label" id="gi-action-label">What to do</h3>
+          <ol id="gi-steps" class="gi-steps"></ol>
+          <div class="gi-cta-row" id="gi-primary-cta"></div>
+        </section>
+
+        <section class="gi-dx-block gi-dx-adfeed" id="gi-adfeed" aria-labelledby="gi-adfeed-label">
+          <h3 class="gi-dx-label" id="gi-adfeed-label">AdFeed</h3>
+          <div id="gi-adfeed-body"></div>
+        </section>
+      </article>
+    </section>
+
+    <section class="tools-cta wrap gi-footer-cta" id="waitlist" data-mode="default" hidden>
+      <div id="waitlist-default">
+        <h2>Need a cleaner Shopping feed later?</h2>
+        <p>
+          After account issues are clear, AdFeed cleans 1688→Shopify catalogs into a stable Google feed—
+          without inventing barcodes.
+        </p>
+      </div>
+      <div id="waitlist-feed" hidden>
+        <h2>Your feed may be the problem</h2>
+        <p>
+          AdFeed cleans messy product data from 1688 → Shopify → Google Shopping
+          and generates a cleaner Shopping feed—without inventing barcodes.
+        </p>
+      </div>
+      <form class="waitlist" id="waitlist-form" data-source="google-issues" data-submit-label="Get early access" novalidate>
+        <div class="waitlist-row">
+          <label class="visually-hidden" for="waitlist-email">Email</label>
+          <input type="email" id="waitlist-email" name="email" placeholder="Your email" required maxlength="254" />
+          <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
+        </div>
+        <p class="waitlist-note" id="waitlist-note">Product updates only. No spam.</p>
+        <p class="waitlist-msg" id="waitlist-msg" hidden></p>
+        <div class="waitlist-success" id="waitlist-success" hidden>
+          <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
+          <p class="waitlist-success-body" id="waitlist-success-body"></p>
+        </div>
+      </form>
+      <p class="tools-note"><a href="/tools/feed-checker">Or check a public feed URL without Google login →</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p>© AdFeed · Account vs feed diagnostic</p>
+      <nav><a href="/privacy.html">Privacy</a> · <a href="/tools/feed-checker">Feed checker</a></nav>
+    </div>
+  </footer>
+  <script src="/waitlist.js" defer></script>
+  <script src="/tools/google-issues.js" defer></script>
+</body>
+</html>

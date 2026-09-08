@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AdFeed 冷启动计划 — 高意图获客 + Feed 检查器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #121714;
+      --ink-soft: #3a4540;
+      --muted: #6a756f;
+      --paper: #f0f3f1;
+      --paper-2: #e4eae6;
+      --panel: #fafbfa;
+      --line: rgba(18, 23, 20, 0.12);
+      --accent: #0c6b5c;
+      --accent-deep: #084f44;
+      --warn: #9a3412;
+      --ok: #0c6b5c;
+      --font-display: "Noto Serif SC", "Songti SC", serif;
+      --font-body: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+      --max: 920px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      font-size: 1.05rem;
+      line-height: 1.65;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse 90% 50% at 100% -10%, rgba(12, 107, 92, 0.08), transparent 50%),
+        linear-gradient(180deg, #f5f7f6 0%, var(--paper) 40%, var(--paper-2) 100%);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .grain {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      z-index: 0;
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      width: min(100% - 2rem, var(--max));
+      margin-inline: auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(10px);
+      background: rgba(240, 243, 241, 0.9);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar-inner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 0;
+    }
+    .brand {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      font-weight: 600;
+      text-decoration: none;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+    }
+    .brand span { color: var(--accent); }
+    .top-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.85rem;
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+    .top-nav a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .top-nav a:hover { color: var(--accent); }
+
+    .hero {
+      padding: 3rem 0 2.4rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      margin: 0 0 0.85rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    h1 {
+      margin: 0 0 1rem;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(2rem, 4.8vw, 2.85rem);
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      margin: 0 0 1.5rem;
+      max-width: 40rem;
+      font-size: 1.08rem;
+      color: var(--ink-soft);
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.32rem 0.65rem;
+      font-size: 0.8rem;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink-soft);
+    }
+    .chip--accent {
+      border-color: rgba(12, 107, 92, 0.35);
+      background: rgba(12, 107, 92, 0.08);
+      color: var(--accent-deep);
+      font-weight: 650;
+    }
+
+    section {
+      padding: 2.6rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .sec-label {
+      margin: 0 0 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    h2 {
+      margin: 0 0 0.75rem;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(1.45rem, 2.8vw, 1.9rem);
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      margin: 1.45rem 0 0.55rem;
+      font-size: 1.05rem;
+      font-weight: 650;
+    }
+    p { margin: 0 0 1rem; color: var(--ink-soft); }
+    .sec-intro { max-width: 42rem; }
+
+    .energy {
+      display: grid;
+      gap: 0.75rem;
+      margin: 1.5rem 0 0;
+    }
+    .energy-item {
+      display: grid;
+      grid-template-columns: 8.5rem 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.85rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    .energy-item strong { font-size: 0.92rem; }
+    .bar {
+      height: 0.45rem;
+      background: var(--paper-2);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .bar > i {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+    }
+    .pct {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1.25rem;
+    }
+    @media (min-width: 760px) {
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      padding: 1.15rem 1.2rem 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    .card h3 { margin-top: 0; }
+    .card ul, .steps {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .card li, .steps li {
+      position: relative;
+      padding: 0.45rem 0 0.45rem 1.1rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.96rem;
+      color: var(--ink-soft);
+    }
+    .card li:first-child, .steps li:first-child { border-top: 0; }
+    .card li::before, .steps li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.9em;
+      width: 0.4rem;
+      height: 0.4rem;
+      background: var(--accent);
+    }
+
+    .wire {
+      margin-top: 1.25rem;
+      padding: 1rem;
+      background: #1a221f;
+      color: #d7e3dd;
+      border: 1px solid #2a3631;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.55;
+    }
+    .wire-title {
+      margin: 0 0 0.85rem;
+      color: #5fd4bd;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.68rem;
+    }
+    .wire-box {
+      margin: 0.55rem 0;
+      padding: 0.75rem 0.85rem;
+      border: 1px dashed rgba(95, 212, 189, 0.35);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .wire-cta {
+      display: inline-block;
+      margin-top: 0.55rem;
+      padding: 0.45rem 0.8rem;
+      background: #0c6b5c;
+      color: #fff;
+      font-weight: 600;
+    }
+    .warn-line { color: #f0b090; }
+    .ok-line { color: #8fd4c4; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 0;
+      font-size: 0.94rem;
+      background: var(--panel);
+    }
+    th, td {
+      padding: 0.7rem 0.85rem;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      background: var(--paper-2);
+      font-weight: 650;
+    }
+
+    .callout {
+      margin: 1.25rem 0 0;
+      padding: 1rem 1.1rem;
+      border-left: 3px solid var(--accent);
+      background: rgba(12, 107, 92, 0.07);
+      color: var(--ink-soft);
+    }
+    .callout strong { color: var(--accent-deep); }
+
+    .do-dont {
+      display: grid;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+    @media (min-width: 700px) {
+      .do-dont { grid-template-columns: 1fr 1fr; }
+    }
+    .do, .dont {
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .do { border-top: 3px solid var(--ok); }
+    .dont { border-top: 3px solid var(--warn); }
+    .do h3, .dont h3 { margin: 0 0 0.55rem; font-size: 0.95rem; }
+
+    .week {
+      display: grid;
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+    .week-row {
+      display: grid;
+      grid-template-columns: 4rem 1fr;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    .week-row b {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+    }
+
+    footer {
+      padding: 2rem 0 3rem;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent-deep); }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+    }
+    .script {
+      margin: 0.75rem 0 0;
+      padding: 0.95rem 1rem;
+      background: #1a221f;
+      color: #e4efe9;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      border: 1px solid #2a3631;
+    }
+  </style>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#top">AdFeed <span>冷启动计划</span></a>
+      <nav class="top-nav" aria-label="章节">
+        <a href="#overview">总览</a>
+        <a href="#intent">① 高意图获客</a>
+        <a href="#checker">② Feed 检查器</a>
+        <a href="#cadence">一周节奏</a>
+        <a href="#metrics">成功标准</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <header class="hero wrap">
+      <p class="eyebrow">冷启动 · UX / 获客作战手册 · 2026-09-06</p>
+      <h1>高意图获客 + 一个免费 Feed 检查器</h1>
+      <p class="lede">
+        Reddit 不再当主引擎。要建的是一条可重复的机器：
+        <strong>具体痛点 → 免费检查 → 1688→Shopify Google Feed</strong>。
+        本页是两条主腿（约 50% + 30%）的操作说明。
+      </p>
+      <div class="meta-row">
+        <span class="chip chip--accent">状态：已采纳</span>
+        <span class="chip">字段合同锁定</span>
+        <span class="chip">产品驱动增长 · 不养 Karma</span>
+        <span class="chip">赤足袜测品 = 信任素材</span>
+      </div>
+    </header>
+
+    <section id="overview">
+      <div class="wrap">
+        <p class="sec-label">00 · 战略</p>
+        <h2>精力怎么分</h2>
+        <p class="sec-intro">
+          不要渠道轮换碰运气。抓住一条可复用路径。
+          1688 测品（如赤足袜）只提供真实感与截图——不是主获客机。
+        </p>
+
+        <div class="energy" aria-label="时间分配">
+          <div class="energy-item">
+            <strong>① 高意图获客</strong>
+            <div class="bar" aria-hidden="true"><i style="width:50%"></i></div>
+            <span class="pct">约 50%</span>
+          </div>
+          <div class="energy-item">
+            <strong>② Feed 检查器</strong>
+            <div class="bar" aria-hidden="true"><i style="width:30%"></i></div>
+            <span class="pct">约 30%</span>
+          </div>
+          <div class="energy-item">
+            <strong>③ 观察 + 测品</strong>
+            <div class="bar" aria-hidden="true"><i style="width:20%"></i></div>
+            <span class="pct">约 20%</span>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>所有页面统一一句话：</strong>
+          从 1688 进 Shopify？生成 Google Shopping Feed——并看清商品为什么不展示。
+        </div>
+
+        <div class="do-dont">
+          <div class="do">
+            <h3>要做</h3>
+            <ul>
+              <li>找已经卡在 1688 + Shopify + GMC 的人</li>
+              <li>先上线一个免费检查器，再谈工具矩阵</li>
+              <li>Feed 生成走套餐；检查器 / MC 同步免费</li>
+            </ul>
+          </div>
+          <div class="dont">
+            <h3>不要</h3>
+            <ul>
+              <li>把 Reddit 点赞当 KPI</li>
+              <li>第一周就做 7 个小工具</li>
+              <li>承诺过审，或教人编假条码</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="intent">
+      <div class="wrap">
+        <p class="sec-label">01 · 高意图获客（约 50%）</p>
+        <h2>找已经在这条链路上的人</h2>
+        <p class="sec-intro">
+          目标：和「已经在 1688 进货 / 已经在打 Google Shopping、卡 Feed」的商家对话——
+          不是从零教育路人。
+        </p>
+
+        <h3>1. 搜索词（直接复制）</h3>
+        <table>
+          <thead>
+            <tr><th>在哪搜</th><th>搜什么</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Google</td>
+              <td class="mono">"1688" Shopify · "1688" "Google Shopping" · "1688" "Merchant Center" · Shopify "product feed" GMC · "Google Shopping feed" Shopify</td>
+            </tr>
+            <tr>
+              <td>Shopify 社区</td>
+              <td class="mono">Merchant Center · Google feed · GTIN · limited · 1688</td>
+            </tr>
+            <tr>
+              <td>Reddit（只观察）</td>
+              <td class="mono">Google Shopping · Merchant Center · product feed · 1688 · feed errors · GMC</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>2. 每天固定动作（45～60 分钟）</h3>
+        <ol class="steps">
+          <li>跑 3 组搜索 → 打开约 10 个帖/页</li>
+          <li>筛出 5 个有具体卡点的人（标题乱、GTIN、limited、脏导入）</li>
+          <li>评论或私信：先说你看到的具体问题，再提免费检查 / 看一条样例——不要甩销售稿</li>
+          <li>记进信号表（链接、痛点标签、是否已回）</li>
+        </ol>
+
+        <h3>3. 外联口吻（短）</h3>
+        <div class="script">看到你提到 [Merchant Center limited / 1688 标题很乱]。
+
+我在做 1688→Shopify→Google Shopping 这条 feed 路径（不造假条码）。
+
+如果有用，我可以帮看一个商品例子；检查器上线后你也可以自己跑一遍免费报告。
+
+完全自愿，不勉强。</div>
+
+        <h3>4. 落地页怎么改（方向）</h3>
+        <p>拿掉空泛 SaaS 口号，首屏只说一件事。</p>
+
+        <div class="wire" aria-label="落地页首屏线框">
+          <p class="wire-title">线框 · deltfu.com 首屏</p>
+          <div class="wire-box">
+            小标：1688 → Shopify → Google Shopping<br /><br />
+            主标题：从 1688 进货？<br />
+            生成你的 Google Shopping Feed。<br /><br />
+            副标：清洗标题与变体。不造假条码。有免费档。<br />
+            <span class="wire-cta">免费获取 Feed</span>
+            &nbsp; 次要：检查我的 Feed →
+          </div>
+          <div class="wire-box">
+            信任条：不造假条码 · 不做高风险 AI 修图 · 有免费档
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <article class="card">
+            <h3>SEO 页——先只做 5 个</h3>
+            <ul>
+              <li>1688 到 Shopify 的 Google Shopping Feed</li>
+              <li>Shopify Google Merchant Center Feed</li>
+              <li>修好杂乱的 1688 标题再投 Shopping</li>
+              <li>Shopify Feed 缺 GTIN / 标识</li>
+              <li>免费 Google Shopping Feed 检查器</li>
+            </ul>
+            <p style="margin:0.75rem 0 0;font-size:0.92rem;">每页：一个问题 → 一个行动（检查器或候补名单）。先别做工具矩阵。</p>
+          </article>
+          <article class="card">
+            <h3>① 算成功的信号</h3>
+            <ul>
+              <li>每周 ≥10 次有质量的对话</li>
+              <li>落地页跳出降、CTA 更清楚</li>
+              <li>有人主动问：「能帮我看下 feed 吗？」</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="checker">
+      <div class="wrap">
+        <p class="sec-label">02 · 免费 Feed 检查器（约 30%）</p>
+        <h2>只做一个工具，只干一件事</h2>
+        <p class="sec-intro">
+          用户不会醒来就想要「Feed 管理平台」。他们想知道 Shopping 为什么挂。
+          先上线 <strong>免费 Google Shopping Feed 检查器</strong>，别的免费工具往后排。
+        </p>
+
+        <h3>用户故事</h3>
+        <div class="callout">
+          作为已从 1688 导入目录的 Shopify 商家，我粘贴 Feed 链接（或上传 XML），
+          就能看到哪里弱——需要的话再用 AdFeed 修。
+        </div>
+
+        <h3>MVP 范围（只做这些）</h3>
+        <table>
+          <thead>
+            <tr><th>做</th><th>先不做</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                粘贴公开 Feed URL <em>或</em> 上传 XML/TSV<br />
+                解析商品（例如最多前 500 条）<br />
+                打分：标题噪音/过长、缺品牌、服饰色码缺口、缺标识、是否有图<br />
+                汇总数字 + 若干坏例子<br />
+                行动：用 AdFeed 修 / 申请早鸟<br />
+                <strong>免费 · 检查不必先登录</strong>
+              </td>
+              <td>
+                检查器里接完整 GMC OAuth<br />
+                自动修线上 Merchant 账号<br />
+                AI 重写标题<br />
+                建议编造 GTIN<br />
+                Meta/TikTok 检查器<br />
+                七个小工具一起上
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>界面流程</h3>
+        <div class="grid-2">
+          <div class="wire">
+            <p class="wire-title">画面 A · 输入</p>
+            <div class="wire-box">
+              标题：免费 Google Shopping Feed 检查<br /><br />
+              切换：[ Feed 链接 ] [ 上传文件 ]<br /><br />
+              输入：https://…/google-us.xml<br />
+              <span class="wire-cta">开始检查</span><br /><br />
+              小字：仅用于生成本次报告，不长期存你的整库目录。
+            </div>
+          </div>
+          <div class="wire">
+            <p class="wire-title">画面 B · 报告</p>
+            <div class="wire-box">
+              你的 Feed：47 个商品<br /><br />
+              <span class="warn-line">⚠ 18 条标题弱 / 噪音大</span><br />
+              <span class="warn-line">⚠ 12 条缺品牌</span><br />
+              <span class="warn-line">⚠ 7 条色/码缺口</span><br />
+              <span class="warn-line">⚠ 5 条缺标识（绝不建议造假 GTIN）</span><br />
+              <span class="ok-line">✓ 多数行有图</span><br /><br />
+              展开：展示 3 条问题标题样例<br />
+              <span class="wire-cta">用 AdFeed 修复 →</span>
+            </div>
+          </div>
+        </div>
+
+        <h3>文案规则</h3>
+        <ul class="steps">
+          <li>用「诊断」语气（哪里不对），不要平台黑话</li>
+          <li>绝不建议编条码——引导合规无码路径</li>
+          <li>先给报告价值，再出产品按钮</li>
+          <li>手机：输入框与按钮要够大、好点</li>
+        </ul>
+
+        <h3>实现草图（给工程）</h3>
+        <table>
+          <thead>
+            <tr><th>层</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>地址</td>
+              <td class="mono">deltfu.com/tools/feed-checker</td>
+            </tr>
+            <tr>
+              <td>接口</td>
+              <td class="mono">POST /api/tools/feed-check { url | file } → 打分 JSON</td>
+            </tr>
+            <tr>
+              <td>复用</td>
+              <td>尽量复用现有 feed 质量启发式；只读；不改店铺数据</td>
+            </tr>
+            <tr>
+              <td>防滥用</td>
+              <td>按 IP 限流；限制文件大小；拉取 URL 设超时</td>
+            </tr>
+            <tr>
+              <td>隐私</td>
+              <td>临时解析；上线时写进隐私政策</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <strong>审核隔离：</strong> 检查器优先做在营销站。
+          除非必须，不要为了它去折腾审核中的 App OAuth / 隐私页。
+        </div>
+      </div>
+    </section>
+
+    <section id="cadence">
+      <div class="wrap">
+        <p class="sec-label">03 · 作战节奏</p>
+        <h2>现实的一周</h2>
+        <div class="week">
+          <div class="week-row">
+            <b>周一</b>
+            <span>高意图搜索 + 约 5 次外联。信号池记 3 条痛点。</span>
+          </div>
+          <div class="week-row">
+            <b>周二</b>
+            <span>改落地页首屏（直接讲用户任务）。起草 1 篇 SEO 页大纲。</span>
+          </div>
+          <div class="week-row">
+            <b>周三</b>
+            <span>Feed 检查器：输入 + 报告线框 → 开始解析 MVP。</span>
+          </div>
+          <div class="week-row">
+            <b>周四</b>
+            <span>再做高意图。有余力：赤足袜 1688 比价笔记（内容燃料）。</span>
+          </div>
+          <div class="week-row">
+            <b>周五</b>
+            <span>自测或上线检查器。报告 → AdFeed 的行动按钮。复盘本周数字。</span>
+          </div>
+          <div class="week-row">
+            <b>周末</b>
+            <span>Reddit 观察 20～30 分钟。有精力再写一篇 1688 测品——零硬广。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="metrics">
+      <div class="wrap">
+        <p class="sec-label">04 · 成功</p>
+        <h2>30 天怎样算「在动」</h2>
+        <table>
+          <thead>
+            <tr><th>指标</th><th>方向性目标</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>检查器使用次数</td><td>不用问你怎么用，也能跑出报告</td></tr>
+            <tr><td>报告 → 点 CTA</td><td>完成检查里约 15%～25% 会点</td></tr>
+            <tr><td>检查器带来的候补/安装</td><td>每周能追到非零（带 UTM）</td></tr>
+            <tr><td>高意图对话</td><td>每周 ≥ 10 次</td></tr>
+            <tr><td>Reddit</td><td>不当 KPI——只收信号</td></tr>
+          </tbody>
+        </table>
+
+        <h3>顺序锁死</h3>
+        <ol class="steps">
+          <li>落地页直接 CTA + 高意图外联机器</li>
+          <li>营销站上线 Feed 检查器 MVP</li>
+          <li>5 个 SEO 页指向检查器 / 候补</li>
+          <li>审核后上 GMC 只读诊断（免费）</li>
+          <li>这之后才考虑更多免费小工具</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        AdFeed AI · 冷启动作战手册 ·
+        字段合同：<span class="mono">2026-08-14</span> ·
+        北星：<span class="mono">2026-08-12</span>
+      </p>
+      <p>
+        相关文档：
+        <a href="./2026-09-05-reddit-1688-content-cold-start.md">1688 内容（信任燃料）</a> ·
+        <a href="./2026-09-05-reddit-product-signals.md">信号池</a> ·
+        <a href="./2026-09-04-next-gmc-rejection-read-loop.md">GMC 读回</a>
+      </p>
+      <p>用浏览器打开本文件查看排版。这是内部计划页，不是对外官网。</p>
+    </div>
+  </footer>
+</body>
+</html>

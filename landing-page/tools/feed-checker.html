@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Free Google Shopping Feed Checker — AdFeed AI</title>
+  <meta name="description" content="Paste your Google Shopping feed URL or upload XML. See title, brand, color/size, and identifier issues—without fake barcodes. Free." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="tools-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/tools/">Tools</a>
+        <a href="/tools/google-issues">Google issues</a>
+        <a class="btn btn-primary" href="#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="tools-hero wrap">
+      <p class="eyebrow">Free tool · No Shopify install</p>
+      <h1>Google Shopping Feed Checker</h1>
+      <p class="tools-lead">
+        Paste a public feed URL or upload XML. See what’s weak—noisy titles, missing brand, color/size gaps, identifiers—before you burn more ad spend.
+      </p>
+      <p class="tools-note">We only use the file to build this report. We don’t store your full catalog.</p>
+
+      <div class="tools-tabs" role="tablist">
+        <button type="button" class="tools-tab is-active" data-tab="url" id="tab-url">Feed URL</button>
+        <button type="button" class="tools-tab" data-tab="file" id="tab-file">Upload XML</button>
+      </div>
+
+      <div class="tools-panel" id="panel-url">
+        <label class="visually-hidden" for="feed-url">Feed URL</label>
+        <input id="feed-url" type="url" placeholder="https://…/google-us.xml" autocomplete="off" />
+        <button type="button" class="btn btn-primary" id="check-url-btn">Check feed</button>
+      </div>
+      <div class="tools-panel" id="panel-file" hidden>
+        <label class="visually-hidden" for="feed-file">XML file</label>
+        <input id="feed-file" type="file" accept=".xml,text/xml,application/xml" />
+        <button type="button" class="btn btn-primary" id="check-file-btn">Check file</button>
+      </div>
+      <p class="tools-status" id="check-status" hidden></p>
+    </section>
+
+    <section class="tools-report wrap" id="report" hidden>
+      <h2>Your report</h2>
+      <p class="tools-meta" id="report-meta"></p>
+      <div id="report-buckets"></div>
+      <div class="tools-help card-block">
+        <h3>How AdFeed helps</h3>
+        <ul id="report-helps"></ul>
+        <h3>What AdFeed won’t do</h3>
+        <ul id="report-cannot"></ul>
+      </div>
+    </section>
+
+    <section class="tools-cta wrap" id="waitlist">
+      <h2>Want a clean, always-synced feed?</h2>
+      <p>Join the waitlist. After App Store approval you’ll install AdFeed on Shopify and fix the catalog for real.</p>
+      <form class="waitlist" id="waitlist-form" data-source="feed-checker" data-submit-label="Get early access" novalidate>
+        <div class="waitlist-row">
+          <label class="visually-hidden" for="waitlist-email">Email</label>
+          <input type="email" id="waitlist-email" name="email" placeholder="Your email" required maxlength="254" />
+          <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
+        </div>
+        <p class="waitlist-note" id="waitlist-note">Product updates only. No spam.</p>
+        <p class="waitlist-msg" id="waitlist-msg" hidden></p>
+        <div class="waitlist-success" id="waitlist-success" hidden>
+          <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
+          <p class="waitlist-success-body" id="waitlist-success-body"></p>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p>© AdFeed AI</p>
+      <nav><a href="/privacy.html">Privacy</a> · <a href="/tools/google-issues">Google disapproval check</a></nav>
+    </div>
+  </footer>
+  <script src="/waitlist.js" defer></script>
+  <script src="/tools/feed-checker.js" defer></script>
+</body>
+</html>

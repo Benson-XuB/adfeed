@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS launch_waitlist (
     id            TEXT PRIMARY KEY,
     email         TEXT UNIQUE NOT NULL COLLATE NOCASE,
     source        TEXT DEFAULT 'landing',
+    shopify_url   TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_waitlist_created ON launch_waitlist(created_at DESC);
@@ -97,6 +98,12 @@ CREATE INDEX IF NOT EXISTS idx_waitlist_created ON launch_waitlist(created_at DE
 def init_db():
     with _conn() as c:
         c.executescript(SCHEMA)
+        cols = {
+            row[1]
+            for row in c.execute("PRAGMA table_info(launch_waitlist)").fetchall()
+        }
+        if "shopify_url" not in cols:
+            c.execute("ALTER TABLE launch_waitlist ADD COLUMN shopify_url TEXT")
         c.commit()
 
 
@@ -317,15 +324,22 @@ def waitlist_email_exists(email: str) -> bool:
     return row is not None
 
 
-def add_waitlist_email(email: str, source: str = "landing") -> bool:
+def add_waitlist_email(
+    email: str,
+    source: str = "landing",
+    shopify_url: Optional[str] = None,
+) -> bool:
     """Insert email. Returns True if newly added, False if already on the list."""
     normalized = email.strip().lower()
+    shop = (shopify_url or "").strip() or None
+    if shop and len(shop) > 255:
+        shop = shop[:255]
     uid = str(uuid.uuid4())
     with _conn() as c:
         try:
             c.execute(
-                "INSERT INTO launch_waitlist (id, email, source) VALUES (?,?,?)",
-                (uid, normalized, source),
+                "INSERT INTO launch_waitlist (id, email, source, shopify_url) VALUES (?,?,?,?)",
+                (uid, normalized, source, shop),
             )
             c.commit()
             return True

@@ -7,9 +7,9 @@
 #     bash phase0/scripts/prod/deploy-landing-only.sh
 #
 # What it updates:
-#   - /opt/adfeed/landing-page/  (static marketing)
+#   - /opt/adfeed/landing-page/  (static marketing + /tools/*)
 #   - nginx site (shop/host still → React App Home)
-#   - phase0/adfeed/api.py + db.py from the landing commit (waitlist only)
+#   - phase0/adfeed/api.py + db.py + public_tools/ (waitlist + feed/google tools)
 #   - restart adfeed-api only
 #
 # What it does NOT touch:
@@ -36,18 +36,21 @@ RSYNC_RSH="ssh ${SSH_OPTS[*]}"
 ssh_cmd() { ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "$@"; }
 
 LANDING_COMMIT="${LANDING_COMMIT:-}"
-if [[ -z "$LANDING_COMMIT" ]]; then
-  LANDING_COMMIT="$(git -C "$REPO" log --grep='waitlist signup, and safe nginx split' -n 1 --format=%H || true)"
-fi
-if [[ -z "$LANDING_COMMIT" ]]; then
-  echo "ERROR: cannot find landing/waitlist commit. Set LANDING_COMMIT=<sha>."
-  exit 1
+# Default: ship working-tree api.py/db.py (waitlist-only changes).
+# Set LANDING_COMMIT=<sha> to force those files from a pinned git revision.
+USE_PINNED_API=0
+if [[ -n "$LANDING_COMMIT" ]]; then
+  USE_PINNED_API=1
 fi
 
 echo "┌────────────────────────────────────────┐"
 echo "│  Landing-only deploy (review-safe)"
 echo "│  Target: ${SSH_TARGET}:${REMOTE_DIR}"
-echo "│  API src commit: ${LANDING_COMMIT:0:10}"
+if [[ "$USE_PINNED_API" -eq 1 ]]; then
+  echo "│  API src: commit ${LANDING_COMMIT:0:10}"
+else
+  echo "│  API src: working tree (waitlist)"
+fi
 echo "└────────────────────────────────────────┘"
 
 if ! ssh_cmd 'echo ssh-ok' >/dev/null 2>&1; then
@@ -57,8 +60,13 @@ fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-git -C "$REPO" show "${LANDING_COMMIT}:phase0/adfeed/api.py" >"$TMP/api.py"
-git -C "$REPO" show "${LANDING_COMMIT}:phase0/adfeed/db.py" >"$TMP/db.py"
+if [[ "$USE_PINNED_API" -eq 1 ]]; then
+  git -C "$REPO" show "${LANDING_COMMIT}:phase0/adfeed/api.py" >"$TMP/api.py"
+  git -C "$REPO" show "${LANDING_COMMIT}:phase0/adfeed/db.py" >"$TMP/db.py"
+else
+  cp "${REPO}/phase0/adfeed/api.py" "$TMP/api.py"
+  cp "${REPO}/phase0/adfeed/db.py" "$TMP/db.py"
+fi
 
 echo ""
 echo "━━━ [1/4] Sync landing-page ━━━"
@@ -71,14 +79,17 @@ rsync -avz --delete -e "$RSYNC_RSH" \
 ssh_cmd "sudo chown -R adfeed:adfeed ${REMOTE_DIR}/landing-page"
 
 echo ""
-echo "━━━ [2/4] Sync waitlist-only api.py + db.py ━━━"
+echo "━━━ [2/4] Sync waitlist API + public_tools ━━━"
 rsync -avz -e "$RSYNC_RSH" \
   "$TMP/api.py" \
   "${SSH_TARGET}:/tmp/adfeed-api.waitlist.py"
 rsync -avz -e "$RSYNC_RSH" \
   "$TMP/db.py" \
   "${SSH_TARGET}:/tmp/adfeed-db.waitlist.py"
-ssh_cmd "sudo cp /tmp/adfeed-api.waitlist.py ${REMOTE_DIR}/phase0/adfeed/api.py && sudo cp /tmp/adfeed-db.waitlist.py ${REMOTE_DIR}/phase0/adfeed/db.py && sudo chown adfeed:adfeed ${REMOTE_DIR}/phase0/adfeed/api.py ${REMOTE_DIR}/phase0/adfeed/db.py"
+rsync -avz -e "$RSYNC_RSH" \
+  "${REPO}/phase0/adfeed/public_tools/" \
+  "${SSH_TARGET}:/tmp/adfeed-public-tools/"
+ssh_cmd "sudo cp /tmp/adfeed-api.waitlist.py ${REMOTE_DIR}/phase0/adfeed/api.py && sudo cp /tmp/adfeed-db.waitlist.py ${REMOTE_DIR}/phase0/adfeed/db.py && sudo mkdir -p ${REMOTE_DIR}/phase0/adfeed/public_tools && sudo rsync -a --delete /tmp/adfeed-public-tools/ ${REMOTE_DIR}/phase0/adfeed/public_tools/ && sudo chown -R adfeed:adfeed ${REMOTE_DIR}/phase0/adfeed/api.py ${REMOTE_DIR}/phase0/adfeed/db.py ${REMOTE_DIR}/phase0/adfeed/public_tools"
 
 echo ""
 echo "━━━ [3/4] Nginx (landing vs App Home split, keep TLS) ━━━"
@@ -109,5 +120,6 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Landing-only deploy complete"
 echo "  Marketing: https://deltfu.com/"
+echo "  Tools: https://deltfu.com/tools/feed-checker  https://deltfu.com/tools/google-issues"
 echo "  App Home (?shop=&host=) unchanged — adfeed-web not restarted"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
