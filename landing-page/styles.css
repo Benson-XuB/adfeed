@@ -2353,7 +2353,76 @@ p {
   color: inherit;
 }
 
+.guide-index a:hover {
+  border-color: rgba(13, 107, 92, 0.35);
+}
+
 .guide-index a span {
   color: var(--ink-soft);
   font-size: 0.95rem;
+}
+
+.guide-hub {
+  max-width: 44rem;
+}
+
+.guide-hub-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin: 0 0 2.5rem;
+  font-weight: 700;
+}
+
+.guide-hub-tools a {
+  color: var(--accent-deep);
+  text-decoration: none;
+}
+
+.guide-hub-tools a:hover {
+  text-decoration: underline;
+}
+
+.guide-cluster {
+  margin: 0 0 2.5rem;
+}
+
+.guide-cluster h2 {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-display, "Fraunces", Georgia, serif);
+  font-size: 1.35rem;
+}
+
+.guide-cluster-dek {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.98rem;
+}
+
+.guide-soon {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+}
+
+.guide-soon strong {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.guide-soon span {
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.guide-hub-foot {
+  margin-top: 0.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
 }
