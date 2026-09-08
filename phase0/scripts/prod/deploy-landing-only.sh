@@ -87,9 +87,11 @@ rsync -avz -e "$RSYNC_RSH" \
   "$TMP/db.py" \
   "${SSH_TARGET}:/tmp/adfeed-db.waitlist.py"
 rsync -avz -e "$RSYNC_RSH" \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
   "${REPO}/phase0/adfeed/public_tools/" \
   "${SSH_TARGET}:/tmp/adfeed-public-tools/"
-ssh_cmd "sudo cp /tmp/adfeed-api.waitlist.py ${REMOTE_DIR}/phase0/adfeed/api.py && sudo cp /tmp/adfeed-db.waitlist.py ${REMOTE_DIR}/phase0/adfeed/db.py && sudo mkdir -p ${REMOTE_DIR}/phase0/adfeed/public_tools && sudo rsync -a --delete /tmp/adfeed-public-tools/ ${REMOTE_DIR}/phase0/adfeed/public_tools/ && sudo chown -R adfeed:adfeed ${REMOTE_DIR}/phase0/adfeed/api.py ${REMOTE_DIR}/phase0/adfeed/db.py ${REMOTE_DIR}/phase0/adfeed/public_tools"
+ssh_cmd "sudo cp /tmp/adfeed-api.waitlist.py ${REMOTE_DIR}/phase0/adfeed/api.py && sudo cp /tmp/adfeed-db.waitlist.py ${REMOTE_DIR}/phase0/adfeed/db.py && sudo mkdir -p ${REMOTE_DIR}/phase0/adfeed/public_tools && sudo rsync -a --delete --exclude '__pycache__' --exclude '*.pyc' /tmp/adfeed-public-tools/ ${REMOTE_DIR}/phase0/adfeed/public_tools/ && sudo chown -R adfeed:adfeed ${REMOTE_DIR}/phase0/adfeed/api.py ${REMOTE_DIR}/phase0/adfeed/db.py ${REMOTE_DIR}/phase0/adfeed/public_tools"
 
 echo ""
 echo "━━━ [3/4] Nginx (landing vs App Home split, keep TLS) ━━━"

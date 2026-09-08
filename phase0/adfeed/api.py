@@ -2190,15 +2190,21 @@ for _gdpr_path in _GDPR_WEBHOOK_PATHS:
     app.add_api_route(_gdpr_path + "/", _webhook_gdpr_entry, methods=["POST"])
 
 
-# Marketing-site public tools (Feed Checker / later Google issues) — no Shopify session
-from .public_tools.router import router as public_tools_router
+# Marketing-site public tools (Feed Checker / Google issues) — no Shopify session
+try:
+    from .public_tools.router import router as public_tools_router
 
-app.include_router(public_tools_router)
+    app.include_router(public_tools_router)
+except ImportError:
+    pass
 
-# App Google MC Push (API write) — Shopify session required on most routes
-from .google_mc_push.router import router as google_mc_push_router
+# App Google MC Push (API write) — optional until package is deployed with full App rollout
+try:
+    from .google_mc_push.router import router as google_mc_push_router
 
-app.include_router(google_mc_push_router)
+    app.include_router(google_mc_push_router)
+except ImportError:
+    pass
 
 # 保留 StaticFiles 作为回退（处理其他路径）
 app.mount("/feeds-static", StaticFiles(directory=str(FEEDS_DIR)), name="feeds")
