@@ -28,6 +28,7 @@ def _jwt_secret() -> str:
 def app_redirect_uri() -> str:
     return (
         os.getenv("GOOGLE_APP_OAUTH_REDIRECT_URI")
+        or os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
         or "http://127.0.0.1:8000/api/app/google/oauth/callback"
     ).strip()
 

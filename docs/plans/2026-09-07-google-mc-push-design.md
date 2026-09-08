@@ -1,14 +1,29 @@
 # Google Merchant Center Push（API 直写）— 设计规格
 
 **日期：** 2026-09-07  
-**状态：** ACCEPTED（头脑风暴拍板）  
+**状态：** ACCEPTED · **代码已落在 `main`（2026-09-08）**  
+**本地端到端：** 暂缓（`shopify app dev` Cloudflare / `--use-localhost` webhook URI 限制）；过审或网络稳定后再联调  
 **产品形态：** AdFeed AI **嵌入式 App 内**能力（不新建第二个 Shopify App）  
-**实现分支建议：** `feature/google-mc-push`（与 App Store 审核热修隔离）
 
 ```
 Field contract: docs/plans/2026-08-14-feed-field-contract.md
 North Star: docs/plans/2026-08-12-mvp-north-star.md
 ```
+
+### 实现进度（2026-09-08）
+
+| 项 | 状态 |
+|----|------|
+| Spec / Implementation Plan | ✅ `2026-09-07-google-mc-push-design.md` / `2026-09-07-google-mc-push.md` |
+| Spike + ProductInput 映射 + 单测 | ✅ |
+| store_google_mc / push_runs | ✅ |
+| App OAuth + ensure API data source + `POST /api/app/google/push` | ✅ |
+| App 侧栏 Push CTA（`GooglePushPanel`） | ✅ |
+| 本地 `.env`：`GOOGLE_APP_OAUTH_*`、`SHOPIFY_APP_HANDLE=adfeed-ai-3` | ✅（本机，未入库） |
+| 真店 Push 进 MC | ⏸ 待 Cloud redirect 确认 + App 预览网络通后再测 |
+| 生产 deploy | ⏸ 审核中勿改 listing；过审后见 launch checklist |
+
+**闭环里还缺（产品，非本 Push 阻塞）：** 营销站 Feed Checker / Google 拒审只读工具上线获客；Push 之后的拒审读回。
 
 ---
 
