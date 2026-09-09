@@ -3,8 +3,10 @@ import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
+import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
+import { syncBillingPlanHandle } from "../lib/adfeed-api";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -22,6 +24,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
+function PlanHandleSync() {
+  const shopify = useAppBridge();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const handle = params.get("plan_handle");
+    if (!handle) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await shopify.idToken();
+        if (cancelled) return;
+        await syncBillingPlanHandle(token, handle);
+        params.delete("plan_handle");
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", next);
+      } catch (e) {
+        console.warn("plan_handle sync failed", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shopify]);
+
+  return null;
+}
+
 export default function App() {
   const { apiKey, backendUrl } = useLoaderData<typeof loader>();
 
@@ -37,6 +69,7 @@ export default function App() {
 
   return (
     <AppProvider embedded apiKey={apiKey}>
+      <PlanHandleSync />
       <s-app-nav>
         <s-link href="/app">Home</s-link>
         <s-link href="/app/plans">Plans</s-link>

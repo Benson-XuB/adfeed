@@ -82,6 +82,20 @@ def apply_plan_to_store(
     return store_db.get_store(store_id)
 
 
+def apply_plan_handle(
+    store_id: str,
+    plan_handle: str,
+    subscription_id: Optional[str] = None,
+) -> store_db.Store:
+    """Apply Shopify App Pricing redirect `plan_handle` (free/starter/growth)."""
+    return apply_plan_to_store(
+        store_id,
+        plan=normalize_plan_name(plan_handle),
+        billing_status="active",
+        subscription_id=subscription_id,
+    )
+
+
 def apply_subscription_webhook(payload: dict) -> Optional[store_db.Store]:
     """Handle APP_SUBSCRIPTIONS_UPDATE body → update store plan/quota.
 
@@ -89,6 +103,10 @@ def apply_subscription_webhook(payload: dict) -> Optional[store_db.Store]:
       { "app_subscription": { "admin_graphql_api_id", "name", "status", ... },
         "shop_domain" | "domain": "x.myshopify.com" }
     or nested under `app_subscription`.
+
+    With Shopify App Pricing, webhooks are unreliable / being removed. ACTIVE
+    updates still help; CANCELLED must not wipe a plan that was just set via
+    plan_handle redirect (common when switching plans).
     """
     sub = payload.get("app_subscription") or payload.get("app_subscriptions") or payload
     if isinstance(sub, list):
@@ -120,10 +138,26 @@ def apply_subscription_webhook(payload: dict) -> Optional[store_db.Store]:
         logger.warning("Subscription webhook: store not found for shop=%s", shop)
         return None
 
+    managed = os.getenv("ADFEED_MANAGED_PRICING", "true").lower() in ("1", "true", "yes")
+
     if status_raw in ("ACTIVE", "ACCEPTED"):
         billing_status = "active"
         plan = normalize_plan_name(name)
     elif status_raw in ("CANCELLED", "DECLINED", "EXPIRED", "FROZEN"):
+        if managed:
+            # App Pricing: plan_handle redirect is source of truth for upgrades.
+            # Cancelling an old Billing API / prior plan must not force Free.
+            logger.info(
+                "Ignoring %s webhook under managed pricing for shop=%s",
+                status_raw,
+                shop,
+            )
+            store_db.update_store(
+                store.id,
+                billing_status=status_raw.lower(),
+                subscription_id=str(sub_id) if sub_id else store.subscription_id,
+            )
+            return store_db.get_store(store.id)
         billing_status = status_raw.lower()
         plan = "free"
     else:

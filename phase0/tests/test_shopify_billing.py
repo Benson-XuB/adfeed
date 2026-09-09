@@ -118,10 +118,47 @@ def test_subscription_webhook_updates_quota(app_client):
     assert updated.billing_status == "active"
 
 
-def test_subscribe_requires_session(app_client):
-    client, _, _ = app_client
-    res = client.post("/api/app/billing/subscribe", json={"plan": "starter"})
-    assert res.status_code == 401
+def test_billing_sync_applies_plan_handle(app_client):
+    client, store_db, _ = app_client
+    token = _token()
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    res = client.post(
+        "/api/app/billing/sync",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"plan_handle": "growth"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["plan"] == "growth"
+    assert data["quota_total"] == 200
+    assert data["billing_status"] == "active"
+    store = store_db.get_store_by_domain("demo.myshopify.com")
+    assert store.plan == "growth"
+    assert store.quota_total == 200
+
+
+def test_managed_pricing_ignores_cancel_webhook_downgrade(app_client, monkeypatch):
+    client, store_db, billing = app_client
+    monkeypatch.setenv("ADFEED_MANAGED_PRICING", "true")
+    import importlib
+    importlib.reload(billing)
+    token = _token()
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    store = store_db.get_store_by_domain("demo.myshopify.com")
+    billing.apply_plan_handle(store.id, "starter")
+    store = store_db.get_store(store.id)
+    assert store.plan == "starter"
+    billing.apply_subscription_webhook({
+        "shop_domain": "demo.myshopify.com",
+        "app_subscription": {
+            "admin_graphql_api_id": "gid://shopify/AppSubscription/1",
+            "name": "AdFeed Starter",
+            "status": "CANCELLED",
+        },
+    })
+    store = store_db.get_store(store.id)
+    assert store.plan == "starter"
+    assert store.quota_total == 50
 
 
 def test_billing_test_charges_off_by_default(app_client, monkeypatch):

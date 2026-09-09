@@ -284,6 +284,17 @@ export async function subscribePlan(
   return jsonOrThrow(res, "Subscribe failed");
 }
 
+export async function syncBillingPlanHandle(
+  token: string,
+  planHandle: string,
+): Promise<BillingStatus & { synced_from?: string }> {
+  const res = await backendFetch("/api/app/billing/sync", token, {
+    method: "POST",
+    body: JSON.stringify({ plan_handle: planHandle }),
+  });
+  return jsonOrThrow(res, "Billing sync failed");
+}
+
 export async function checkMarketReady(
   token: string,
   country: string,

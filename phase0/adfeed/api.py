@@ -232,6 +232,42 @@ class BillingSubscribeBody(BaseModel):
     return_url: Optional[str] = None
 
 
+class BillingSyncBody(BaseModel):
+    plan_handle: str
+
+
+@app.post("/api/app/billing/sync")
+async def app_billing_sync(
+    body: BillingSyncBody,
+    store: StoreModel = Depends(require_store),
+):
+    """Apply Shopify App Pricing redirect `plan_handle` to local quota/plan."""
+    from .shopify_billing import apply_plan_handle, managed_pricing_plans_url
+
+    handle = (body.plan_handle or "").strip()
+    if not handle:
+        raise HTTPException(400, "plan_handle required")
+    updated = apply_plan_handle(store.id, handle)
+    pricing_url = ""
+    try:
+        pricing_url = managed_pricing_plans_url(updated.shopify_domain)
+    except ValueError:
+        pricing_url = ""
+    return {
+        "store_id": updated.id,
+        "shop_domain": updated.shopify_domain,
+        "plan": updated.plan,
+        "billing_status": updated.billing_status,
+        "quota_total": updated.quota_total,
+        "quota_used": updated.quota_used,
+        "quota_remaining": updated.quota_remaining,
+        "subscription_id": updated.subscription_id,
+        "pricing_plans_url": pricing_url,
+        "managed_pricing": True,
+        "synced_from": handle,
+    }
+
+
 @app.post("/api/app/billing/subscribe")
 async def app_billing_subscribe(
     body: BillingSubscribeBody,
@@ -265,11 +301,23 @@ async def app_billing_subscribe(
         "subscription_id": store.subscription_id,
     }
 
+
 @app.get("/api/app/billing/return")
-async def app_billing_return(shop: Optional[str] = None, charge_id: Optional[str] = None):
-    """After Shopify charge approval, send merchant back into Admin."""
+async def app_billing_return(
+    shop: Optional[str] = None,
+    charge_id: Optional[str] = None,
+    plan_handle: Optional[str] = None,
+):
+    """After Shopify charge / App Pricing approval, sync plan then bounce to Admin."""
+    from . import store_db
+    from .shopify_billing import apply_plan_handle
+
     raw = (shop or "").strip().replace("https://", "").replace("http://", "")
     host = raw.replace(".myshopify.com", "").split("/")[0]
+    if plan_handle and host:
+        found = store_db.get_store_by_domain(f"{host}.myshopify.com")
+        if found:
+            apply_plan_handle(found.id, plan_handle)
     app_key = config.SHOPIFY_CLIENT_ID or os.getenv("SHOPIFY_CLIENT_ID", "")
     if host and app_key:
         return RedirectResponse(f"https://admin.shopify.com/store/{host}/apps/{app_key}")
