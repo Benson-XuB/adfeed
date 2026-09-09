@@ -205,6 +205,13 @@ async def support_page():
 @app.get("/api/app/billing/status")
 async def app_billing_status(store: StoreModel = Depends(require_store)):
     """Return plan + quota for the authenticated shop."""
+    from .shopify_billing import managed_pricing_plans_url
+
+    pricing_url = ""
+    try:
+        pricing_url = managed_pricing_plans_url(store.shopify_domain)
+    except ValueError:
+        pricing_url = ""
     return {
         "store_id": store.id,
         "shop_domain": store.shopify_domain,
@@ -215,6 +222,8 @@ async def app_billing_status(store: StoreModel = Depends(require_store)):
         "quota_used": store.quota_used,
         "quota_remaining": store.quota_remaining,
         "subscription_id": store.subscription_id,
+        "pricing_plans_url": pricing_url,
+        "managed_pricing": True,
     }
 
 
@@ -228,35 +237,33 @@ async def app_billing_subscribe(
     body: BillingSubscribeBody,
     store: StoreModel = Depends(require_store),
 ):
-    """Create Shopify recurring subscription; return confirmation URL."""
-    from .shopify_billing import create_app_subscription
+    """Return Shopify App Pricing plan URL (do not call Billing API create).
 
-    return_url = body.return_url or os.getenv(
-        "ADFEED_BILLING_RETURN_URL",
-        "https://deltfu.com/api/app/billing/return",
+    Partner apps on Shopify App Pricing cannot use appSubscriptionCreate;
+    merchants pick plans on the hosted pricing_plans page.
+    """
+    from .shopify_billing import (
+        VALID_PAID_PLANS,
+        managed_pricing_plans_url,
+        normalize_plan_name,
+        quota_for_plan,
     )
+
+    plan_key = normalize_plan_name(body.plan)
+    if plan_key not in VALID_PAID_PLANS:
+        raise HTTPException(400, f"Unsupported plan '{body.plan}'. Use starter or growth.")
     try:
-        result = await create_app_subscription(
-            store=store,
-            plan=body.plan,
-            return_url=return_url,
-        )
+        url = managed_pricing_plans_url(store.shopify_domain)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    except Exception as e:
-        logger.error(f"Billing subscribe failed: {e}")
-        msg = str(e)
-        # Surface Shopify Partner/distribution misconfig clearly (UI often shows "Failed to fetch" on 502).
-        if "owned by a Shop" in msg or "migrated to the Shopify partners" in msg.lower():
-            raise HTTPException(
-                400,
-                "Shopify refused to create a subscription. In Partner Dashboard → this app → "
-                "Distribution, choose Custom or Public first. Without Distribution, Billing API "
-                "returns “owned by a Shop”. Then reinstall the app on this store and try again.",
-            ) from e
-        raise HTTPException(400, f"Shopify billing error: {e}") from e
-    return result
-
+    return {
+        "confirmation_url": url,
+        "pricing_plans_url": url,
+        "managed_pricing": True,
+        "plan": plan_key,
+        "quota_total": quota_for_plan(plan_key),
+        "subscription_id": store.subscription_id,
+    }
 
 @app.get("/api/app/billing/return")
 async def app_billing_return(shop: Optional[str] = None, charge_id: Optional[str] = None):

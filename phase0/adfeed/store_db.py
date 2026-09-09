@@ -518,8 +518,11 @@ def _row_to_store(row) -> Store:
 
 def create_store(user_id: str, shopify_domain: str, shop_name: str = None,
                  access_token: str = None, site_url: str = None,
-                 plan: str = "free", quota_total: int = 3) -> Store:
+                 plan: str = "free", quota_total: int = None) -> Store:
     """创建新店铺"""
+    if quota_total is None:
+        from .shopify_billing import PLAN_QUOTAS
+        quota_total = int(PLAN_QUOTAS.get("free", 20))
     sid = str(uuid.uuid4())
     with _conn() as c:
         c.execute(

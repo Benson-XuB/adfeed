@@ -87,6 +87,8 @@ export type BillingStatus = {
   quota_used: number;
   quota_remaining: number;
   subscription_id?: string | null;
+  pricing_plans_url?: string;
+  managed_pricing?: boolean;
 };
 
 export type FeedInfo = {
@@ -268,7 +270,13 @@ export async function getFeedStatus(token: string): Promise<{
 export async function subscribePlan(
   token: string,
   plan: "starter" | "growth",
-): Promise<{ confirmation_url?: string; plan: string; quota_total: number }> {
+): Promise<{
+  confirmation_url?: string;
+  pricing_plans_url?: string;
+  managed_pricing?: boolean;
+  plan: string;
+  quota_total: number;
+}> {
   const res = await backendFetch("/api/app/billing/subscribe", token, {
     method: "POST",
     body: JSON.stringify({ plan }),

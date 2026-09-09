@@ -28,6 +28,22 @@ PLAN_PRICES_USD = {
 VALID_PAID_PLANS = ("starter", "growth")
 
 
+def app_handle() -> str:
+    """Shopify app handle used in Admin charges URLs (Partner listing slug)."""
+    return (os.getenv("SHOPIFY_APP_HANDLE") or "adfeed-ai").strip().strip("/")
+
+
+def managed_pricing_plans_url(shop_domain: str) -> str:
+    """Hosted Shopify App Pricing plan selection (not Billing API create)."""
+    raw = (shop_domain or "").strip().replace("https://", "").replace("http://", "")
+    store = raw.replace(".myshopify.com", "").split("/")[0]
+    if not store:
+        raise ValueError("shop_domain required for managed pricing URL")
+    return (
+        f"https://admin.shopify.com/store/{store}/charges/{app_handle()}/pricing_plans"
+    )
+
+
 def billing_test_charges() -> bool:
     """Production App Store charges must be live (test=false)."""
     return os.getenv("ADFEED_BILLING_TEST", "false").lower() in ("1", "true", "yes")

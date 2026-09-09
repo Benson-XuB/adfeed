@@ -17,6 +17,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 const PLAN_IDS = ["free", "starter", "growth"] as const;
 
+function openShopifyPricing(url: string) {
+  // Hosted App Pricing lives outside the embedded iframe.
+  if (typeof window !== "undefined" && window.top) {
+    window.top.location.href = url;
+    return;
+  }
+  window.location.href = url;
+}
+
 export default function Plans() {
   const shopify = useAppBridge();
   const [billing, setBilling] = useState<BillingStatus | null>(null);
@@ -41,25 +50,31 @@ export default function Plans() {
     void load();
   }, [load]);
 
-  const onSubscribe = async (plan: "starter" | "growth") => {
+  const onChoosePlan = async (plan: "starter" | "growth") => {
     setBusy(plan);
     setMessage("");
     setChargeUrl("");
     try {
-      const token = await shopify.idToken();
-      const res = await subscribePlan(token, plan);
-      if (res.confirmation_url) {
-        setChargeUrl(res.confirmation_url);
+      // Prefer URL from status (no create-charge); subscribe endpoint also returns hosted URL.
+      const fromStatus = billing?.pricing_plans_url;
+      if (fromStatus) {
+        setChargeUrl(fromStatus);
         setMessage(t("billing.approveHint"));
         setMessageTone("info");
+        openShopifyPricing(fromStatus);
+        return;
+      }
+      const token = await shopify.idToken();
+      const res = await subscribePlan(token, plan);
+      const url = res.confirmation_url || res.pricing_plans_url;
+      if (url) {
+        setChargeUrl(url);
+        setMessage(t("billing.approveHint"));
+        setMessageTone("info");
+        openShopifyPricing(url);
       } else {
-        await load();
-        setMessageTone("success");
-        setMessage(t("billing.current", {
-          plan: t(`billing.plans.${plan}.name`),
-          left: String(billing?.quota_remaining ?? ""),
-          total: String(billing?.quota_total ?? ""),
-        }));
+        setMessageTone("critical");
+        setMessage(t("billing.subscribeFailed", { detail: "missing pricing URL" }));
       }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -142,7 +157,7 @@ export default function Plans() {
                         variant="primary"
                         disabled={busy !== null}
                         onClick={() =>
-                          void onSubscribe(id as "starter" | "growth")
+                          void onChoosePlan(id as "starter" | "growth")
                         }
                       >
                         {busy === id

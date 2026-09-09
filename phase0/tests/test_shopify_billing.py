@@ -69,8 +69,10 @@ def test_plan_quota_mapping(app_client):
     assert billing.normalize_plan_name("AdFeed Starter") == "starter"
 
 
-def test_subscribe_returns_confirmation_url(app_client):
-    client, store_db, _ = app_client
+def test_subscribe_returns_managed_pricing_url(app_client, monkeypatch):
+    """Shopify App Pricing: do not call Billing API create; return hosted plan URL."""
+    client, _, _ = app_client
+    monkeypatch.setenv("SHOPIFY_APP_HANDLE", "adfeed-ai")
     token = _token()
     res = client.post(
         "/api/app/billing/subscribe",
@@ -79,9 +81,17 @@ def test_subscribe_returns_confirmation_url(app_client):
     )
     assert res.status_code == 200
     data = res.json()
-    assert "confirmation_url" in data
+    assert data.get("managed_pricing") is True
+    url = data.get("confirmation_url") or ""
+    assert "admin.shopify.com/store/demo/charges/adfeed-ai/pricing_plans" in url
     assert data["plan"] == "starter"
-    assert data["quota_total"] == 50
+
+
+def test_managed_pricing_plans_url_helper(app_client, monkeypatch):
+    _, _, billing = app_client
+    monkeypatch.setenv("SHOPIFY_APP_HANDLE", "adfeed-ai-3")
+    url = billing.managed_pricing_plans_url("kakaku.myshopify.com")
+    assert url == "https://admin.shopify.com/store/kakaku/charges/adfeed-ai-3/pricing_plans"
 
 
 def test_subscription_webhook_updates_quota(app_client):
