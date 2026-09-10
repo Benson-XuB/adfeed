@@ -36,27 +36,33 @@
       <p class="eyebrow">Free tool · 1688 → Shopping · No Shopify install</p>
       <h1>Check Your Google Shopping Feed</h1>
       <p class="tools-lead">
-        See if the catalog looks <strong>Google-ready</strong>—especially after 1688 / supplier imports: noisy titles, factory brands, color/size gaps, and identifier issues.
-        Paste a public feed URL or upload XML. We never invent barcodes.
+        See if the catalog looks <strong>Google-ready</strong>—especially after 1688 / supplier imports: noisy titles, factory brands, color/size gaps, and identifier issues. We never invent barcodes.
       </p>
-      <p class="tools-note">We only use the file to build this report. We don’t store your full catalog.</p>
 
-      <div class="tools-tabs" role="tablist">
-        <button type="button" class="tools-tab is-active" data-tab="url" id="tab-url">Feed URL</button>
-        <button type="button" class="tools-tab" data-tab="file" id="tab-file">Upload XML</button>
-      </div>
+      <div class="tools-console" id="tools-console">
+        <div class="tools-tabs" role="tablist" aria-label="How to check">
+          <button type="button" class="tools-tab is-active" role="tab" aria-selected="true" aria-controls="panel-url" data-tab="url" id="tab-url">Feed URL</button>
+          <button type="button" class="tools-tab" role="tab" aria-selected="false" aria-controls="panel-file" data-tab="file" id="tab-file">Upload XML</button>
+        </div>
 
-      <div class="tools-panel" id="panel-url">
-        <label class="visually-hidden" for="feed-url">Feed URL</label>
-        <input id="feed-url" type="url" placeholder="https://…/google-us.xml" autocomplete="off" />
-        <button type="button" class="btn btn-primary" id="check-url-btn">Check feed</button>
+        <div class="tools-panel tools-panel--url" id="panel-url" role="tabpanel" aria-labelledby="tab-url">
+          <label class="visually-hidden" for="feed-url">Feed URL</label>
+          <input id="feed-url" type="url" placeholder="https://…/google-us.xml" autocomplete="off" />
+          <button type="button" class="btn btn-primary" id="check-url-btn">Check feed</button>
+        </div>
+
+        <div class="tools-panel tools-panel--file" id="panel-file" role="tabpanel" aria-labelledby="tab-file" hidden>
+          <div class="tools-dropzone" id="feed-dropzone" tabindex="0" role="button" aria-controls="feed-file" aria-label="Upload XML feed">
+            <input id="feed-file" class="tools-dropzone-input" type="file" accept=".xml,text/xml,application/xml" />
+            <p class="tools-dropzone-title" id="dropzone-title">Drop your feed XML here</p>
+            <p class="tools-dropzone-hint" id="dropzone-hint">or click to choose a file · .xml only</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="check-file-btn">Check file</button>
+        </div>
+
+        <p class="tools-note tools-note--console">We only use the file to build this report. We don’t store your full catalog.</p>
+        <p class="tools-status" id="check-status" hidden></p>
       </div>
-      <div class="tools-panel" id="panel-file" hidden>
-        <label class="visually-hidden" for="feed-file">XML file</label>
-        <input id="feed-file" type="file" accept=".xml,text/xml,application/xml" />
-        <button type="button" class="btn btn-primary" id="check-file-btn">Check file</button>
-      </div>
-      <p class="tools-status" id="check-status" hidden></p>
     </section>
 
     <section class="tools-report wrap" id="report" hidden>
