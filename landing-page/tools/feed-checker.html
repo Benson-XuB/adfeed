@@ -8,12 +8,12 @@
   <meta name="keywords" content="1688 Google Shopping feed, 1688 product feed, Google Shopping feed checker, Shopify 1688 feed errors" />
   <link rel="canonical" href="https://deltfu.com/tools/feed-checker" />
   <meta property="og:title" content="Google Shopping Feed Checker — 1688 → Shopping | AdFeed" />
-  <meta property="og:description" content="Check whether your feed looks Google-ready—especially after 1688 imports. Free. No install." />
+  <meta property="og:description" content="Find catalog issues that can cause Google Shopping problems—especially after 1688 imports. Free. No install." />
   <meta property="og:url" content="https://deltfu.com/tools/feed-checker" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Google Shopping Feed Checker — 1688 → Shopping | AdFeed" />
-  <meta name="twitter:description" content="Validate your Shopping feed before ads spend. Built with 1688 import issues in mind." />
+  <meta name="twitter:description" content="Find catalog issues before they become Shopping problems. Built for 1688 → Shopify sellers." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
@@ -33,10 +33,14 @@
 
   <main>
     <section class="tools-hero wrap">
-      <p class="eyebrow">Free tool · 1688 → Shopping · No Shopify install</p>
-      <h1>Check Your Google Shopping Feed</h1>
+      <p class="eyebrow">Free tool · 1688 → Shopify → Google Shopping</p>
+      <h1 class="tools-hero-title">Check Your Google Shopping Feed</h1>
+      <p class="tools-deck">
+        Find catalog issues that can cause Google Shopping problems —
+        especially after importing products from 1688 or other suppliers.
+      </p>
       <p class="tools-lead">
-        See if the catalog looks <strong>Google-ready</strong>—especially after 1688 / supplier imports: noisy titles, factory brands, color/size gaps, and identifier issues. We never invent barcodes.
+        We look for noisy titles, factory brands, color/size gaps, and identifier issues. We never invent barcodes. No Shopify install required.
       </p>
 
       <div class="tools-console" id="tools-console">
@@ -46,23 +50,46 @@
         </div>
 
         <div class="tools-panel tools-panel--url" id="panel-url" role="tabpanel" aria-labelledby="tab-url">
-          <label class="visually-hidden" for="feed-url">Feed URL</label>
-          <input id="feed-url" type="url" placeholder="https://…/google-us.xml" autocomplete="off" />
-          <button type="button" class="btn btn-primary" id="check-url-btn">Check feed</button>
+          <p class="tools-panel-label" id="url-panel-label">Paste your Google Shopping feed URL</p>
+          <div class="tools-panel-row">
+            <label class="visually-hidden" for="feed-url">Feed URL</label>
+            <input id="feed-url" type="url" placeholder="https://yourstore.com/google-us.xml" autocomplete="off" aria-labelledby="url-panel-label" />
+            <button type="button" class="btn btn-primary" id="check-url-btn">Check feed</button>
+          </div>
         </div>
 
         <div class="tools-panel tools-panel--file" id="panel-file" role="tabpanel" aria-labelledby="tab-file" hidden>
-          <div class="tools-dropzone" id="feed-dropzone" tabindex="0" role="button" aria-controls="feed-file" aria-label="Upload XML feed">
-            <input id="feed-file" class="tools-dropzone-input" type="file" accept=".xml,text/xml,application/xml" />
-            <p class="tools-dropzone-title" id="dropzone-title">Drop your feed XML here</p>
+          <p class="tools-panel-label" id="file-panel-label">Drop your XML feed here</p>
+          <input id="feed-file" class="visually-hidden" type="file" accept=".xml,text/xml,application/xml" tabindex="-1" />
+          <div class="tools-dropzone" id="feed-dropzone" tabindex="0" role="button" aria-labelledby="file-panel-label dropzone-title dropzone-hint">
+            <p class="tools-dropzone-title" id="dropzone-title">Drop XML file here</p>
             <p class="tools-dropzone-hint" id="dropzone-hint">or click to choose a file · .xml only</p>
           </div>
           <button type="button" class="btn btn-primary" id="check-file-btn">Check file</button>
         </div>
 
-        <p class="tools-note tools-note--console">We only use the file to build this report. We don’t store your full catalog.</p>
+        <p class="tools-note tools-note--console">We check product data such as titles, brands, variants, and identifiers. Your file is used for this report only — we don’t store the full catalog.</p>
         <p class="tools-status" id="check-status" hidden></p>
       </div>
+
+      <aside class="tools-outcome" aria-label="What you’ll get">
+        <h2 class="tools-outcome-heading">What you’ll get</h2>
+        <ul class="tools-outcome-list">
+          <li>
+            <strong>Product issues</strong>
+            <span>Titles · brands · variants · identifiers</span>
+          </li>
+          <li>
+            <strong>Affected products</strong>
+            <span>See which items in the sample are hit</span>
+          </li>
+          <li>
+            <strong>Fix priority</strong>
+            <span>Know what to fix first — not a raw dump</span>
+          </li>
+        </ul>
+        <p class="tools-outcome-foot">Free · No Shopify install · No catalog stored</p>
+      </aside>
     </section>
 
     <section class="tools-report wrap" id="report" hidden>

@@ -88,6 +88,9 @@
   }
 
   if (dropzone) {
+    dropzone.addEventListener("click", () => {
+      fileInput && fileInput.click();
+    });
     ["dragenter", "dragover"].forEach((evt) => {
       dropzone.addEventListener(evt, (e) => {
         e.preventDefault();
