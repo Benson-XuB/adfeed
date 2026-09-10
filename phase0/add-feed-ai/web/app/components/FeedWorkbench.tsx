@@ -139,6 +139,17 @@ function hasOptionalFix(p: WorkbenchProduct): boolean {
   return Boolean(p.need_color || p.need_size || p.need_image);
 }
 
+function inToFixScope(p: WorkbenchProduct): boolean {
+  // Soft WARN alone is not To fix (shown via warn_reason instead).
+  return Boolean(
+    p.need_color ||
+      p.need_size ||
+      p.need_image ||
+      p.needs_regenerate ||
+      (p.feed_status || "") === "missing",
+  );
+}
+
 function displayProductType(key: string): string {
   if (key === "我的商店") return t("scope.myStoreType");
   return key;
@@ -196,10 +207,7 @@ export function FeedWorkbench(props: Props) {
   };
 
   const needsCount = useMemo(
-    () =>
-      products.filter(
-        (p) => p.needs_attention || p.need_color || p.need_size || p.need_image,
-      ).length,
+    () => products.filter(inToFixScope).length,
     [products],
   );
 
@@ -220,9 +228,7 @@ export function FeedWorkbench(props: Props) {
     const q = search.trim().toLowerCase();
     let list = products;
     if (scopeType === "needs") {
-      list = list.filter(
-        (p) => p.needs_attention || p.need_color || p.need_size || p.need_image,
-      );
+      list = list.filter(inToFixScope);
     } else if (scopeType !== "all") {
       list = list.filter((p) => typeKey(p) === scopeType);
     }
@@ -237,14 +243,8 @@ export function FeedWorkbench(props: Props) {
       );
     }
     return [...list].sort((a, b) => {
-      const ha =
-        a.needs_attention || a.need_color || a.need_size || a.need_image
-          ? 0
-          : 1;
-      const hb =
-        b.needs_attention || b.need_color || b.need_size || b.need_image
-          ? 0
-          : 1;
+      const ha = inToFixScope(a) ? 0 : 1;
+      const hb = inToFixScope(b) ? 0 : 1;
       return ha - hb;
     });
   }, [products, search, scopeType]);
@@ -572,6 +572,7 @@ export function FeedWorkbench(props: Props) {
                     : defects.length
                       ? defects.join("、")
                       : "";
+                const warnLine = String(p.warn_reason || "").trim();
                 const shopifyHref =
                   tag.kind === "error" && !p.needs_regenerate
                     ? shopifyAdminProductHref(p.id)
@@ -658,6 +659,13 @@ export function FeedWorkbench(props: Props) {
                                     : ""}
                                 </button>
                               )}
+                            </div>
+                          ) : null}
+                          {warnLine && !p.needs_regenerate ? (
+                            <div className={styles.warnHint}>
+                              {t("workbench.warnHintLine", {
+                                detail: warnLine,
+                              })}
                             </div>
                           ) : null}
                         </div>

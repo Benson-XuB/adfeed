@@ -316,6 +316,30 @@ def _sku_sets_from_quality(quality_report: Optional[dict]) -> dict[str, set[str]
     }
 
 
+def _warn_reason_for_skus(
+    quality_report: Optional[dict], skus: list[str]
+) -> str:
+    """Merchant-facing soft WARN messages for matched feed SKUs (deduped)."""
+    qr = quality_report if isinstance(quality_report, dict) else {}
+    want = {str(s).strip() for s in skus if str(s).strip()}
+    if not want:
+        return ""
+    seen: set[str] = set()
+    parts: list[str] = []
+    for ev in qr.get("warnings") or []:
+        if not isinstance(ev, dict):
+            continue
+        sku = str(ev.get("sku") or "").strip()
+        if sku not in want:
+            continue
+        msg = str(ev.get("message") or ev.get("rule_id") or "").strip()
+        if not msg or msg in seen:
+            continue
+        seen.add(msg)
+        parts.append(msg)
+    return "; ".join(parts)
+
+
 def build_workbench_product_rows(
     *,
     store_id: str,
@@ -402,6 +426,9 @@ def build_workbench_product_rows(
                     break
             if not fail_reason and need_image:
                 fail_reason = "Main image is empty"
+        warn_reason = "" if needs_regenerate else _warn_reason_for_skus(
+            quality_report, skus
+        )
         if not matched:
             # Not in feed yet — keep pending, but still flag Shopify option gaps.
             status = "pending"
@@ -423,8 +450,10 @@ def build_workbench_product_rows(
             "need_image": need_image,
             "needs_regenerate": needs_regenerate,
             "fail_reason": fail_reason,
+            "warn_reason": warn_reason,
+            # Soft WARN alone is not To fix — surface via warn_reason instead.
             "needs_attention": bool(
-                needs_attrs or has_fatal or has_warn or needs_regenerate
+                needs_attrs or has_fatal or needs_regenerate
             ),
         })
     return out

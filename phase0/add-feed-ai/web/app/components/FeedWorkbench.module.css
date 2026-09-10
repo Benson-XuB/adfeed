@@ -798,6 +798,14 @@
   text-decoration: underline;
 }
 
+.warnHint {
+  margin-top: 0.2rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+  line-height: 1.35;
+}
+
 .regenHintBtn {
   appearance: none;
   margin: 0;

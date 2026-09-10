@@ -490,6 +490,7 @@ export type WorkbenchProduct = AppProduct & {
   needs_attention?: boolean;
   needs_regenerate?: boolean;
   fail_reason?: string;
+  warn_reason?: string;
   variant_skus?: string[];
 };
 

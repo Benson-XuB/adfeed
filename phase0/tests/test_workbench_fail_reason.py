@@ -143,3 +143,64 @@ def test_workbench_shopify_image_ready_asks_regenerate(tmp_path, monkeypatch):
     )
     assert "material" not in rows[0]["fail_reason"].lower()
     assert "empty" not in rows[0]["fail_reason"].lower()
+
+
+def test_warn_only_not_needs_attention_but_has_warn_reason(tmp_path, monkeypatch):
+    xml = """<?xml version="1.0"?>
+<rss><channel>
+<item>
+  <g:id>gift-1</g:id>
+  <g:title>Gift Card</g:title>
+  <g:image_link>https://cdn.example.com/gift.png</g:image_link>
+  <g:color>Assorted</g:color>
+  <g:size>100</g:size>
+</item>
+</channel></rss>
+"""
+    path = tmp_path / "us.xml"
+    path.write_text(xml, encoding="utf-8")
+    qr = {
+        "warnings": [
+            {
+                "rule_id": "M02",
+                "field": "g:material",
+                "sku": "gift-1",
+                "message": "Apparel missing material — GMC may flag incomplete attributes",
+            }
+        ],
+        "fatals": [],
+        "autofixed": [],
+    }
+    import adfeed.feed_preview as fp
+
+    monkeypatch.setattr(
+        fp,
+        "resolve_product_feed_filter",
+        lambda store_id, product_id: {
+            "skus": {"gift-1"},
+            "group_prefixes": set(),
+            "internal_id": "gift",
+        },
+    )
+    rows = build_workbench_product_rows(
+        store_id="s1",
+        file_path=str(path),
+        platform="google",
+        products=[
+            {
+                "id": "gift",
+                "title": "Gift Card",
+                "image_url": "https://cdn.example.com/gift.png",
+                "variant_skus": ["gift-1"],
+                "need_color": False,
+                "need_size": False,
+            }
+        ],
+        quality_report=qr,
+    )
+    assert rows[0]["feed_status"] == "warn"
+    assert rows[0]["needs_attention"] is False
+    assert rows[0]["need_color"] is False
+    assert rows[0]["need_size"] is False
+    assert rows[0]["need_image"] is False
+    assert "material" in rows[0]["warn_reason"].lower()
