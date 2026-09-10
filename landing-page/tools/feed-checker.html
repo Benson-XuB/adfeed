@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=fc3" />
+  <link rel="stylesheet" href="/styles.css?v=fc4" />
 </head>
 <body class="tools-page">
   <header class="site-nav">
@@ -95,13 +95,24 @@
     </section>
 
     <section class="tools-report wrap" id="report" hidden>
-      <h2>Your report</h2>
+      <h2>Your feed report</h2>
+      <div class="tools-report-summary" id="report-summary" hidden></div>
       <p class="tools-meta" id="report-meta"></p>
+
+      <h3 class="tools-report-section" id="issues-heading" hidden>Issues to fix</h3>
       <div id="report-buckets"></div>
-      <div class="tools-help card-block">
-        <h3>How AdFeed helps</h3>
+
+      <div class="tools-passed" id="report-passed" hidden>
+        <h3 class="tools-report-section">Cleared in this check</h3>
+        <ul id="report-passed-list"></ul>
+      </div>
+
+      <div class="tools-help card-block" id="report-cta">
+        <h3>Want to fix these automatically?</h3>
+        <p class="tools-help-lead">AdFeed cleans supplier-imported product data and generates a Google Shopping feed.</p>
         <ul id="report-helps"></ul>
-        <h3>What AdFeed won’t do</h3>
+        <p><a class="btn btn-primary" href="#waitlist">Try AdFeed →</a></p>
+        <h3 class="tools-wont-heading">AdFeed does not</h3>
         <ul id="report-cannot"></ul>
       </div>
     </section>
@@ -132,6 +143,6 @@
     </div>
   </footer>
   <script src="/waitlist.js" defer></script>
-  <script src="/tools/feed-checker.js?v=fc3" defer></script>
+  <script src="/tools/feed-checker.js?v=fc4" defer></script>
 </body>
 </html>

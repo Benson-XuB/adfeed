@@ -2,7 +2,11 @@
   const statusEl = document.getElementById("check-status");
   const report = document.getElementById("report");
   const meta = document.getElementById("report-meta");
+  const summaryEl = document.getElementById("report-summary");
+  const issuesHeading = document.getElementById("issues-heading");
   const bucketsEl = document.getElementById("report-buckets");
+  const passedWrap = document.getElementById("report-passed");
+  const passedList = document.getElementById("report-passed-list");
   const helpsEl = document.getElementById("report-helps");
   const cannotEl = document.getElementById("report-cannot");
   const urlInput = document.getElementById("feed-url");
@@ -140,26 +144,78 @@
 
   function renderReport(data) {
     report.hidden = false;
+    const summary = data.summary || {};
+    const buckets = data.buckets || [];
+    const itemCount = data.item_count || 0;
+
     meta.textContent = data.truncated
-      ? `Checked ${data.item_count} items (truncated to limit).`
-      : `Checked ${data.item_count} items.`;
+      ? `Checked ${itemCount} products (truncated to limit).`
+      : `Checked ${itemCount} products.`;
+
+    if (summaryEl) {
+      summaryEl.hidden = false;
+      const types = summary.issue_types || buckets.length || 0;
+      const affected = summary.affected_products;
+      const ok = summary.ok_products;
+      const breakdown = (summary.issue_breakdown || [])
+        .map(
+          (row) =>
+            `<li><span class="tools-summary-n">${escapeHtml(String(row.count))}</span> ${escapeHtml(row.label || row.code)}</li>`,
+        )
+        .join("");
+      summaryEl.innerHTML = `
+        <p class="tools-assessment">${escapeHtml(summary.assessment || "")}</p>
+        <div class="tools-summary-grid">
+          <div>
+            <p class="tools-summary-kicker">${types} issue type${types === 1 ? "" : "s"} found</p>
+            ${breakdown ? `<ul class="tools-summary-list">${breakdown}</ul>` : "<p class=\"tools-ok\">No issue types in this sample.</p>"}
+          </div>
+          <div class="tools-summary-side">
+            <p><strong>${escapeHtml(String(affected != null ? affected : "—"))}</strong> products need attention</p>
+            <p><strong>${escapeHtml(String(ok != null ? ok : "—"))}</strong> products look OK in this check</p>
+          </div>
+        </div>
+      `;
+    }
+
+    if (issuesHeading) issuesHeading.hidden = !buckets.length;
     bucketsEl.innerHTML = "";
-    (data.buckets || []).forEach((b) => {
+    buckets.forEach((b, idx) => {
       const block = document.createElement("article");
       block.className = "tools-bucket";
+      const n = b.count || 0;
       const samples = (b.samples || [])
         .map((s) => `<li><code>${escapeHtml(s.id || "")}</code> — ${escapeHtml(s.title || "")}</li>`)
         .join("");
+      const num = String(idx + 1).padStart(2, "0");
       block.innerHTML = `
-        <h3><span class="tools-count">${b.count}</span> ${escapeHtml(b.label || b.code)}</h3>
+        <h3><span class="tools-bucket-idx">${num}</span> ${escapeHtml(b.label || b.code)}</h3>
+        <p class="tools-bucket-meta">${n} product${n === 1 ? "" : "s"} affected</p>
         <p>${escapeHtml(b.advice || "")}</p>
         ${samples ? `<ul class="tools-samples">${samples}</ul>` : ""}
       `;
       bucketsEl.appendChild(block);
     });
-    if (!(data.buckets || []).length) {
-      bucketsEl.innerHTML = "<p class=\"tools-ok\">No major issues in the sample we checked.</p>";
+    if (!buckets.length) {
+      bucketsEl.innerHTML =
+        '<p class="tools-ok">No issues flagged in the sample we checked.</p>';
     }
+
+    const passed = summary.checks_passed || [];
+    if (passedWrap && passedList) {
+      if (passed.length) {
+        passedWrap.hidden = false;
+        passedList.innerHTML = "";
+        passed.forEach((c) => {
+          const li = document.createElement("li");
+          li.textContent = c.label || c.code;
+          passedList.appendChild(li);
+        });
+      } else {
+        passedWrap.hidden = true;
+      }
+    }
+
     renderList(helpsEl, data.adfeed_helps);
     renderList(cannotEl, data.adfeed_cannot);
     report.scrollIntoView({ behavior: "smooth", block: "start" });

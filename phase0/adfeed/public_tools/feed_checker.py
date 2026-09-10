@@ -20,6 +20,26 @@ TITLE_NOISE_RE = re.compile(
 )
 DIRTY_BRAND_RE = re.compile(r"\b(eprolo|cjdropshipping|alibaba|1688|factory)\b", re.I)
 
+# Map issue codes → overview categories (only rules we actually run).
+CHECK_CATEGORY = {
+    "missing_title": "titles",
+    "noisy_or_long_title": "titles",
+    "missing_brand": "brands",
+    "dirty_brand": "brands",
+    "missing_image": "images",
+    "missing_color": "variants",
+    "missing_size": "variants",
+    "missing_identifier": "identifiers",
+}
+
+CHECK_LABELS = {
+    "titles": "Title quality",
+    "brands": "Brand",
+    "images": "Main image",
+    "variants": "Color / size (apparel)",
+    "identifiers": "Product identifiers",
+}
+
 
 def _local(tag: str) -> str:
     if "}" in tag:
@@ -32,7 +52,6 @@ def _child_text(item: ET.Element, *names: str) -> str:
     for child in item:
         if _local(child.tag).lower() in wanted:
             return (child.text or "").strip()
-    # namespaced g: lookups
     for name in names:
         node = item.find(f"g:{name}", G_NS)
         if node is not None and (node.text or "").strip():
@@ -66,6 +85,16 @@ def _bucket(
         b["samples"].append(sample)
 
 
+def _assessment(*, item_count: int, issue_types: int, affected: int) -> str:
+    if item_count <= 0:
+        return "No products found in this feed sample."
+    if issue_types == 0:
+        return "Your feed looks healthy in this check. No major catalog issues found."
+    if affected >= max(1, int(item_count * 0.5)):
+        return "Several product-data issues need attention before you lean on Google Shopping."
+    return "Your feed needs some cleanup before running Google Shopping ads."
+
+
 def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> dict[str, Any]:
     if not data:
         raise ValueError("Empty feed")
@@ -80,6 +109,8 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
     buckets: dict[str, dict[str, Any]] = {}
     item_count = 0
     truncated = False
+    affected_ids: set[str] = set()
+    scanned_categories: set[str] = {"titles", "brands", "images", "identifiers"}
 
     for item in _iter_items(root):
         if item_count >= max_items:
@@ -98,6 +129,7 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
         product_type = _child_text(item, "product_type", "google_product_category")
 
         sample = {"id": offer_id or "(no id)", "title": (title or "")[:120]}
+        hit = False
 
         if not brand:
             _bucket(
@@ -107,6 +139,7 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                 advice="Confirm your ad-facing brand in the catalog; do not leave supplier defaults blank.",
                 sample=sample,
             )
+            hit = True
         elif DIRTY_BRAND_RE.search(brand):
             _bucket(
                 buckets,
@@ -115,6 +148,7 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                 advice="Replace supplier/platform brand names with the brand shoppers should see in ads.",
                 sample={**sample, "brand": brand},
             )
+            hit = True
 
         if not title:
             _bucket(
@@ -124,16 +158,22 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                 advice="Every item needs a clear shopping title.",
                 sample=sample,
             )
+            hit = True
         else:
             noisy = len(title) > TITLE_SOFT_LIMIT or bool(TITLE_NOISE_RE.search(title))
             if noisy:
                 _bucket(
                     buckets,
                     "noisy_or_long_title",
-                    label="Noisy or long title",
-                    advice="Shorten titles; drop supplier spam words. AdFeed can regenerate cleaner Shopping titles.",
+                    label="Title quality",
+                    advice=(
+                        "Supplier-style or overly long wording can make the product harder to match "
+                        "to searches. Shorten the title and drop marketplace spam words. "
+                        "This is a catalog quality issue, not an automatic Google rejection."
+                    ),
                     sample=sample,
                 )
+                hit = True
 
         if not image:
             _bucket(
@@ -143,12 +183,14 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                 advice="Add a primary product image link for Shopping eligibility.",
                 sample=sample,
             )
+            hit = True
 
         apparelish = bool(
             re.search(r"apparel|clothing|dress|skirt|shirt|shoe|jacket", product_type, re.I)
             or re.search(r"\b(dress|skirt|shirt|tee|jacket|pants)\b", title, re.I)
         )
         if apparelish:
+            scanned_categories.add("variants")
             if not color:
                 _bucket(
                     buckets,
@@ -157,6 +199,7 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                     advice="Set a real color attribute (not pattern/style mixed into color).",
                     sample=sample,
                 )
+                hit = True
             if not size:
                 _bucket(
                     buckets,
@@ -165,6 +208,7 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                     advice="Set size on apparel variants so Google can match shoppers.",
                     sample=sample,
                 )
+                hit = True
 
         has_id = bool(gtin or mpn)
         marked_no = identifier_exists in ("no", "false", "0")
@@ -180,21 +224,63 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
                 ),
                 sample=sample,
             )
+            hit = True
+
+        if hit:
+            affected_ids.add(offer_id or sample["id"])
+
+    bucket_list = sorted(buckets.values(), key=lambda b: (-b["count"], b["code"]))
+    issue_types = len(bucket_list)
+    affected = len(affected_ids)
+    ok_count = max(0, item_count - affected)
+
+    failed_cats = {
+        CHECK_CATEGORY[b["code"]]
+        for b in bucket_list
+        if b["code"] in CHECK_CATEGORY
+    }
+    checks_passed = [
+        {"code": code, "label": CHECK_LABELS[code]}
+        for code in ("titles", "brands", "images", "variants", "identifiers")
+        if code in scanned_categories and code not in failed_cats
+    ]
+    issue_breakdown = []
+    for b in bucket_list:
+        cat = CHECK_CATEGORY.get(b["code"], b["code"])
+        issue_breakdown.append(
+            {
+                "code": b["code"],
+                "category": cat,
+                "label": b["label"],
+                "count": b["count"],
+            }
+        )
 
     return {
         "ok": True,
         "item_count": item_count,
         "truncated": truncated,
-        "buckets": sorted(buckets.values(), key=lambda b: (-b["count"], b["code"])),
+        "summary": {
+            "assessment": _assessment(
+                item_count=item_count, issue_types=issue_types, affected=affected
+            ),
+            "issue_types": issue_types,
+            "affected_products": affected,
+            "ok_products": ok_count,
+            "issue_breakdown": issue_breakdown,
+            "checks_passed": checks_passed,
+        },
+        "buckets": bucket_list,
         "adfeed_helps": [
-            "Clean noisy 1688/supplier titles into concise Shopping titles",
+            "Clean supplier-imported titles into concise Shopping titles",
             "Split color / size / pattern cleanly in the feed",
             "Confirm brand and use compliant no-GTIN handling (never fake barcodes)",
-            "Publish a stable, always-synced Google feed URL",
+            "Publish a stable, always-synced Google Shopping feed URL",
         ],
         "adfeed_cannot": [
-            "Create fake GTINs or override Google account-level policy suspensions",
-            "Change your Merchant Center settings without you connecting Google later",
+            "Create fake GTINs",
+            "Bypass Google account-level suspensions",
+            "Change your Merchant Center settings",
         ],
     }
 
