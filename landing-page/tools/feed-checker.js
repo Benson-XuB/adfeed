@@ -13,19 +13,31 @@
   const dropTitle = document.getElementById("dropzone-title");
   const dropHint = document.getElementById("dropzone-hint");
 
-  function setTab(which) {
+  function setTab(which, { focus } = {}) {
     document.querySelectorAll(".tools-tab").forEach((t) => {
       const on = t.getAttribute("data-tab") === which;
       t.classList.toggle("is-active", on);
       t.setAttribute("aria-selected", on ? "true" : "false");
     });
-    if (panelUrl) panelUrl.hidden = which !== "url";
-    if (panelFile) panelFile.hidden = which !== "file";
-    if (which === "url" && urlInput) urlInput.focus();
+    if (panelUrl) {
+      const on = which === "url";
+      panelUrl.classList.toggle("is-open", on);
+      panelUrl.hidden = !on;
+    }
+    if (panelFile) {
+      const on = which === "file";
+      panelFile.classList.toggle("is-open", on);
+      panelFile.hidden = !on;
+    }
+    if (focus && which === "url" && urlInput) urlInput.focus();
   }
 
+  setTab("url");
+
   document.querySelectorAll(".tools-tab").forEach((tab) => {
-    tab.addEventListener("click", () => setTab(tab.getAttribute("data-tab")));
+    tab.addEventListener("click", () =>
+      setTab(tab.getAttribute("data-tab"), { focus: true }),
+    );
   });
 
   function setStatus(text, isError) {

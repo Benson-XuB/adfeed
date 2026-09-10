@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=fc3" />
 </head>
 <body class="tools-page">
   <header class="site-nav">
@@ -49,7 +49,7 @@
           <button type="button" class="tools-tab" role="tab" aria-selected="false" aria-controls="panel-file" data-tab="file" id="tab-file">Upload XML</button>
         </div>
 
-        <div class="tools-panel tools-panel--url" id="panel-url" role="tabpanel" aria-labelledby="tab-url">
+        <div class="tools-panel tools-panel--url is-open" id="panel-url" role="tabpanel" aria-labelledby="tab-url">
           <p class="tools-panel-label" id="url-panel-label">Paste your Google Shopping feed URL</p>
           <div class="tools-panel-row">
             <label class="visually-hidden" for="feed-url">Feed URL</label>
@@ -59,16 +59,18 @@
         </div>
 
         <div class="tools-panel tools-panel--file" id="panel-file" role="tabpanel" aria-labelledby="tab-file" hidden>
-          <p class="tools-panel-label" id="file-panel-label">Drop your XML feed here</p>
+          <p class="tools-panel-label" id="file-panel-label">Upload your Google Shopping XML</p>
           <input id="feed-file" class="visually-hidden" type="file" accept=".xml,text/xml,application/xml" tabindex="-1" />
-          <div class="tools-dropzone" id="feed-dropzone" tabindex="0" role="button" aria-labelledby="file-panel-label dropzone-title dropzone-hint">
-            <p class="tools-dropzone-title" id="dropzone-title">Drop XML file here</p>
-            <p class="tools-dropzone-hint" id="dropzone-hint">or click to choose a file · .xml only</p>
+          <button type="button" class="tools-dropzone" id="feed-dropzone" aria-labelledby="file-panel-label dropzone-title dropzone-hint">
+            <span class="tools-dropzone-title" id="dropzone-title">Drop XML file here</span>
+            <span class="tools-dropzone-hint" id="dropzone-hint">or click to choose · .xml only</span>
+          </button>
+          <div class="tools-panel-row tools-panel-row--end">
+            <button type="button" class="btn btn-primary" id="check-file-btn">Check file</button>
           </div>
-          <button type="button" class="btn btn-primary" id="check-file-btn">Check file</button>
         </div>
 
-        <p class="tools-note tools-note--console">We check product data such as titles, brands, variants, and identifiers. Your file is used for this report only — we don’t store the full catalog.</p>
+        <p class="tools-note tools-note--console">We check titles, brands, variants, and identifiers. Used for this report only — we don’t store your catalog.</p>
         <p class="tools-status" id="check-status" hidden></p>
       </div>
 
@@ -130,6 +132,6 @@
     </div>
   </footer>
   <script src="/waitlist.js" defer></script>
-  <script src="/tools/feed-checker.js" defer></script>
+  <script src="/tools/feed-checker.js?v=fc3" defer></script>
 </body>
 </html>
