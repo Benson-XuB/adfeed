@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>1688 Supplier Brand vs Google Shopping Brand | AdFeed</title>
+  <meta name="description" content="Why factory or agent names from 1688 break Google Shopping brand. How Shopify sellers should confirm a product/ad brand for Google-ready feeds." />
+  <link rel="canonical" href="https://deltfu.com/guides/1688-supplier-brand-vs-google-shopping-brand" />
+  <meta property="og:title" content="1688 Supplier Brand vs Google Shopping Brand" />
+  <meta property="og:description" content="Don’t ship the factory name as g:brand. Confirm the brand you sell under." />
+  <meta property="og:url" content="https://deltfu.com/guides/1688-supplier-brand-vs-google-shopping-brand" />
+  <meta property="og:type" content="article" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="guide-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Free tools</a>
+        <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="guide wrap">
+    <p class="guide-kicker"><a href="/guides/">Guides</a> · 1688 → Shopping</p>
+    <h1>1688 Supplier Brand vs Google Shopping Brand</h1>
+    <p class="guide-dek">
+      After 1688 → Shopify import, Vendor / supplier fields often hold a factory or agent name.
+      Google Shopping’s brand attribute should be the brand <strong>your store sells under</strong>—
+      unless that factory name truly is the consumer brand.
+    </p>
+
+    <aside class="guide-callout">
+      <p><strong>See brand gaps in the feed</strong></p>
+      <p><a class="btn btn-primary" href="/tools/feed-checker">Free Feed Checker →</a></p>
+    </aside>
+
+    <h2>What shows up after 1688 import</h2>
+    <p>
+      Common patterns: empty brand, a random English handle, “eprolo”-style defaults, or the 1688 shop name.
+      None of those help shoppers trust the offer—and Merchant Center may flag incorrect or missing brand.
+    </p>
+
+    <h2>Supplier name ≠ Shopping brand</h2>
+    <table class="guide-table">
+      <thead>
+        <tr><th>Field</th><th>Typical 1688 import</th><th>Better for Shopping</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Supplier / factory</td>
+          <td>Who makes or lists on 1688</td>
+          <td>Keep for ops—don’t auto-map to ads brand</td>
+        </tr>
+        <tr>
+          <td>Shopify Vendor</td>
+          <td>Often copied from supplier</td>
+          <td>May differ from feed brand</td>
+        </tr>
+        <tr>
+          <td>Google <code>brand</code></td>
+          <td>Wrong if copied blindly</td>
+          <td>Brand the customer should recognize</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="guide-dek" style="margin-top:1rem">
+      AdFeed asks you to <strong>confirm product brand once</strong> for the feed—so we don’t silently write a supplier default.
+    </p>
+
+    <h2>How to choose the brand value</h2>
+    <ol class="guide-ol">
+      <li>If you sell a real trademarked brand you own or are authorized for—use that.</li>
+      <li>If you are private label—use your store / label brand consistently.</li>
+      <li>If you are dropshipping unbranded goods—still pick one honest storefront brand; don’t invent GTINs to “complete” the row
+        (<a href="/guides/1688-products-need-gtin">(GTIN guide)</a>.</li>
+      <li>Do not use the 1688 factory name unless shoppers would recognize it as the brand on the PDP.</li>
+    </ol>
+
+    <h2>Why this matters for Google-ready feeds</h2>
+    <p>
+      Brand sits next to title and identifiers. A factory string in brand + noisy title + missing GTIN
+      is a classic 1688 import failure mode. Cleaning brand is often the highest-leverage first step
+      before regenerating the Shopping feed.
+    </p>
+
+    <h2>Practical workflow</h2>
+    <ol class="guide-ol">
+      <li>Confirm brand in AdFeed (or your process)</li>
+      <li>Generate / refresh the Google Shopping feed</li>
+      <li>Validate with the <a href="/tools/feed-checker">Feed Checker</a></li>
+      <li>If offers are already limited/disapproved, use the
+        <a href="/tools/google-issues">disapproval diagnostic</a></li>
+    </ol>
+
+    <aside class="guide-callout">
+      <p><strong>Hub guide</strong></p>
+      <p><a href="/guides/1688-google-shopping">How to use 1688 products on Google Shopping →</a></p>
+      <p><a class="btn btn-primary" href="/#waitlist">Get early access →</a></p>
+    </aside>
+
+    <nav class="guide-related" aria-label="Related">
+      <h2>Related</h2>
+      <ul>
+        <li><a href="/guides/1688-google-shopping">1688 → Google Shopping hub</a></li>
+        <li><a href="/guides/1688-products-need-gtin">Do 1688 products need GTIN?</a></li>
+        <li><a href="/guides/google-shopping-feed-errors">Feed errors guide</a></li>
+      </ul>
+    </nav>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <a class="logo" href="/">AdFeed <span style="color:#5fd4bd">AI</span></a>
+      <nav class="footer-links">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Free tools</a>
+        <a href="/#waitlist">Early access</a>
+        <a href="/privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

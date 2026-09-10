@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How to Use 1688 Products on Google Shopping (via Shopify) | AdFeed</title>
+  <meta name="description" content="For Shopify sellers sourcing from 1688: turn supplier products into Google-ready Shopping feeds. Titles, brand, variants, GTIN—without inventing barcodes." />
+  <link rel="canonical" href="https://deltfu.com/guides/1688-google-shopping" />
+  <meta property="og:title" content="How to Use 1688 Products on Google Shopping" />
+  <meta property="og:description" content="1688 → Shopify → Google-ready product feed. Diagnose first. No fake GTINs." />
+  <meta property="og:url" content="https://deltfu.com/guides/1688-google-shopping" />
+  <meta property="og:type" content="article" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="guide-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Free tools</a>
+        <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="guide wrap">
+    <p class="guide-kicker"><a href="/guides/">Guides</a> · 1688 → Shopping</p>
+    <h1>How to Use 1688 Products on Google Shopping</h1>
+    <p class="guide-dek">
+      For Shopify sellers who source from 1688—not a generic “feed generator” guide.
+      Goal: a <strong>Google-ready</strong> product feed you can submit to Merchant Center.
+      That is not the same as “Google approved.”
+    </p>
+
+    <aside class="guide-callout">
+      <p><strong>Diagnose first (free)</strong></p>
+      <p><a class="btn btn-primary" href="/tools/feed-checker">Feed Checker →</a>
+        <a class="btn btn-ghost" href="/tools/google-issues">Disapproval diagnostic →</a></p>
+    </aside>
+
+    <h2>Who this is for</h2>
+    <p>
+      You find products on 1688, sell on Shopify, and want Google Shopping traffic.
+      Your pain is usually not “I need any XML file”—it is that <strong>supplier catalog data</strong>
+      (Chinese titles, factory brands, messy color/size) does not look like Shopping-ready offers.
+    </p>
+
+    <h2>The real pipeline</h2>
+    <ol class="guide-ol">
+      <li>Source on 1688</li>
+      <li>Import into Shopify (your importer / ops)</li>
+      <li>Clean product data for ads (brand, title, variants)</li>
+      <li>Publish a Google Shopping product feed</li>
+      <li>Merchant Center scheduled fetch</li>
+    </ol>
+    <p>
+      Many tools stop at step 2 (import / translate / fulfill).
+      AdFeed focuses on steps 3–4: <strong>Google-ready feed</strong> for catalogs that already live in Shopify.
+    </p>
+
+    <h2>Why 1688 catalogs break Google Shopping</h2>
+    <h3>Titles</h3>
+    <p>
+      Supplier titles are attribute walls: promo words, factory codes, every size in one string.
+      Shopping needs a short, human product name—with this offer’s color/size once.
+    </p>
+    <h3>Brand</h3>
+    <p>
+      Importers often leave a factory or agent name as brand.
+      Shopping wants the brand you actually sell under—not the 1688 shop name by default.
+      See <a href="/guides/1688-supplier-brand-vs-google-shopping-brand">supplier brand vs Shopping brand</a>.
+    </p>
+    <h3>Variants</h3>
+    <p>
+      Color / size / “style” get mixed. Keep <code>color</code> as color; put pattern/style elsewhere.
+    </p>
+    <h3>GTIN / identifiers</h3>
+    <p>
+      Most 1688 SKUs have no real barcode. Inventing GTINs is worse than a compliant no-ID path.
+      See <a href="/guides/1688-products-need-gtin">Do 1688 products need GTIN?</a>
+    </p>
+    <h3>Images</h3>
+    <p>
+      Prefer clear gallery picks. Risky “AI remove watermark” edits can create Merchant Center policy risk.
+    </p>
+
+    <h2>Account issue vs feed issue</h2>
+    <p>
+      If offers are already in Merchant Center and disapproved, first ask:
+      is this an <strong>account / policy</strong> problem or <strong>product data / feed</strong> problem?
+    </p>
+    <p>
+      Use the <a href="/tools/google-issues">free disapproval diagnostic</a> (read-only).
+      Then check the file itself with the <a href="/tools/feed-checker">Feed Checker</a>.
+    </p>
+
+    <h2>What “Google-ready” means here</h2>
+    <ul>
+      <li>Brand confirmed (not blind factory name)</li>
+      <li>Titles readable for Shopping</li>
+      <li>Color / size (and pattern) split sanely</li>
+      <li>No invented barcodes</li>
+      <li>Stable hosted feed URL Merchant Center can fetch</li>
+    </ul>
+    <p>
+      Final approval is always Google’s decision. We never sell “guaranteed approved.”
+    </p>
+
+    <h2>Checklist: 1688 → Google-ready feed</h2>
+    <ol class="guide-ol">
+      <li>Confirm product / ad brand once in the app</li>
+      <li>Select the 1688-sourced products to include</li>
+      <li>Generate the Shopping feed (titles &amp; variants cleaned for ads)</li>
+      <li>Copy the hosted feed URL into Merchant Center scheduled fetch</li>
+      <li>Re-check with free tools after regenerate</li>
+    </ol>
+
+    <h2>What we never do</h2>
+    <ul>
+      <li>Invent GTINs or fake barcodes</li>
+      <li>Promise Merchant Center approval</li>
+      <li>Position as a generic feed tool for every Shopify niche</li>
+    </ul>
+
+    <aside class="guide-callout">
+      <p><strong>Next</strong></p>
+      <p>Turn 1688 products already in Shopify into a Google-ready Shopping feed—without inventing barcodes.</p>
+      <p><a class="btn btn-primary" href="/#waitlist">Get early access →</a></p>
+    </aside>
+
+    <nav class="guide-related" aria-label="Related">
+      <h2>Related</h2>
+      <ul>
+        <li><a href="/guides/1688-products-need-gtin">Do 1688 products need GTIN?</a></li>
+        <li><a href="/guides/1688-supplier-brand-vs-google-shopping-brand">1688 supplier brand vs Shopping brand</a></li>
+        <li><a href="/guides/google-shopping-feed-errors">Google Shopping feed errors</a></li>
+        <li><a href="/guides/google-shopping-disapproved">Products disapproved guide</a></li>
+      </ul>
+    </nav>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <a class="logo" href="/">AdFeed <span style="color:#5fd4bd">AI</span></a>
+      <nav class="footer-links">
+        <a href="/guides/">Guides</a>
+        <a href="/tools/">Free tools</a>
+        <a href="/#waitlist">Early access</a>
+        <a href="/privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

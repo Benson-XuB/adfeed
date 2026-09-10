@@ -49,6 +49,12 @@ class LandingHandler(http.server.SimpleHTTPRequestHandler):
             path = "/guides/google-shopping-disapproved.html"
         elif bare == "/guides/google-shopping-feed-errors":
             path = "/guides/google-shopping-feed-errors.html"
+        elif bare == "/guides/1688-google-shopping":
+            path = "/guides/1688-google-shopping.html"
+        elif bare == "/guides/1688-products-need-gtin":
+            path = "/guides/1688-products-need-gtin.html"
+        elif bare == "/guides/1688-supplier-brand-vs-google-shopping-brand":
+            path = "/guides/1688-supplier-brand-vs-google-shopping-brand.html"
         elif bare.startswith("/lp-assets/"):
             path = "/assets/" + bare[len("/lp-assets/") :]
         return super().translate_path(path)
@@ -74,6 +80,12 @@ class LandingHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/guides/google-shopping-disapproved.html" + q
         elif bare == "/guides/google-shopping-feed-errors":
             self.path = "/guides/google-shopping-feed-errors.html" + q
+        elif bare == "/guides/1688-google-shopping":
+            self.path = "/guides/1688-google-shopping.html" + q
+        elif bare == "/guides/1688-products-need-gtin":
+            self.path = "/guides/1688-products-need-gtin.html" + q
+        elif bare == "/guides/1688-supplier-brand-vs-google-shopping-brand":
+            self.path = "/guides/1688-supplier-brand-vs-google-shopping-brand.html" + q
         super().do_GET()
 
     def do_POST(self) -> None:
