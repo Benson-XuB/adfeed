@@ -222,7 +222,7 @@ export const messages = {
   "billing": {
     "current": "Plan: {{plan}} · {{left}} / {{total}} generate units left",
     "summaryPaidThrough": "No active plan · previous {{prev}} units {{left}} / {{total}} until {{expires}}",
-    "summaryPaidThroughQuota": "No active plan · {{left}} / {{total}} generate units left",
+    "summaryPaidThroughQuota": "{{left}} / {{total}} generate units left",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "headerQuotaUntil": "{{plan}} · {{left}} / {{total}} · until {{expires}}",
     "headerQuotaPaidThrough": "No active plan · {{plan}} units {{left}} / {{total}} until {{expires}}",
@@ -1033,7 +1033,7 @@ export const messages = {
   "billing": {
     "current": "套餐：{{plan}} · 剩余 {{left}} / {{total}} 次生成",
     "summaryPaidThrough": "无进行中套餐 · 此前 {{prev}} 额度 {{left}} / {{total}} 至 {{expires}}",
-    "summaryPaidThroughQuota": "无进行中套餐 · 剩余 {{left}} / {{total}} 次生成",
+    "summaryPaidThroughQuota": "剩余 {{left}} / {{total}} 次生成",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "headerQuotaUntil": "{{plan}} · {{left}} / {{total}} · 至 {{expires}}",
     "headerQuotaPaidThrough": "无进行中套餐 · {{plan}} 额度 {{left}} / {{total}} 至 {{expires}}",
