@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google Ads Shopping Monitor — Read-only performance | AdFeed</title>
+  <meta name="description" content="Monitor Google Shopping ads performance: impressions, clicks, CPC, ROAS, and budget pressure. Demo now; connect Google Ads when your developer token is ready. Marketing tool only — not the Shopify app." />
+  <link rel="canonical" href="https://deltfu.com/tools/google-ads-monitor" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=gam1" />
+</head>
+<body class="tools-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/tools/">Tools</a>
+        <a href="/tools/feed-checker">Feed checker</a>
+        <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="tools-hero wrap">
+      <p class="eyebrow">Free tool · Google Ads · Read-only · Not the Shopify app</p>
+      <h1 class="tools-hero-title">Google Shopping ads monitor</h1>
+      <p class="tools-deck">
+        Track impressions, clicks, CPC, ROAS, and budget pressure — including before/after a bidding change.
+      </p>
+      <p class="tools-lead">
+        Runs on <strong>sample data</strong> until you add a Google Ads API developer token. OAuth is wired; live accounts light up after token approval. This page never changes bids.
+      </p>
+      <p class="tools-status" id="statusLine" hidden></p>
+      <p class="gam-notice" id="setupNotice"></p>
+      <p class="gam-notice" id="reportNotice" hidden></p>
+
+      <div class="gam-connect-row">
+        <a class="btn btn-primary" id="connectBtn" href="/api/public/google-ads/oauth/start" hidden>Connect Google Ads</a>
+        <button type="button" class="btn" id="disconnectBtn" hidden>Disconnect</button>
+        <select id="customerSelect" hidden aria-label="Ads customer"></select>
+        <button type="button" class="btn btn-primary" id="loadLiveBtn" hidden>Load live report</button>
+        <button type="button" class="btn" id="demoBtn">Show sample</button>
+      </div>
+    </section>
+
+    <div class="gam-dashboard wrap">
+      <header class="topbar">
+        <div>
+          <h2 style="font-size:1.1rem;margin:0 0 4px;font-family:var(--font-body)">Performance panel</h2>
+          <p class="sub">
+            <span>Impressions / clicks / CPC / ROAS / budget</span>
+            <span class="badge gam-badge-demo" id="dataBadge">Sample data</span>
+          </p>
+        </div>
+        <div class="controls">
+          <div class="seg" id="seg" role="group" aria-label="Period filter">
+            <button type="button" data-f="all" class="on">All</button>
+            <button type="button" data-f="pre">Before cut</button>
+            <button type="button" data-f="post">After cut</button>
+          </div>
+          <button type="button" class="btn" id="pasteBtn">Paste CSV</button>
+        </div>
+      </header>
+
+      <section class="csv-panel" id="csvPanel" hidden>
+        <textarea id="csvInput" placeholder="date,impressions,clicks,cost,conversions,conversion_value"></textarea>
+        <div class="csv-actions">
+          <button type="button" class="btn primary" id="applyCsv">Apply CSV</button>
+          <button type="button" class="btn" id="closeCsv">Cancel</button>
+        </div>
+        <div class="csv-msg" id="csvMsg"></div>
+        <div class="csv-hint">Optional offline path. Live Ads API will replace this once your developer token is set.</div>
+      </section>
+
+      <section class="kpis" id="kpis"></section>
+
+      <section class="main-grid">
+        <div class="panel">
+          <div class="panel-title">
+            <span>Daily trend: impressions · clicks · CPC</span>
+            <span class="hint">Vertical line = cut date</span>
+          </div>
+          <div id="trendChart" class="chart"></div>
+        </div>
+        <aside class="panel">
+          <div class="panel-title"><span>Before / after cut</span></div>
+          <div class="cmp-rows" id="cmpBody"></div>
+        </aside>
+      </section>
+
+      <section class="sub-grid">
+        <div class="panel">
+          <div class="panel-title">
+            <span>ROAS vs tROAS target</span>
+          </div>
+          <div id="roasChart" class="chart"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span>Impact signals</span></div>
+          <div id="signalsBody"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title"><span>Daily detail</span></div>
+        <div class="table-wrap">
+          <table id="dailyTable">
+            <thead><tr id="tableHead"></tr></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="foot">
+        Read-only monitor. Does not change bids, budgets, or Merchant Center settings.
+        Not part of the Shopify App under review. CPC = cost ÷ clicks; ROAS = conversion value ÷ cost.
+      </footer>
+    </div>
+
+    <section class="tools-cta wrap" id="waitlist">
+      <h2>Need cleaner product data for Shopping?</h2>
+      <p>AdFeed fixes 1688 → Shopify catalog fields and generates a Google-ready feed. Separate from this Ads monitor.</p>
+      <p><a class="btn btn-primary" href="/tools/feed-checker">Check your feed</a>
+         <a class="btn" href="/#waitlist">Get early access</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p>© AdFeed AI</p>
+      <nav><a href="/tools/">Tools</a> · <a href="/privacy.html">Privacy</a></nav>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+  <script src="/tools/google-ads-monitor.js?v=gam1" defer></script>
+</body>
+</html>

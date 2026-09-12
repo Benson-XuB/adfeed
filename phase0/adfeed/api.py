@@ -2253,6 +2253,14 @@ try:
 except ImportError:
     pass
 
+# Marketing-site Google Ads monitor (separate OAuth + cookie from MC tool)
+try:
+    from .public_tools.google_ads_router import router as google_ads_router
+
+    app.include_router(google_ads_router)
+except ImportError:
+    pass
+
 # App Google MC Push (API write) — optional until package is deployed with full App rollout
 try:
     from .google_mc_push.router import router as google_mc_push_router

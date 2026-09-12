@@ -21,6 +21,11 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://deltfu.com/tools/google-ads-monitor</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
     <loc>https://deltfu.com/guides/</loc>
     <changefreq>weekly</changefreq>
     <priority>0.85</priority>
