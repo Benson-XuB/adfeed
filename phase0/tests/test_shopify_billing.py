@@ -312,6 +312,8 @@ def test_uninstall_cancels_before_clearing_token(app_client, monkeypatch):
         plan="starter",
         billing_status="active",
         subscription_id="gid://shopify/AppSubscription/42",
+        subscription_started_at="2026-09-01T00:00:00Z",
+        subscription_period_end="2099-01-01T00:00:00Z",
     )
     seen = {"had_token": False}
 
@@ -323,9 +325,19 @@ def test_uninstall_cancels_before_clearing_token(app_client, monkeypatch):
             "errors": [],
         }
 
+    def _fake_snap(st):
+        return {
+            "id": "gid://shopify/AppSubscription/42",
+            "name": "AdFeed Starter",
+            "status": "ACTIVE",
+            "created_at": "2026-09-01T00:00:00Z",
+            "current_period_end": "2099-01-01T00:00:00Z",
+        }
+
     import adfeed.shopify_billing as billing_mod
 
     monkeypatch.setattr(billing_mod, "cancel_app_subscriptions", _fake_cancel)
+    monkeypatch.setattr(billing_mod, "snapshot_paid_period", _fake_snap)
 
     out = handle_app_uninstalled("gone.myshopify.com")
     assert out["ok"] is True
@@ -334,7 +346,8 @@ def test_uninstall_cancels_before_clearing_token(app_client, monkeypatch):
     assert updated.access_token is None
     assert updated.status == "inactive"
     assert updated.billing_status == "cancelled"
-    assert updated.plan == "starter"  # do not force free on uninstall
+    assert updated.plan == "free"
+    assert updated.previous_plan == "starter"
 
 
 def test_billing_status_includes_active_subscription(app_client, monkeypatch):
@@ -370,11 +383,11 @@ def test_billing_status_includes_active_subscription(app_client, monkeypatch):
     assert sub["status"] == "ACTIVE"
     assert sub["created_at"] == "2026-07-01T12:00:00Z"
     assert sub["current_period_end"] == "2026-10-01T12:00:00Z"
-    assert sub.get("persists_after_reinstall") is True
+    assert sub.get("persists_after_reinstall") is False
 
 
 def test_empty_active_keeps_paid_grace_period(app_client, monkeypatch):
-    """Uninstall cancels charge → activeSubscriptions empty, but paid period remains."""
+    """Uninstall cancels → no active plan; banner still shows period details."""
     client, store_db, billing = app_client
     token = _token()
     client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
@@ -384,6 +397,7 @@ def test_empty_active_keeps_paid_grace_period(app_client, monkeypatch):
         access_token="shpat_test",
         plan="starter",
         billing_status="cancelled",
+        previous_plan="starter",
         subscription_started_at="2026-09-01T00:00:00Z",
         subscription_period_end="2099-12-31T00:00:00Z",
     )
@@ -401,12 +415,13 @@ def test_empty_active_keeps_paid_grace_period(app_client, monkeypatch):
     res = client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200
     data = res.json()
-    assert data["plan"] == "starter"
-    assert data["quota_total"] == 50
+    assert data["plan"] == "free"
+    assert data["quota_total"] == 20
     sub = data.get("active_subscription") or {}
     assert sub.get("persists_after_reinstall") is True
     assert sub["current_period_end"].startswith("2099")
     assert sub["status"] == "CANCELLED"
+    assert "Starter" in sub["name"]
 
 
 def test_uninstall_snapshots_period_before_cancel(app_client, monkeypatch):
@@ -451,5 +466,6 @@ def test_uninstall_snapshots_period_before_cancel(app_client, monkeypatch):
     assert out.get("period_snapshot")
     updated = store_db.get_store(store.id)
     assert updated.subscription_period_end == "2026-10-01T00:00:00Z"
-    assert updated.plan == "growth"
+    assert updated.plan == "free"
+    assert updated.previous_plan == "growth"
     assert updated.access_token is None

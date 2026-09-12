@@ -101,12 +101,10 @@ def handle_products_delete(shop_domain: str, payload: dict) -> dict:
 
 
 def handle_app_uninstalled(shop_domain: str) -> dict:
-    """Mark store inactive; snapshot paid period; best-effort cancel.
+    """Cancel subscription; clear active plan; keep period for reinstall banner.
 
-    Shopify cancels the charge on uninstall (ACTIVE → CANCELLED) and
-    activeSubscriptions becomes empty, but the merchant may still use the
-    paid remainder. Snapshot currentPeriodEnd before clearing the token so
-    reinstall can restore plan + banner.
+    Review: uninstall cancels so reinstall has no active plan. If the paid
+    period has not ended, App shows a banner with plan / start / end.
     """
     shop = _norm_shop(shop_domain)
     store = store_db.get_store_by_domain(shop) if shop else None
@@ -115,15 +113,34 @@ def handle_app_uninstalled(shop_domain: str) -> dict:
 
     snapshot = None
     cancel_result: dict = {"attempted": 0, "cancelled_ids": [], "errors": []}
+    prev_plan = (
+        store.plan
+        if (store.plan or "").lower() in ("starter", "growth")
+        else store.previous_plan
+    )
     if store.access_token:
         try:
             from .shopify_billing import (
                 cancel_app_subscriptions,
+                clear_to_free_keep_period,
+                normalize_plan_name,
                 snapshot_paid_period,
             )
 
             snapshot = snapshot_paid_period(store)
             cancel_result = cancel_app_subscriptions(store)
+            store = store_db.get_store(store.id) or store
+            snap_plan = normalize_plan_name((snapshot or {}).get("name") or "")
+            clear_to_free_keep_period(
+                store.id,
+                previous_plan=prev_plan
+                or (snap_plan if snap_plan in ("starter", "growth") else None),
+                started_at=(snapshot or {}).get("created_at")
+                or store.subscription_started_at,
+                period_end=(snapshot or {}).get("current_period_end")
+                or store.subscription_period_end,
+                subscription_id=(snapshot or {}).get("id") or store.subscription_id,
+            )
         except Exception as exc:
             logger.warning(
                 "uninstall billing cleanup failed for %s: %s",
@@ -135,13 +152,30 @@ def handle_app_uninstalled(shop_domain: str) -> dict:
                 "cancelled_ids": [],
                 "errors": [str(exc)],
             }
+            try:
+                from .shopify_billing import clear_to_free_keep_period
+
+                clear_to_free_keep_period(store.id, previous_plan=prev_plan)
+            except Exception:
+                pass
 
     store_db.update_store(
         store.id,
         access_token=None,
         status="inactive",
         billing_status="cancelled",
+        plan="free",
     )
+    # Ensure free quota after uninstall even if clear_to_free failed mid-way
+    try:
+        from .shopify_billing import apply_plan_to_store, quota_for_plan
+
+        apply_plan_to_store(store.id, plan="free", billing_status="cancelled")
+        if prev_plan:
+            store_db.update_store(store.id, previous_plan=str(prev_plan).lower())
+    except Exception:
+        store_db.update_store(store.id, plan="free", quota_total=20)
+
     return {
         "ok": True,
         "store_id": store.id,

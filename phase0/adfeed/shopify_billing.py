@@ -111,6 +111,8 @@ def apply_plan_handle(
                 subscription_id=subscription_id,
             )
             updated = store_db.get_store(store_id) or updated
+        store_db.update_store(store_id, previous_plan=None)
+        updated = store_db.get_store(store_id) or updated
     return updated
 
 
@@ -395,15 +397,19 @@ def snapshot_paid_period(store: store_db.Store) -> Optional[dict]:
 
 
 def grace_subscription_payload(store: store_db.Store) -> Optional[dict]:
-    """Paid-through entitlement when Shopify already CANCELLED the charge."""
-    plan = normalize_plan_name(store.plan or "free")
+    """Banner-only payload after uninstall cancel (no local active paid plan).
+
+    App Store review: reinstall must not show an active plan; if the charge
+    still covers a period, show plan / start / end on a banner.
+    """
+    prev = normalize_plan_name(store.previous_plan or "")
     period_end = store.subscription_period_end or ""
     started = store.subscription_started_at or ""
-    if plan not in VALID_PAID_PLANS:
+    if prev not in VALID_PAID_PLANS:
         return None
     if not period_still_open(period_end):
         return None
-    name = f"AdFeed {plan.title()}"
+    name = f"AdFeed {prev.title()}"
     return active_subscription_payload(
         {
             "id": store.subscription_id or "",
@@ -414,6 +420,35 @@ def grace_subscription_payload(store: store_db.Store) -> Optional[dict]:
         },
         persists_after_reinstall=True,
     )
+
+
+def clear_to_free_keep_period(
+    store_id: str,
+    *,
+    previous_plan: Optional[str] = None,
+    started_at: Optional[str] = None,
+    period_end: Optional[str] = None,
+    subscription_id: Optional[str] = None,
+) -> store_db.Store:
+    """No active plan locally; retain period fields for the review banner."""
+    store = store_db.get_store(store_id)
+    prev = previous_plan
+    if prev is None and store:
+        prev = store.previous_plan or (
+            store.plan if normalize_plan_name(store.plan) in VALID_PAID_PLANS else None
+        )
+    start = started_at if started_at is not None else (store.subscription_started_at if store else None)
+    end = period_end if period_end is not None else (store.subscription_period_end if store else None)
+    sub_id = subscription_id if subscription_id is not None else (store.subscription_id if store else None)
+    apply_plan_to_store(store_id, plan="free", billing_status="cancelled", subscription_id=sub_id or "")
+    store_db.update_store(
+        store_id,
+        previous_plan=normalize_plan_name(prev) if prev else None,
+        subscription_started_at=start or None,
+        subscription_period_end=end or None,
+        billing_status="cancelled",
+    )
+    return store_db.get_store(store_id)
 
 
 def load_active_app_subscriptions(
@@ -526,7 +561,10 @@ def active_subscription_payload(
 def _recover_grace_from_all_subscriptions(
     store: store_db.Store,
 ) -> Optional[tuple[store_db.Store, dict]]:
-    """After wipe-to-free, recover paid-through from CANCELLED allSubscriptions."""
+    """After uninstall, recover banner dates from CANCELLED allSubscriptions.
+
+    Does not restore an active paid plan — reinstall stays on free + banner.
+    """
     nodes = getattr(store, "_all_subscriptions_cache", None)
     if nodes is None and store.access_token:
         try:
@@ -544,41 +582,31 @@ def _recover_grace_from_all_subscriptions(
             period_end = estimate_period_end_from_created(started)
         if not period_still_open(period_end):
             continue
-        persist_subscription_period(
+        updated = clear_to_free_keep_period(
             store.id,
+            previous_plan=plan,
             started_at=started,
             period_end=period_end,
             subscription_id=sub.get("id") or None,
         )
-        updated = apply_plan_to_store(
-            store.id,
-            plan=plan,
-            billing_status="cancelled",
-            subscription_id=sub.get("id") or None,
-        )
-        return updated, active_subscription_payload(
-            {
-                "id": sub.get("id") or "",
-                "name": sub.get("name") or f"AdFeed {plan.title()}",
-                "status": "CANCELLED",
-                "created_at": started,
-                "current_period_end": period_end,
-            },
-            persists_after_reinstall=True,
-        )
+        banner = grace_subscription_payload(updated)
+        if banner:
+            return updated, banner
     return None
 
 
 def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Optional[dict]]:
-    """Align local plan with Shopify; honor paid-through after CANCELLED uninstall.
+    """Sync Shopify billing; reinstall with no ACTIVE → free + period banner.
 
-    Shopify docs: uninstall cancels the subscription, but the merchant may
-    reinstall and use the app until the remainder of the billing period.
-    activeSubscriptions is empty once CANCELLED — do not treat that as free
-    while subscription_period_end is still in the future.
+    Review: uninstall cancels; reinstall must not show an active plan. If a
+    cancelled charge still covers a period, return banner fields only.
     """
     grace = grace_subscription_payload(store)
     if not store.access_token:
+        # Still free locally when cancelled; banner may accompany
+        if normalize_plan_name(store.plan) in VALID_PAID_PLANS and grace:
+            store = clear_to_free_keep_period(store.id)
+            grace = grace_subscription_payload(store)
         return store, grace
 
     ok, subs = load_active_app_subscriptions(store)
@@ -594,7 +622,6 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
         period_end = primary.get("current_period_end") or ""
         if not period_end and started:
             period_end = estimate_period_end_from_created(started)
-        # Never wipe a known paid-through date with empty Shopify fields
         if not started:
             started = store.subscription_started_at or ""
         if not period_end:
@@ -616,7 +643,10 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
             billing_status="active",
             subscription_id=primary.get("id") or None,
         )
+        store_db.update_store(store.id, previous_plan=None)
         updated = store_db.get_store(store.id) or updated
+        # Fresh ACTIVE subscription = real active plan (merchant re-approved).
+        # No "persists after reinstall" banner — period lives on the Plans card.
         payload = active_subscription_payload(
             {
                 "id": primary.get("id") or "",
@@ -625,32 +655,29 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
                 "created_at": started or updated.subscription_started_at or "",
                 "current_period_end": period_end or updated.subscription_period_end or "",
             },
-            persists_after_reinstall=plan_key in VALID_PAID_PLANS,
+            persists_after_reinstall=False,
         )
         return updated, payload
 
-    # No ACTIVE — keep paid grace if we still have period_end locally
+    # No ACTIVE on Shopify → no active plan in app; banner if period remains
     refreshed = store_db.get_store(store.id) or store
+    if normalize_plan_name(refreshed.plan) in VALID_PAID_PLANS or refreshed.previous_plan:
+        prev = refreshed.previous_plan or refreshed.plan
+        refreshed = clear_to_free_keep_period(
+            refreshed.id,
+            previous_plan=prev,
+            started_at=refreshed.subscription_started_at,
+            period_end=refreshed.subscription_period_end,
+            subscription_id=refreshed.subscription_id,
+        )
     grace = grace_subscription_payload(refreshed)
     if grace:
-        plan = normalize_plan_name(refreshed.plan)
-        if plan in VALID_PAID_PLANS:
-            # Keep paid quota in sync (uninstall must not leave free quota on paid plan)
-            if int(refreshed.quota_total or 0) != quota_for_plan(plan):
-                refreshed = apply_plan_to_store(
-                    refreshed.id,
-                    plan=plan,
-                    billing_status=refreshed.billing_status or "cancelled",
-                    subscription_id=refreshed.subscription_id,
-                )
-                # re-apply period fields wiped? apply_plan_to_store doesn't touch period
-            return refreshed, grace
+        return refreshed, grace
 
     recovered = _recover_grace_from_all_subscriptions(store)
     if recovered:
         return recovered
 
-    # Truly no paid remainder
     updated = apply_plan_to_store(
         store.id,
         plan="free",
@@ -658,57 +685,15 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
         subscription_id="",
     )
     persist_subscription_period(store.id, started_at="", period_end="")
-    return updated, None
+    store_db.update_store(store.id, previous_plan=None)
+    return store_db.get_store(store.id) or updated, None
 
 
 def build_billing_status_response(store: store_db.Store) -> dict:
-    """Billing status JSON including optional active_subscription for App banner."""
+    """Billing status JSON; active_subscription used for review banner when set."""
     synced, active_sub = sync_billing_from_shopify(store)
-    # Always surface dates for paid plans (reviewer banner) even if GraphQL omitted them
     if not active_sub:
         active_sub = grace_subscription_payload(synced)
-    if (
-        not active_sub
-        and normalize_plan_name(synced.plan) in VALID_PAID_PLANS
-        and (synced.subscription_started_at or synced.subscription_period_end)
-    ):
-        active_sub = active_subscription_payload(
-            {
-                "id": synced.subscription_id or "",
-                "name": f"AdFeed {normalize_plan_name(synced.plan).title()}",
-                "status": (synced.billing_status or "active").upper(),
-                "created_at": synced.subscription_started_at or "",
-                "current_period_end": synced.subscription_period_end or "",
-            },
-            persists_after_reinstall=True,
-        )
-    if (
-        not active_sub
-        and normalize_plan_name(synced.plan) in VALID_PAID_PLANS
-    ):
-        # Last resort: synthesize a visible window so reinstall review always sees dates
-        now = _now_utc()
-        started = synced.subscription_started_at or now.isoformat().replace("+00:00", "Z")
-        period_end = synced.subscription_period_end or (
-            now + timedelta(days=30)
-        ).isoformat().replace("+00:00", "Z")
-        persist_subscription_period(
-            synced.id,
-            started_at=started,
-            period_end=period_end,
-            subscription_id=synced.subscription_id,
-        )
-        synced = store_db.get_store(synced.id) or synced
-        active_sub = active_subscription_payload(
-            {
-                "id": synced.subscription_id or "",
-                "name": f"AdFeed {normalize_plan_name(synced.plan).title()}",
-                "status": (synced.billing_status or "active").upper(),
-                "created_at": started,
-                "current_period_end": period_end,
-            },
-            persists_after_reinstall=True,
-        )
     pricing_url = ""
     try:
         pricing_url = managed_pricing_plans_url(synced.shopify_domain)
@@ -726,6 +711,7 @@ def build_billing_status_response(store: store_db.Store) -> dict:
         "subscription_id": synced.subscription_id,
         "subscription_started_at": synced.subscription_started_at,
         "subscription_period_end": synced.subscription_period_end,
+        "previous_plan": synced.previous_plan,
         "pricing_plans_url": pricing_url,
         "managed_pricing": True,
         "active_subscription": active_sub,

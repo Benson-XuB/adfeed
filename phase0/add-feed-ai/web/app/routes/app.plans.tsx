@@ -120,6 +120,9 @@ export default function Plans() {
   const paidThrough =
     String(billing?.active_subscription?.status || "").toUpperCase() ===
     "CANCELLED";
+  const persistBanner = Boolean(
+    billing?.active_subscription?.persists_after_reinstall,
+  );
 
   return (
     <s-page heading={t("billing.plans.pageTitle")}>
@@ -168,6 +171,11 @@ export default function Plans() {
               const rank = PLAN_RANK[id];
               const isUpgrade = paid && !isCurrent && rank > currentRank;
               const isLower = !isCurrent && rank < currentRank;
+              const showPeriodOnCard =
+                isCurrent &&
+                paid &&
+                !persistBanner &&
+                Boolean(startedLabel || expiresLabel);
 
               return (
                 <s-box
@@ -186,7 +194,7 @@ export default function Plans() {
                           {t("billing.plans.currentBadge")}
                         </s-badge>
                       ) : null}
-                      {isCurrent && paid && expiresLabel ? (
+                      {isCurrent && paid && expiresLabel && !persistBanner ? (
                         <s-badge tone="info">
                           {t("billing.plans.untilBadge", {
                             expires: expiresLabel,
@@ -199,7 +207,7 @@ export default function Plans() {
                     <s-text tone="neutral">
                       {t(`billing.plans.${id}.blurb`)}
                     </s-text>
-                    {isCurrent && paid && (startedLabel || expiresLabel) ? (
+                    {showPeriodOnCard ? (
                       <s-text tone="neutral">
                         {paidThrough && expiresLabel
                           ? t("billing.plans.periodPaidThrough", {

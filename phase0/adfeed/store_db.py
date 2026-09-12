@@ -246,6 +246,7 @@ def init_store_schema():
             "ALTER TABLE stores ADD COLUMN billing_status TEXT DEFAULT 'none'",
             "ALTER TABLE stores ADD COLUMN subscription_started_at TEXT",
             "ALTER TABLE stores ADD COLUMN subscription_period_end TEXT",
+            "ALTER TABLE stores ADD COLUMN previous_plan TEXT",
             "ALTER TABLE feed_files ADD COLUMN platform TEXT DEFAULT 'google'",
             "ALTER TABLE product_variants ADD COLUMN feed_image_url TEXT",
             "ALTER TABLE product_variants ADD COLUMN feed_title TEXT",
@@ -372,6 +373,7 @@ class Store:
     billing_status: str = "none"
     subscription_started_at: Optional[str] = None
     subscription_period_end: Optional[str] = None
+    previous_plan: Optional[str] = None
     status: str = "active"
     created_at: str = ""
     updated_at: str = ""
@@ -517,6 +519,7 @@ def _row_to_store(row) -> Store:
         subscription_period_end=(
             row["subscription_period_end"] if "subscription_period_end" in keys else None
         ),
+        previous_plan=row["previous_plan"] if "previous_plan" in keys else None,
         status=row["status"],
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
@@ -591,7 +594,8 @@ def update_store(store_id: str, **kwargs) -> bool:
                "site_url", "default_brand",
                "default_currency", "status", "plan", "quota_total", "quota_used",
                "subscription_id", "billing_status",
-               "subscription_started_at", "subscription_period_end"}
+               "subscription_started_at", "subscription_period_end",
+               "previous_plan"}
     sets, vals = [], []
     for k, v in kwargs.items():
         if k in allowed:

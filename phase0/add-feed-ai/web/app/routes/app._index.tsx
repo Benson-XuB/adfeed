@@ -471,9 +471,11 @@ export default function Home() {
     (Number(billing.quota_remaining) <= 0 || estimate?.affordable === false);
   const steps = pipelineSteps();
   const expiresIso =
-    billing?.active_subscription?.current_period_end ||
-    billing?.subscription_period_end ||
-    "";
+    billing?.active_subscription?.persists_after_reinstall
+      ? ""
+      : billing?.active_subscription?.current_period_end ||
+        billing?.subscription_period_end ||
+        "";
   const expiresShort = expiresIso
     ? new Date(expiresIso).toLocaleDateString("en-US", {
         month: "short",
@@ -481,7 +483,7 @@ export default function Home() {
       })
     : "";
   const headerQuota =
-    billing && expiresShort
+    billing && expiresShort && ["starter", "growth"].includes(planKey)
       ? t("billing.headerQuotaUntil", {
           plan: t(`billing.plans.${planKey}.name`),
           left: String(billing.quota_remaining),
