@@ -119,8 +119,9 @@ function ReinstallPeriodBanner() {
         <s-stack gap="small">
           <s-text>
             No active plan after reinstall. Your previous{" "}
-            <s-text type="strong">{planName}</s-text> subscription was cancelled
-            but remains paid through <s-text type="strong">{end}</s-text>.
+            <s-text type="strong">{planName}</s-text> was cancelled but stays
+            paid through <s-text type="strong">{end}</s-text> — generate units
+            from that plan remain until then.
           </s-text>
           <s-text tone="neutral">
             Plan: {planName} · Started: {start} · Expires: {end}

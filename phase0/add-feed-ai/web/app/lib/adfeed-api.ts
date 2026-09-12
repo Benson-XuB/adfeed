@@ -100,6 +100,7 @@ export type BillingStatus = {
   subscription_period_end?: string | null;
   pricing_plans_url?: string;
   managed_pricing?: boolean;
+  previous_plan?: string | null;
   active_subscription?: ActiveSubscription | null;
 };
 

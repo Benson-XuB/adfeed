@@ -482,21 +482,60 @@ export default function Home() {
         day: "numeric",
       })
     : "";
+  const paidThroughExpires =
+    billing?.active_subscription?.persists_after_reinstall
+      ? billing.active_subscription.current_period_end ||
+        billing.subscription_period_end ||
+        ""
+      : "";
+  const paidThroughShort = paidThroughExpires
+    ? new Date(paidThroughExpires).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+  const prevPlanKey = String(
+    billing?.previous_plan ||
+      billing?.active_subscription?.name ||
+      "",
+  )
+    .toLowerCase()
+    .includes("growth")
+    ? "growth"
+    : String(billing?.previous_plan || "")
+          .toLowerCase()
+          .includes("starter") ||
+        String(billing?.active_subscription?.name || "")
+          .toLowerCase()
+          .includes("starter")
+      ? "starter"
+      : "";
   const headerQuota =
-    billing && expiresShort && ["starter", "growth"].includes(planKey)
-      ? t("billing.headerQuotaUntil", {
-          plan: t(`billing.plans.${planKey}.name`),
+    billing &&
+    billing.active_subscription?.persists_after_reinstall &&
+    paidThroughShort
+      ? t("billing.headerQuotaPaidThrough", {
+          plan: prevPlanKey
+            ? t(`billing.plans.${prevPlanKey}.name`)
+            : billing.active_subscription.name || "plan",
           left: String(billing.quota_remaining),
           total: String(billing.quota_total),
-          expires: expiresShort,
+          expires: paidThroughShort,
         })
-      : billing
-        ? t("billing.headerQuota", {
+      : billing && expiresShort && ["starter", "growth"].includes(planKey)
+        ? t("billing.headerQuotaUntil", {
             plan: t(`billing.plans.${planKey}.name`),
             left: String(billing.quota_remaining),
             total: String(billing.quota_total),
+            expires: expiresShort,
           })
-        : "";
+        : billing
+          ? t("billing.headerQuota", {
+              plan: t(`billing.plans.${planKey}.name`),
+              left: String(billing.quota_remaining),
+              total: String(billing.quota_total),
+            })
+          : "";
 
   return (
     <s-page heading={t("welcome")}>

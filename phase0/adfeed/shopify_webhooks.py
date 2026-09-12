@@ -159,22 +159,27 @@ def handle_app_uninstalled(shop_domain: str) -> dict:
             except Exception:
                 pass
 
+    store = store_db.get_store(store.id) or store
+    # Final state: no active plan label, paid-through quota if period open
+    try:
+        from .shopify_billing import clear_to_free_keep_period
+
+        clear_to_free_keep_period(
+            store.id,
+            previous_plan=prev_plan or store.previous_plan,
+            started_at=store.subscription_started_at,
+            period_end=store.subscription_period_end,
+            subscription_id=store.subscription_id,
+        )
+    except Exception:
+        store_db.update_store(store.id, plan="free", billing_status="cancelled")
+
     store_db.update_store(
         store.id,
         access_token=None,
         status="inactive",
         billing_status="cancelled",
-        plan="free",
     )
-    # Ensure free quota after uninstall even if clear_to_free failed mid-way
-    try:
-        from .shopify_billing import apply_plan_to_store, quota_for_plan
-
-        apply_plan_to_store(store.id, plan="free", billing_status="cancelled")
-        if prev_plan:
-            store_db.update_store(store.id, previous_plan=str(prev_plan).lower())
-    except Exception:
-        store_db.update_store(store.id, plan="free", quota_total=20)
 
     return {
         "ok": True,

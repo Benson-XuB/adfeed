@@ -348,6 +348,7 @@ def test_uninstall_cancels_before_clearing_token(app_client, monkeypatch):
     assert updated.billing_status == "cancelled"
     assert updated.plan == "free"
     assert updated.previous_plan == "starter"
+    assert updated.quota_total == 50
 
 
 def test_billing_status_includes_active_subscription(app_client, monkeypatch):
@@ -416,7 +417,7 @@ def test_empty_active_keeps_paid_grace_period(app_client, monkeypatch):
     assert res.status_code == 200
     data = res.json()
     assert data["plan"] == "free"
-    assert data["quota_total"] == 20
+    assert data["quota_total"] == 50
     sub = data.get("active_subscription") or {}
     assert sub.get("persists_after_reinstall") is True
     assert sub["current_period_end"].startswith("2099")

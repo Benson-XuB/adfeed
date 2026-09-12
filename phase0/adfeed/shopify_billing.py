@@ -430,7 +430,12 @@ def clear_to_free_keep_period(
     period_end: Optional[str] = None,
     subscription_id: Optional[str] = None,
 ) -> store_db.Store:
-    """No active plan locally; retain period fields for the review banner."""
+    """No active plan label; keep paid-through quota until period_end.
+
+    Review wants reinstall without an active plan. Merchants already paid the
+    period, so quota stays at the previous paid tier until expiration — not
+    Free's 20 units.
+    """
     store = store_db.get_store(store_id)
     prev = previous_plan
     if prev is None and store:
@@ -440,14 +445,18 @@ def clear_to_free_keep_period(
     start = started_at if started_at is not None else (store.subscription_started_at if store else None)
     end = period_end if period_end is not None else (store.subscription_period_end if store else None)
     sub_id = subscription_id if subscription_id is not None else (store.subscription_id if store else None)
+    prev_key = normalize_plan_name(prev) if prev else ""
     apply_plan_to_store(store_id, plan="free", billing_status="cancelled", subscription_id=sub_id or "")
-    store_db.update_store(
-        store_id,
-        previous_plan=normalize_plan_name(prev) if prev else None,
-        subscription_started_at=start or None,
-        subscription_period_end=end or None,
-        billing_status="cancelled",
-    )
+    kwargs: dict = {
+        "previous_plan": prev_key if prev_key in VALID_PAID_PLANS else None,
+        "subscription_started_at": start or None,
+        "subscription_period_end": end or None,
+        "billing_status": "cancelled",
+    }
+    # Paid-through: keep Starter/Growth quota while period is open
+    if prev_key in VALID_PAID_PLANS and period_still_open(end):
+        kwargs["quota_total"] = quota_for_plan(prev_key)
+    store_db.update_store(store_id, **kwargs)
     return store_db.get_store(store_id)
 
 
