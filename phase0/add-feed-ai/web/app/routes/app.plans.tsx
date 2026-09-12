@@ -89,11 +89,9 @@ export default function Plans() {
 
   const summaryLine = view
     ? view.mode === "paid_through"
-      ? t("billing.summaryPaidThrough", {
-          prev: t(`billing.plans.${view.previousPlan}.name`),
+      ? t("billing.summaryPaidThroughQuota", {
           left: String(view.quotaLeft),
           total: String(view.quotaTotal),
-          expires: view.expiresLabel || "—",
         })
       : t("billing.current", {
           plan: t(`billing.plan_${view.currentPlan}`),
@@ -178,9 +176,7 @@ export default function Plans() {
                       ) : null}
                       {isPrevPaidThrough ? (
                         <s-badge tone="info">
-                          {t("billing.plans.paidThroughBadge", {
-                            expires: view.expiresLabel || "—",
-                          })}
+                          {t("billing.plans.paidThroughBadgeShort")}
                         </s-badge>
                       ) : null}
                       {view.mode === "active" &&
@@ -195,23 +191,17 @@ export default function Plans() {
                       ) : null}
                     </s-stack>
                     <s-text>{t(`billing.plans.${id}.price`)}</s-text>
-                    {id === "free" && view.mode === "paid_through" && isCurrent ? (
-                      <s-text>
-                        {t("billing.plans.free.paidThroughNote", {
-                          plan: view.previousPlan
-                            ? t(`billing.plans.${view.previousPlan}.name`)
-                            : "paid",
-                          left: String(view.quotaLeft),
-                          total: String(view.quotaTotal),
-                          expires: view.expiresLabel || "—",
-                        })}
-                      </s-text>
-                    ) : (
-                      <s-text>{t(`billing.plans.${id}.quota`)}</s-text>
-                    )}
+                    <s-text>{t(`billing.plans.${id}.quota`)}</s-text>
                     <s-text tone="neutral">
                       {t(`billing.plans.${id}.blurb`)}
                     </s-text>
+                    {id === "free" &&
+                    view.mode === "paid_through" &&
+                    isCurrent ? (
+                      <s-text tone="neutral">
+                        {t("billing.plans.free.paidThroughHint")}
+                      </s-text>
+                    ) : null}
 
                     {view.mode === "active" &&
                     isCurrent &&
@@ -226,23 +216,15 @@ export default function Plans() {
                     ) : null}
 
                     {isPrevPaidThrough ? (
-                      <s-stack gap="small">
-                        <s-text tone="neutral">
-                          {t("billing.plans.paidThroughDetail", {
-                            start: view.startedLabel || "—",
-                            expires: view.expiresLabel || "—",
-                          })}
-                        </s-text>
-                        <s-button
-                          variant="secondary"
-                          disabled={busy !== null}
-                          onClick={() => void openManageOnShopify(`pt-${id}`)}
-                        >
-                          {busy === `pt-${id}`
-                            ? t("cta.generating")
-                            : t("billing.manageOnShopify")}
-                        </s-button>
-                      </s-stack>
+                      <s-button
+                        variant="secondary"
+                        disabled={busy !== null}
+                        onClick={() => void openManageOnShopify(`pt-${id}`)}
+                      >
+                        {busy === `pt-${id}`
+                          ? t("cta.generating")
+                          : t("billing.manageOnShopify")}
+                      </s-button>
                     ) : null}
 
                     {isUpgrade ? (

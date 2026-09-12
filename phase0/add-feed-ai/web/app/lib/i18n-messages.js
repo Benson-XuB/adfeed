@@ -222,6 +222,7 @@ export const messages = {
   "billing": {
     "current": "Plan: {{plan}} · {{left}} / {{total}} generate units left",
     "summaryPaidThrough": "No active plan · previous {{prev}} units {{left}} / {{total}} until {{expires}}",
+    "summaryPaidThroughQuota": "No active plan · {{left}} / {{total}} generate units left",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "headerQuotaUntil": "{{plan}} · {{left}} / {{total}} · until {{expires}}",
     "headerQuotaPaidThrough": "No active plan · {{plan}} units {{left}} / {{total}} until {{expires}}",
@@ -251,6 +252,7 @@ export const messages = {
       "currentBadge": "Current",
       "untilBadge": "Until {{expires}}",
       "paidThroughBadge": "Paid through {{expires}}",
+      "paidThroughBadgeShort": "Paid through",
       "paidThroughDetail": "Cancelled on uninstall · Started {{start}} · Expires {{expires}} · units remain until then",
       "periodDetail": "Started {{start}} · Expires {{expires}}",
       "periodPaidThrough": "Started {{start}} · Paid through {{expires}} (already charged)",
@@ -262,6 +264,7 @@ export const messages = {
         "price": "$0 / month",
         "quota": "20 generate units / month",
         "blurb": "Try the flow on a small catalog.",
+        "paidThroughHint": "Remaining generate units follow the previous paid period in the banner above — not Free’s 20 / month yet.",
         "paidThroughNote": "No active paid plan. Previous {{plan}} units ({{left}} / {{total}}) remain until {{expires}}. After that, Free is 20 / month."
       },
       "starter": {
@@ -1030,6 +1033,7 @@ export const messages = {
   "billing": {
     "current": "套餐：{{plan}} · 剩余 {{left}} / {{total}} 次生成",
     "summaryPaidThrough": "无进行中套餐 · 此前 {{prev}} 额度 {{left}} / {{total}} 至 {{expires}}",
+    "summaryPaidThroughQuota": "无进行中套餐 · 剩余 {{left}} / {{total}} 次生成",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "headerQuotaUntil": "{{plan}} · {{left}} / {{total}} · 至 {{expires}}",
     "headerQuotaPaidThrough": "无进行中套餐 · {{plan}} 额度 {{left}} / {{total}} 至 {{expires}}",
@@ -1059,6 +1063,7 @@ export const messages = {
       "currentBadge": "当前",
       "untilBadge": "至 {{expires}}",
       "paidThroughBadge": "已付至 {{expires}}",
+      "paidThroughBadgeShort": "已付周期中",
       "paidThroughDetail": "卸装已取消 · 开始 {{start}} · 到期 {{expires}} · 额度用到到期日",
       "periodDetail": "开始 {{start}} · 到期 {{expires}}",
       "periodPaidThrough": "开始 {{start}} · 已付至 {{expires}}（无需再扣费）",
@@ -1070,6 +1075,7 @@ export const messages = {
         "price": "$0 / 月",
         "quota": "每月 20 次生成",
         "blurb": "适合先跑通小目录。",
+        "paidThroughHint": "剩余生成次数按上方横幅中的已付周期计算，尚未切到免费档每月 20 次。",
         "paidThroughNote": "当前无进行中付费套餐。此前 {{plan}} 额度（{{left}} / {{total}}）有效至 {{expires}}；到期后按免费档每月 20 次。"
       },
       "starter": {
