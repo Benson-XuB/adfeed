@@ -318,6 +318,31 @@ def estimate_period_end_from_created(created_at: str) -> str:
     return end.isoformat().replace("+00:00", "Z")
 
 
+def estimate_started_from_period_end(period_end: str) -> str:
+    """Backfill start when Shopify only left currentPeriodEnd (banner needs both)."""
+    end = _parse_iso(period_end)
+    if not end:
+        return ""
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    start = end - timedelta(days=30)
+    return start.isoformat().replace("+00:00", "Z")
+
+
+def ensure_period_start_and_end(
+    started_at: Optional[str],
+    period_end: Optional[str],
+) -> tuple[str, str]:
+    """Review banner needs plan + start + end — never return open period without start."""
+    started = (started_at or "").strip()
+    end = (period_end or "").strip()
+    if end and not started:
+        started = estimate_started_from_period_end(end)
+    if started and not end:
+        end = estimate_period_end_from_created(started)
+    return started, end
+
+
 def persist_subscription_period(
     store_id: str,
     *,
@@ -334,6 +359,23 @@ def persist_subscription_period(
         kwargs["subscription_id"] = subscription_id or None
     if kwargs:
         store_db.update_store(store_id, **kwargs)
+    # Banner needs start+end: backfill missing start from period_end (or vice versa)
+    cur = store_db.get_store(store_id)
+    if not cur:
+        return
+    if not (cur.subscription_started_at or cur.subscription_period_end):
+        return
+    fixed_start, fixed_end = ensure_period_start_and_end(
+        cur.subscription_started_at,
+        cur.subscription_period_end,
+    )
+    fix: dict = {}
+    if fixed_start and fixed_start != (cur.subscription_started_at or ""):
+        fix["subscription_started_at"] = fixed_start
+    if fixed_end and fixed_end != (cur.subscription_period_end or ""):
+        fix["subscription_period_end"] = fixed_end
+    if fix:
+        store_db.update_store(store_id, **fix)
 
 
 def snapshot_paid_period(store: store_db.Store) -> Optional[dict]:
@@ -373,6 +415,7 @@ def snapshot_paid_period(store: store_db.Store) -> Optional[dict]:
     period_end = primary.get("current_period_end") or ""
     if not period_end and started:
         period_end = estimate_period_end_from_created(started)
+    started, period_end = ensure_period_start_and_end(started, period_end)
     persist_subscription_period(
         store.id,
         started_at=started,
@@ -409,6 +452,12 @@ def grace_subscription_payload(store: store_db.Store) -> Optional[dict]:
         return None
     if not period_still_open(period_end):
         return None
+    started, period_end = ensure_period_start_and_end(started, period_end)
+    if not started or not period_end:
+        return None
+    # Persist backfilled start so UI / next sync stay consistent
+    if started != (store.subscription_started_at or ""):
+        persist_subscription_period(store.id, started_at=started, period_end=period_end)
     name = f"AdFeed {prev.title()}"
     return active_subscription_payload(
         {
@@ -444,6 +493,7 @@ def clear_to_free_keep_period(
         )
     start = started_at if started_at is not None else (store.subscription_started_at if store else None)
     end = period_end if period_end is not None else (store.subscription_period_end if store else None)
+    start, end = ensure_period_start_and_end(start, end)
     sub_id = subscription_id if subscription_id is not None else (store.subscription_id if store else None)
     prev_key = normalize_plan_name(prev) if prev else ""
     apply_plan_to_store(store_id, plan="free", billing_status="cancelled", subscription_id=sub_id or "")
@@ -699,10 +749,32 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
 
 
 def build_billing_status_response(store: store_db.Store) -> dict:
-    """Billing status JSON; active_subscription used for review banner when set."""
+    """Billing status JSON; single coherent mode for App UI."""
     synced, active_sub = sync_billing_from_shopify(store)
     if not active_sub:
         active_sub = grace_subscription_payload(synced)
+
+    # paid_through must never advertise a Current paid plan
+    if active_sub and active_sub.get("persists_after_reinstall"):
+        prev = synced.previous_plan or normalize_plan_name(active_sub.get("name") or "")
+        if normalize_plan_name(synced.plan) in VALID_PAID_PLANS or not synced.previous_plan:
+            synced = clear_to_free_keep_period(
+                synced.id,
+                previous_plan=prev,
+                started_at=synced.subscription_started_at or active_sub.get("created_at"),
+                period_end=synced.subscription_period_end
+                or active_sub.get("current_period_end"),
+                subscription_id=synced.subscription_id,
+            )
+            active_sub = grace_subscription_payload(synced) or active_sub
+
+    if active_sub and active_sub.get("persists_after_reinstall"):
+        billing_mode = "paid_through"
+    elif normalize_plan_name(synced.plan) in VALID_PAID_PLANS:
+        billing_mode = "active"
+    else:
+        billing_mode = "free"
+
     pricing_url = ""
     try:
         pricing_url = managed_pricing_plans_url(synced.shopify_domain)
@@ -714,6 +786,7 @@ def build_billing_status_response(store: store_db.Store) -> dict:
         "shop_name": synced.shop_name,
         "plan": synced.plan,
         "billing_status": synced.billing_status,
+        "billing_mode": billing_mode,
         "quota_total": synced.quota_total,
         "quota_used": synced.quota_used,
         "quota_remaining": synced.quota_remaining,

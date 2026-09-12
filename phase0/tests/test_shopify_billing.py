@@ -379,6 +379,7 @@ def test_billing_status_includes_active_subscription(app_client, monkeypatch):
     data = res.json()
     assert data["plan"] == "growth"
     assert data["billing_status"] == "active"
+    assert data.get("billing_mode") == "active"
     sub = data.get("active_subscription") or {}
     assert sub["name"] == "AdFeed Growth"
     assert sub["status"] == "ACTIVE"
@@ -418,11 +419,54 @@ def test_empty_active_keeps_paid_grace_period(app_client, monkeypatch):
     data = res.json()
     assert data["plan"] == "free"
     assert data["quota_total"] == 50
+    assert data.get("billing_mode") == "paid_through"
+    assert data.get("previous_plan") == "starter"
     sub = data.get("active_subscription") or {}
     assert sub.get("persists_after_reinstall") is True
     assert sub["current_period_end"].startswith("2099")
     assert sub["status"] == "CANCELLED"
     assert "Starter" in sub["name"]
+    assert sub.get("created_at"), "banner start date required"
+    assert sub.get("current_period_end"), "banner expiration required"
+
+
+def test_grace_backfills_missing_start_date(app_client, monkeypatch):
+    """Review banner needs start + end; backfill start from period_end if missing."""
+    client, store_db, billing = app_client
+    token = _token()
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    store = store_db.get_store_by_domain("demo.myshopify.com")
+    store_db.update_store(
+        store.id,
+        access_token="shpat_test",
+        plan="free",
+        billing_status="cancelled",
+        previous_plan="growth",
+        subscription_started_at=None,
+        subscription_period_end="2099-12-31T00:00:00Z",
+        quota_total=200,
+    )
+
+    def _fake_load(st):
+        st._all_subscriptions_cache = []
+        return True, []
+
+    monkeypatch.setattr(billing, "load_active_app_subscriptions", _fake_load)
+    import adfeed.shopify_billing as billing_mod
+
+    monkeypatch.setattr(billing_mod, "load_active_app_subscriptions", _fake_load)
+    monkeypatch.setattr(billing_mod, "_recover_grace_from_all_subscriptions", lambda st: None)
+
+    res = client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data.get("billing_mode") == "paid_through"
+    sub = data.get("active_subscription") or {}
+    assert sub.get("persists_after_reinstall") is True
+    assert sub["created_at"], "start date must be present"
+    assert sub["current_period_end"].startswith("2099")
+    refreshed = store_db.get_store(store.id)
+    assert refreshed.subscription_started_at
 
 
 def test_uninstall_snapshots_period_before_cancel(app_client, monkeypatch):

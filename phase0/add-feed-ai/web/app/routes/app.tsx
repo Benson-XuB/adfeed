@@ -7,11 +7,12 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import {
-  type ActiveSubscription,
   bootstrapStore,
   fetchBillingStatus,
   syncBillingPlanHandle,
 } from "../lib/adfeed-api";
+import { resolveBillingView } from "../lib/billing-view";
+import { t } from "../lib/i18n";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -28,17 +29,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backendUrl,
   };
 };
-
-function formatBillingDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 function PlanHandleSync() {
   const shopify = useAppBridge();
@@ -71,12 +61,16 @@ function PlanHandleSync() {
 }
 
 /**
- * App Store review: after uninstall, no active plan on reinstall.
- * If a cancelled subscription still covers a period, show plan / start / end.
+ * Review: if paid period remains after uninstall cancel, banner must show
+ * plan details + start date + expiration date (header chip is not enough).
  */
 function ReinstallPeriodBanner() {
   const shopify = useAppBridge();
-  const [sub, setSub] = useState<ActiveSubscription | null>(null);
+  const [banner, setBanner] = useState<{
+    planName: string;
+    start: string;
+    end: string;
+  } | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -89,14 +83,21 @@ function ReinstallPeriodBanner() {
         if (cancelled) return;
         const status = await fetchBillingStatus(token);
         if (cancelled) return;
-        const active = status.active_subscription;
+        const view = resolveBillingView(status);
+        // Require all three fields the reviewer listed
         if (
-          active?.persists_after_reinstall &&
-          (active.created_at || active.current_period_end)
+          view?.mode === "paid_through" &&
+          view.previousPlan &&
+          view.startedLabel &&
+          view.expiresLabel
         ) {
-          setSub(active);
+          setBanner({
+            planName: t(`billing.plans.${view.previousPlan}.name`),
+            start: view.startedLabel,
+            end: view.expiresLabel,
+          });
         } else {
-          setSub(null);
+          setBanner(null);
         }
       } catch (e) {
         console.warn("reinstall period banner load failed", e);
@@ -107,24 +108,22 @@ function ReinstallPeriodBanner() {
     };
   }, [shopify]);
 
-  if (!sub || dismissed) return null;
-
-  const planName = sub.name || "paid plan";
-  const start = formatBillingDate(sub.created_at);
-  const end = formatBillingDate(sub.current_period_end);
+  if (!banner || dismissed) return null;
 
   return (
     <div style={{ margin: "12px 16px 0" }}>
       <s-banner tone="info" onDismiss={() => setDismissed(true)}>
         <s-stack gap="small">
+          <s-text type="strong">{t("billing.reinstallBannerTitle")}</s-text>
+          <s-text>{t("billing.reinstallBannerBody")}</s-text>
           <s-text>
-            No active plan after reinstall. Your previous{" "}
-            <s-text type="strong">{planName}</s-text> was cancelled but stays
-            paid through <s-text type="strong">{end}</s-text> — generate units
-            from that plan remain until then.
+            {t("billing.reinstallBannerPlan", { plan: banner.planName })}
           </s-text>
-          <s-text tone="neutral">
-            Plan: {planName} · Started: {start} · Expires: {end}
+          <s-text>
+            {t("billing.reinstallBannerStart", { start: banner.start })}
+          </s-text>
+          <s-text>
+            {t("billing.reinstallBannerEnd", { expires: banner.end })}
           </s-text>
         </s-stack>
       </s-banner>

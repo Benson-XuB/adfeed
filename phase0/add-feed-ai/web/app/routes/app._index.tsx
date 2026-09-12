@@ -12,6 +12,7 @@ import {
 import { MarketMultiSelect } from "../components/MarketMultiSelect";
 import setupStyles from "../components/FeedWorkbench.module.css";
 import { TARGET_MARKETS } from "../lib/markets";
+import { resolveBillingView } from "../lib/billing-view";
 import {
   type AppProduct,
   type BillingStatus,
@@ -464,78 +465,35 @@ export default function Home() {
     }
   };
 
-  const planKey = String(billing?.plan || "free").toLowerCase();
+  const billingView = resolveBillingView(billing);
   const affordable = estimate?.affordable !== false;
   const quotaBlocked =
     billing != null &&
     (Number(billing.quota_remaining) <= 0 || estimate?.affordable === false);
   const steps = pipelineSteps();
-  const expiresIso =
-    billing?.active_subscription?.persists_after_reinstall
-      ? ""
-      : billing?.active_subscription?.current_period_end ||
-        billing?.subscription_period_end ||
-        "";
-  const expiresShort = expiresIso
-    ? new Date(expiresIso).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })
-    : "";
-  const paidThroughExpires =
-    billing?.active_subscription?.persists_after_reinstall
-      ? billing.active_subscription.current_period_end ||
-        billing.subscription_period_end ||
-        ""
-      : "";
-  const paidThroughShort = paidThroughExpires
-    ? new Date(paidThroughExpires).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })
-    : "";
-  const prevPlanKey = String(
-    billing?.previous_plan ||
-      billing?.active_subscription?.name ||
-      "",
-  )
-    .toLowerCase()
-    .includes("growth")
-    ? "growth"
-    : String(billing?.previous_plan || "")
-          .toLowerCase()
-          .includes("starter") ||
-        String(billing?.active_subscription?.name || "")
-          .toLowerCase()
-          .includes("starter")
-      ? "starter"
-      : "";
-  const headerQuota =
-    billing &&
-    billing.active_subscription?.persists_after_reinstall &&
-    paidThroughShort
+  const headerQuota = billingView
+    ? billingView.mode === "paid_through"
       ? t("billing.headerQuotaPaidThrough", {
-          plan: prevPlanKey
-            ? t(`billing.plans.${prevPlanKey}.name`)
-            : billing.active_subscription.name || "plan",
-          left: String(billing.quota_remaining),
-          total: String(billing.quota_total),
-          expires: paidThroughShort,
+          plan: billingView.previousPlan
+            ? t(`billing.plans.${billingView.previousPlan}.name`)
+            : "plan",
+          left: String(billingView.quotaLeft),
+          total: String(billingView.quotaTotal),
+          expires: billingView.expiresShort || "—",
         })
-      : billing && expiresShort && ["starter", "growth"].includes(planKey)
+      : billingView.mode === "active" && billingView.expiresShort
         ? t("billing.headerQuotaUntil", {
-            plan: t(`billing.plans.${planKey}.name`),
-            left: String(billing.quota_remaining),
-            total: String(billing.quota_total),
-            expires: expiresShort,
+            plan: t(`billing.plans.${billingView.currentPlan}.name`),
+            left: String(billingView.quotaLeft),
+            total: String(billingView.quotaTotal),
+            expires: billingView.expiresShort,
           })
-        : billing
-          ? t("billing.headerQuota", {
-              plan: t(`billing.plans.${planKey}.name`),
-              left: String(billing.quota_remaining),
-              total: String(billing.quota_total),
-            })
-          : "";
+        : t("billing.headerQuota", {
+            plan: t(`billing.plans.${billingView.currentPlan}.name`),
+            left: String(billingView.quotaLeft),
+            total: String(billingView.quotaTotal),
+          })
+    : "";
 
   return (
     <s-page heading={t("welcome")}>

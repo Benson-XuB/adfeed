@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -9,39 +9,23 @@ import {
   fetchBillingStatus,
   subscribePlan,
 } from "../lib/adfeed-api";
+import {
+  PLAN_IDS,
+  PLAN_RANK,
+  resolveBillingView,
+} from "../lib/billing-view";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
   return null;
 };
 
-const PLAN_IDS = ["free", "starter", "growth"] as const;
-type PlanId = (typeof PLAN_IDS)[number];
-
-const PLAN_RANK: Record<PlanId, number> = {
-  free: 0,
-  starter: 1,
-  growth: 2,
-};
-
 function openShopifyPricing(url: string) {
-  // Hosted App Pricing lives outside the embedded iframe.
   if (typeof window !== "undefined" && window.top) {
     window.top.location.href = url;
     return;
   }
   window.location.href = url;
-}
-
-function formatPlanDate(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 export default function Plans() {
@@ -67,6 +51,8 @@ export default function Plans() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const view = useMemo(() => resolveBillingView(billing), [billing]);
 
   const openManageOnShopify = async (busyKey: string) => {
     setBusy(busyKey);
@@ -101,28 +87,20 @@ export default function Plans() {
     }
   };
 
-  const planKey = (
-    PLAN_IDS.includes(String(billing?.plan || "free").toLowerCase() as PlanId)
-      ? String(billing?.plan || "free").toLowerCase()
-      : "free"
-  ) as PlanId;
-  const currentRank = PLAN_RANK[planKey];
-  const expiresLabel =
-    formatPlanDate(
-      billing?.active_subscription?.current_period_end ||
-        billing?.subscription_period_end,
-    ) || "";
-  const startedLabel =
-    formatPlanDate(
-      billing?.active_subscription?.created_at ||
-        billing?.subscription_started_at,
-    ) || "";
-  const paidThrough =
-    String(billing?.active_subscription?.status || "").toUpperCase() ===
-    "CANCELLED";
-  const persistBanner = Boolean(
-    billing?.active_subscription?.persists_after_reinstall,
-  );
+  const summaryLine = view
+    ? view.mode === "paid_through"
+      ? t("billing.summaryPaidThrough", {
+          prev: t(`billing.plans.${view.previousPlan}.name`),
+          left: String(view.quotaLeft),
+          total: String(view.quotaTotal),
+          expires: view.expiresLabel || "—",
+        })
+      : t("billing.current", {
+          plan: t(`billing.plan_${view.currentPlan}`),
+          left: String(view.quotaLeft),
+          total: String(view.quotaTotal),
+        })
+    : null;
 
   return (
     <s-page heading={t("billing.plans.pageTitle")}>
@@ -149,14 +127,8 @@ export default function Plans() {
 
       <s-section>
         <s-stack gap="base">
-          {billing ? (
-            <s-text>
-              {t("billing.current", {
-                plan: t(`billing.plan_${planKey}`),
-                left: String(billing.quota_remaining),
-                total: String(billing.quota_total),
-              })}
-            </s-text>
+          {summaryLine ? (
+            <s-text>{summaryLine}</s-text>
           ) : (
             <s-text>{t("products.loading")}</s-text>
           )}
@@ -166,16 +138,26 @@ export default function Plans() {
 
           <s-stack gap="base" direction="inline">
             {PLAN_IDS.map((id) => {
-              const isCurrent = planKey === id;
-              const paid = id !== "free";
+              if (!view) return null;
+
+              const isCurrent = view.currentPlan === id;
+              const isPrevPaidThrough =
+                view.mode === "paid_through" && view.previousPlan === id;
               const rank = PLAN_RANK[id];
-              const isUpgrade = paid && !isCurrent && rank > currentRank;
-              const isLower = !isCurrent && rank < currentRank;
-              const showPeriodOnCard =
-                isCurrent &&
-                paid &&
-                !persistBanner &&
-                Boolean(startedLabel || expiresLabel);
+              const currentRank = PLAN_RANK[view.currentPlan];
+              // Upgrades vs display current (free when paid_through)
+              const isUpgrade =
+                id !== "free" &&
+                !isCurrent &&
+                !isPrevPaidThrough &&
+                rank > currentRank;
+              // Soft downgrade only while Shopify ACTIVE paid plan.
+              // Never on Free card (that caused Free+Starter dual messaging).
+              const isDowngrade =
+                view.mode === "active" &&
+                !isCurrent &&
+                rank < currentRank &&
+                id !== "free";
 
               return (
                 <s-box
@@ -194,32 +176,75 @@ export default function Plans() {
                           {t("billing.plans.currentBadge")}
                         </s-badge>
                       ) : null}
-                      {isCurrent && paid && expiresLabel && !persistBanner ? (
+                      {isPrevPaidThrough ? (
+                        <s-badge tone="info">
+                          {t("billing.plans.paidThroughBadge", {
+                            expires: view.expiresLabel || "—",
+                          })}
+                        </s-badge>
+                      ) : null}
+                      {view.mode === "active" &&
+                      isCurrent &&
+                      id !== "free" &&
+                      view.expiresLabel ? (
                         <s-badge tone="info">
                           {t("billing.plans.untilBadge", {
-                            expires: expiresLabel,
+                            expires: view.expiresLabel,
                           })}
                         </s-badge>
                       ) : null}
                     </s-stack>
                     <s-text>{t(`billing.plans.${id}.price`)}</s-text>
-                    <s-text>{t(`billing.plans.${id}.quota`)}</s-text>
+                    {id === "free" && view.mode === "paid_through" && isCurrent ? (
+                      <s-text>
+                        {t("billing.plans.free.paidThroughNote", {
+                          plan: view.previousPlan
+                            ? t(`billing.plans.${view.previousPlan}.name`)
+                            : "paid",
+                          left: String(view.quotaLeft),
+                          total: String(view.quotaTotal),
+                          expires: view.expiresLabel || "—",
+                        })}
+                      </s-text>
+                    ) : (
+                      <s-text>{t(`billing.plans.${id}.quota`)}</s-text>
+                    )}
                     <s-text tone="neutral">
                       {t(`billing.plans.${id}.blurb`)}
                     </s-text>
-                    {showPeriodOnCard ? (
+
+                    {view.mode === "active" &&
+                    isCurrent &&
+                    id !== "free" &&
+                    (view.startedLabel || view.expiresLabel) ? (
                       <s-text tone="neutral">
-                        {paidThrough && expiresLabel
-                          ? t("billing.plans.periodPaidThrough", {
-                              start: startedLabel || "—",
-                              expires: expiresLabel,
-                            })
-                          : t("billing.plans.periodDetail", {
-                              start: startedLabel || "—",
-                              expires: expiresLabel || "—",
-                            })}
+                        {t("billing.plans.periodDetail", {
+                          start: view.startedLabel || "—",
+                          expires: view.expiresLabel || "—",
+                        })}
                       </s-text>
                     ) : null}
+
+                    {isPrevPaidThrough ? (
+                      <s-stack gap="small">
+                        <s-text tone="neutral">
+                          {t("billing.plans.paidThroughDetail", {
+                            start: view.startedLabel || "—",
+                            expires: view.expiresLabel || "—",
+                          })}
+                        </s-text>
+                        <s-button
+                          variant="secondary"
+                          disabled={busy !== null}
+                          onClick={() => void openManageOnShopify(`pt-${id}`)}
+                        >
+                          {busy === `pt-${id}`
+                            ? t("cta.generating")
+                            : t("billing.manageOnShopify")}
+                        </s-button>
+                      </s-stack>
+                    ) : null}
+
                     {isUpgrade ? (
                       <s-button
                         variant="primary"
@@ -232,32 +257,36 @@ export default function Plans() {
                             ? t("billing.chooseStarter")
                             : t("billing.chooseGrowth")}
                       </s-button>
-                    ) : isLower ? (
+                    ) : null}
+
+                    {isDowngrade ? (
                       <s-stack gap="small">
                         <s-text tone="neutral">
-                          {expiresLabel
+                          {view.expiresLabel
                             ? t("billing.plans.lowerPlanHintUntil", {
-                                plan: t(`billing.plans.${planKey}.name`),
-                                expires: expiresLabel,
+                                plan: t(
+                                  `billing.plans.${view.currentPlan}.name`,
+                                ),
+                                expires: view.expiresLabel,
                               })
                             : t("billing.plans.lowerPlanHint", {
-                                plan: t(`billing.plans.${planKey}.name`),
+                                plan: t(
+                                  `billing.plans.${view.currentPlan}.name`,
+                                ),
                               })}
                         </s-text>
                         <s-button
                           variant="secondary"
                           disabled={busy !== null}
-                          onClick={() => void openManageOnShopify(`lower-${id}`)}
+                          onClick={() =>
+                            void openManageOnShopify(`lower-${id}`)
+                          }
                         >
                           {busy === `lower-${id}`
                             ? t("cta.generating")
                             : t("billing.manageOnShopify")}
                         </s-button>
                       </s-stack>
-                    ) : !paid && !isCurrent ? (
-                      <s-text tone="neutral">
-                        {t("billing.plans.free.blurb")}
-                      </s-text>
                     ) : null}
                   </s-stack>
                 </s-box>

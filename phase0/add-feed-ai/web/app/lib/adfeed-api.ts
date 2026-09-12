@@ -92,6 +92,8 @@ export type BillingStatus = {
   shop_name?: string;
   plan: string;
   billing_status: string;
+  /** Server display mode: free | active | paid_through */
+  billing_mode?: "free" | "active" | "paid_through";
   quota_total: number;
   quota_used: number;
   quota_remaining: number;

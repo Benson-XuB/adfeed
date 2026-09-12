@@ -70,13 +70,17 @@ if [[ "$BACKEND_ONLY" == false ]]; then
   rsync -avz --delete -e "$RSYNC_RSH" \
     "${WEB}/build/" \
     "${SSH_TARGET}:${REMOTE_DIR}/phase0/add-feed-ai/web/build/"
+  PKG_SYNC=("${WEB}/package.json")
+  if [[ -f "${WEB}/package-lock.json" ]]; then
+    PKG_SYNC+=("${WEB}/package-lock.json")
+  fi
   rsync -avz -e "$RSYNC_RSH" \
-    "${WEB}/package.json" "${WEB}/package-lock.json" \
+    "${PKG_SYNC[@]}" \
     "${SSH_TARGET}:${REMOTE_DIR}/phase0/add-feed-ai/web/"
   rsync -avz -e "$RSYNC_RSH" \
     "${WEB}/prisma/" \
     "${SSH_TARGET}:${REMOTE_DIR}/phase0/add-feed-ai/web/prisma/"
-  ssh_cmd "sudo chown -R adfeed:adfeed ${REMOTE_DIR}/phase0/add-feed-ai/web && cd ${REMOTE_DIR}/phase0/add-feed-ai/web && sudo -u adfeed npm ci --omit=dev && sudo -u adfeed npx prisma generate && sudo -u adfeed npx prisma migrate deploy"
+  ssh_cmd "sudo chown -R adfeed:adfeed ${REMOTE_DIR}/phase0/add-feed-ai/web && cd ${REMOTE_DIR}/phase0/add-feed-ai/web && if [[ -f package-lock.json ]]; then sudo -u adfeed npm ci --omit=dev; else sudo -u adfeed npm install --omit=dev; fi && sudo -u adfeed npx prisma generate && sudo -u adfeed npx prisma migrate deploy"
 fi
 
 ssh_cmd "sudo -u adfeed ${REMOTE_DIR}/.venv/bin/pip install -q -r ${REMOTE_DIR}/phase0/requirements.txt"

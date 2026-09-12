@@ -221,9 +221,15 @@ export const messages = {
   },
   "billing": {
     "current": "Plan: {{plan}} · {{left}} / {{total}} generate units left",
+    "summaryPaidThrough": "No active plan · previous {{prev}} units {{left}} / {{total}} until {{expires}}",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "headerQuotaUntil": "{{plan}} · {{left}} / {{total}} · until {{expires}}",
     "headerQuotaPaidThrough": "No active plan · {{plan}} units {{left}} / {{total}} until {{expires}}",
+    "reinstallBannerTitle": "No active plan after reinstall",
+    "reinstallBannerBody": "Your previous subscription was cancelled on uninstall. If the paid period is still open, details are below.",
+    "reinstallBannerPlan": "Plan: {{plan}}",
+    "reinstallBannerStart": "Start date: {{start}}",
+    "reinstallBannerEnd": "Expiration date: {{expires}}",
     "plan_free": "Free",
     "plan_starter": "Starter ($14.99/mo, 50)",
     "plan_growth": "Growth ($39/mo, 200)",
@@ -244,6 +250,8 @@ export const messages = {
       "lowerPlanHintUntil": "You’re on {{plan}} through {{expires}}. A lower plan replaces it on Shopify (one plan — not stacked; may prorate) — it is not an add-on.",
       "currentBadge": "Current",
       "untilBadge": "Until {{expires}}",
+      "paidThroughBadge": "Paid through {{expires}}",
+      "paidThroughDetail": "Cancelled on uninstall · Started {{start}} · Expires {{expires}} · units remain until then",
       "periodDetail": "Started {{start}} · Expires {{expires}}",
       "periodPaidThrough": "Started {{start}} · Paid through {{expires}} (already charged)",
       "included": "Included",
@@ -253,7 +261,8 @@ export const messages = {
         "name": "Free",
         "price": "$0 / month",
         "quota": "20 generate units / month",
-        "blurb": "Try the flow on a small catalog."
+        "blurb": "Try the flow on a small catalog.",
+        "paidThroughNote": "No active paid plan. Previous {{plan}} units ({{left}} / {{total}}) remain until {{expires}}. After that, Free is 20 / month."
       },
       "starter": {
         "name": "Starter",
@@ -1020,9 +1029,15 @@ export const messages = {
   },
   "billing": {
     "current": "套餐：{{plan}} · 剩余 {{left}} / {{total}} 次生成",
+    "summaryPaidThrough": "无进行中套餐 · 此前 {{prev}} 额度 {{left}} / {{total}} 至 {{expires}}",
     "headerQuota": "{{plan}} · {{left}} / {{total}}",
     "headerQuotaUntil": "{{plan}} · {{left}} / {{total}} · 至 {{expires}}",
     "headerQuotaPaidThrough": "无进行中套餐 · {{plan}} 额度 {{left}} / {{total}} 至 {{expires}}",
+    "reinstallBannerTitle": "重装后无进行中套餐",
+    "reinstallBannerBody": "卸载时订阅已取消。若已付周期尚未结束，详情如下。",
+    "reinstallBannerPlan": "套餐：{{plan}}",
+    "reinstallBannerStart": "开始日期：{{start}}",
+    "reinstallBannerEnd": "到期日期：{{expires}}",
     "plan_free": "免费",
     "plan_starter": "Starter（$14.99/月，50 次）",
     "plan_growth": "Growth（$39/月，200 次）",
@@ -1043,6 +1058,8 @@ export const messages = {
       "lowerPlanHintUntil": "当前为 {{plan}}，有效至 {{expires}}。更低档在 Shopify 上是替换（一份套餐，不叠加；可能按比例），不是加购。",
       "currentBadge": "当前",
       "untilBadge": "至 {{expires}}",
+      "paidThroughBadge": "已付至 {{expires}}",
+      "paidThroughDetail": "卸装已取消 · 开始 {{start}} · 到期 {{expires}} · 额度用到到期日",
       "periodDetail": "开始 {{start}} · 到期 {{expires}}",
       "periodPaidThrough": "开始 {{start}} · 已付至 {{expires}}（无需再扣费）",
       "included": "已包含",
@@ -1052,7 +1069,8 @@ export const messages = {
         "name": "免费",
         "price": "$0 / 月",
         "quota": "每月 20 次生成",
-        "blurb": "适合先跑通小目录。"
+        "blurb": "适合先跑通小目录。",
+        "paidThroughNote": "当前无进行中付费套餐。此前 {{plan}} 额度（{{left}} / {{total}}）有效至 {{expires}}；到期后按免费档每月 20 次。"
       },
       "starter": {
         "name": "Starter",
