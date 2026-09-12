@@ -178,3 +178,196 @@ def test_billing_return_redirects_to_admin(app_client):
     loc = res.headers.get("location") or ""
     assert "admin.shopify.com" in loc
     assert "demo" in loc
+
+
+def test_fetch_active_subscriptions_parses_shopify(app_client, monkeypatch):
+    client, store_db, billing = app_client
+    token = _token()
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    store = store_db.get_store_by_domain("demo.myshopify.com")
+    store_db.update_store(store.id, access_token="shpat_test")
+    store = store_db.get_store(store.id)
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {
+                    "currentAppInstallation": {
+                        "activeSubscriptions": [
+                            {
+                                "id": "gid://shopify/AppSubscription/1",
+                                "name": "AdFeed Starter",
+                                "status": "ACTIVE",
+                                "createdAt": "2026-08-01T00:00:00Z",
+                                "currentPeriodEnd": "2026-09-30T00:00:00Z",
+                            }
+                        ]
+                    }
+                }
+            }
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, headers=None, json=None):
+            assert "graphql" in url
+            assert headers["X-Shopify-Access-Token"] == "shpat_test"
+            return _Resp()
+
+    monkeypatch.setattr(billing.httpx, "Client", _Client)
+    subs = billing.fetch_active_app_subscriptions(store)
+    assert len(subs) == 1
+    assert subs[0]["name"] == "AdFeed Starter"
+    assert subs[0]["created_at"] == "2026-08-01T00:00:00Z"
+    assert subs[0]["current_period_end"] == "2026-09-30T00:00:00Z"
+
+
+def test_cancel_app_subscriptions_best_effort(app_client, monkeypatch):
+    client, store_db, billing = app_client
+    token = _token()
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    store = store_db.get_store_by_domain("demo.myshopify.com")
+    store_db.update_store(
+        store.id,
+        access_token="shpat_test",
+        subscription_id="gid://shopify/AppSubscription/7",
+    )
+    store = store_db.get_store(store.id)
+
+    calls = {"n": 0}
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {
+                    "appSubscriptionCancel": {
+                        "appSubscription": {
+                            "id": "gid://shopify/AppSubscription/7",
+                            "status": "CANCELLED",
+                        },
+                        "userErrors": [],
+                    }
+                }
+            }
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, headers=None, json=None):
+            calls["n"] += 1
+            q = (json or {}).get("query", "")
+            if "appSubscriptionCancel" in q:
+                return _Resp()
+            # activeSubscriptions probe during cancel — empty install
+            class _Empty:
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return {
+                        "data": {
+                            "currentAppInstallation": {"activeSubscriptions": []}
+                        }
+                    }
+
+            return _Empty()
+
+    monkeypatch.setattr(billing.httpx, "Client", _Client)
+    result = billing.cancel_app_subscriptions(store)
+    assert result["attempted"] >= 1
+    assert "gid://shopify/AppSubscription/7" in result["cancelled_ids"]
+    assert calls["n"] >= 1
+
+
+def test_uninstall_cancels_before_clearing_token(app_client, monkeypatch):
+    client, store_db, billing = app_client
+    from adfeed.shopify_webhooks import handle_app_uninstalled
+
+    token = _token("gone.myshopify.com")
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    store = store_db.get_store_by_domain("gone.myshopify.com")
+    store_db.update_store(
+        store.id,
+        access_token="shpat_live",
+        plan="starter",
+        billing_status="active",
+        subscription_id="gid://shopify/AppSubscription/42",
+    )
+    seen = {"had_token": False}
+
+    def _fake_cancel(st):
+        seen["had_token"] = bool(st.access_token)
+        return {
+            "attempted": 1,
+            "cancelled_ids": ["gid://shopify/AppSubscription/42"],
+            "errors": [],
+        }
+
+    import adfeed.shopify_billing as billing_mod
+
+    monkeypatch.setattr(billing_mod, "cancel_app_subscriptions", _fake_cancel)
+
+    out = handle_app_uninstalled("gone.myshopify.com")
+    assert out["ok"] is True
+    assert seen["had_token"] is True
+    updated = store_db.get_store(store.id)
+    assert updated.access_token is None
+    assert updated.status == "inactive"
+    assert updated.billing_status == "cancelled"
+    assert updated.plan == "starter"  # do not force free on uninstall
+
+
+def test_billing_status_includes_active_subscription(app_client, monkeypatch):
+    client, store_db, billing = app_client
+    token = _token()
+    client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    store = store_db.get_store_by_domain("demo.myshopify.com")
+    store_db.update_store(store.id, access_token="shpat_test", plan="free", billing_status="cancelled")
+
+    def _fake_load(st):
+        return True, [
+            {
+                "id": "gid://shopify/AppSubscription/9",
+                "name": "AdFeed Growth",
+                "status": "ACTIVE",
+                "created_at": "2026-07-01T12:00:00Z",
+                "current_period_end": "2026-10-01T12:00:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(billing, "load_active_app_subscriptions", _fake_load)
+    import adfeed.shopify_billing as billing_mod
+
+    monkeypatch.setattr(billing_mod, "load_active_app_subscriptions", _fake_load)
+
+    res = client.get("/api/app/billing/status", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["plan"] == "growth"
+    assert data["billing_status"] == "active"
+    sub = data.get("active_subscription") or {}
+    assert sub["name"] == "AdFeed Growth"
+    assert sub["status"] == "ACTIVE"
+    assert sub["created_at"] == "2026-07-01T12:00:00Z"
+    assert sub["current_period_end"] == "2026-10-01T12:00:00Z"
+    assert sub.get("persists_after_reinstall") is True

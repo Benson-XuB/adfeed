@@ -204,27 +204,14 @@ async def support_page():
 
 @app.get("/api/app/billing/status")
 async def app_billing_status(store: StoreModel = Depends(require_store)):
-    """Return plan + quota for the authenticated shop."""
-    from .shopify_billing import managed_pricing_plans_url
+    """Return plan + quota; sync Shopify activeSubscriptions when token present.
 
-    pricing_url = ""
-    try:
-        pricing_url = managed_pricing_plans_url(store.shopify_domain)
-    except ValueError:
-        pricing_url = ""
-    return {
-        "store_id": store.id,
-        "shop_domain": store.shopify_domain,
-        "shop_name": store.shop_name,
-        "plan": store.plan,
-        "billing_status": store.billing_status,
-        "quota_total": store.quota_total,
-        "quota_used": store.quota_used,
-        "quota_remaining": store.quota_remaining,
-        "subscription_id": store.subscription_id,
-        "pricing_plans_url": pricing_url,
-        "managed_pricing": True,
-    }
+    Includes active_subscription (plan name, start, period end) for the
+    App Store reinstall banner when a charge remains until expiration.
+    """
+    from .shopify_billing import build_billing_status_response
+
+    return build_billing_status_response(store)
 
 
 class BillingSubscribeBody(BaseModel):

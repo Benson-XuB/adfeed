@@ -77,6 +77,15 @@ export async function fetchHealth(): Promise<{ ok: boolean; status: number }> {
   }
 }
 
+export type ActiveSubscription = {
+  id?: string;
+  name: string;
+  status: string;
+  created_at: string;
+  current_period_end: string;
+  persists_after_reinstall?: boolean;
+};
+
 export type BillingStatus = {
   store_id: string;
   shop_domain: string;
@@ -89,6 +98,7 @@ export type BillingStatus = {
   subscription_id?: string | null;
   pricing_plans_url?: string;
   managed_pricing?: boolean;
+  active_subscription?: ActiveSubscription | null;
 };
 
 export type FeedInfo = {

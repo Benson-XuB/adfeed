@@ -101,17 +101,42 @@ def handle_products_delete(shop_domain: str, payload: dict) -> dict:
 
 
 def handle_app_uninstalled(shop_domain: str) -> dict:
+    """Mark store inactive and best-effort cancel Shopify subscriptions.
+
+    Cancel runs while access_token is still present. Managed Pricing may keep
+    the charge until period end — reinstall UI must show the leftover banner
+    via billing/status active_subscription. Do not force plan=free here.
+    """
     shop = _norm_shop(shop_domain)
     store = store_db.get_store_by_domain(shop) if shop else None
     if not store:
         return {"ok": False, "reason": "store_not_found"}
+
+    cancel_result: dict = {"attempted": 0, "cancelled_ids": [], "errors": []}
+    if store.access_token:
+        try:
+            from .shopify_billing import cancel_app_subscriptions
+
+            cancel_result = cancel_app_subscriptions(store)
+        except Exception as exc:
+            logger.warning(
+                "uninstall cancel_app_subscriptions failed for %s: %s",
+                shop,
+                exc,
+            )
+            cancel_result = {
+                "attempted": 0,
+                "cancelled_ids": [],
+                "errors": [str(exc)],
+            }
+
     store_db.update_store(
         store.id,
         access_token=None,
         status="inactive",
         billing_status="cancelled",
     )
-    return {"ok": True, "store_id": store.id}
+    return {"ok": True, "store_id": store.id, "cancel": cancel_result}
 
 
 def handle_shop_redact(shop_domain: str, payload: Optional[dict] = None) -> dict:
