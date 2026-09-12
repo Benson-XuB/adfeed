@@ -500,46 +500,6 @@ export default function Home() {
         </s-banner>
       ) : null}
 
-      {billing?.active_subscription &&
-      (billing.active_subscription.created_at ||
-        billing.active_subscription.current_period_end) ? (
-        <s-banner tone="info">
-          <s-stack gap="small">
-            <s-text>
-              Your{" "}
-              <s-text type="strong">
-                {billing.active_subscription.name ||
-                  t(`billing.plans.${planKey}.name`)}
-              </s-text>{" "}
-              plan · Started:{" "}
-              <s-text type="strong">
-                {billing.active_subscription.created_at
-                  ? new Date(
-                      billing.active_subscription.created_at,
-                    ).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "—"}
-              </s-text>{" "}
-              · Expires:{" "}
-              <s-text type="strong">
-                {billing.active_subscription.current_period_end
-                  ? new Date(
-                      billing.active_subscription.current_period_end,
-                    ).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "—"}
-              </s-text>
-            </s-text>
-          </s-stack>
-        </s-banner>
-      ) : null}
-
       <GenerateConfirmModal
         open={genConfirmOpen}
         items={genConfirmItems}
