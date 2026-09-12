@@ -16,6 +16,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 const PLAN_IDS = ["free", "starter", "growth"] as const;
+type PlanId = (typeof PLAN_IDS)[number];
+
+const PLAN_RANK: Record<PlanId, number> = {
+  free: 0,
+  starter: 1,
+  growth: 2,
+};
 
 function openShopifyPricing(url: string) {
   // Hosted App Pricing lives outside the embedded iframe.
@@ -24,6 +31,17 @@ function openShopifyPricing(url: string) {
     return;
   }
   window.location.href = url;
+}
+
+function formatPlanDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function Plans() {
@@ -50,12 +68,11 @@ export default function Plans() {
     void load();
   }, [load]);
 
-  const onChoosePlan = async (plan: "starter" | "growth") => {
-    setBusy(plan);
+  const openManageOnShopify = async (busyKey: string) => {
+    setBusy(busyKey);
     setMessage("");
     setChargeUrl("");
     try {
-      // Prefer URL from status (no create-charge); subscribe endpoint also returns hosted URL.
       const fromStatus = billing?.pricing_plans_url;
       if (fromStatus) {
         setChargeUrl(fromStatus);
@@ -65,7 +82,7 @@ export default function Plans() {
         return;
       }
       const token = await shopify.idToken();
-      const res = await subscribePlan(token, plan);
+      const res = await subscribePlan(token, "growth");
       const url = res.confirmation_url || res.pricing_plans_url;
       if (url) {
         setChargeUrl(url);
@@ -84,7 +101,17 @@ export default function Plans() {
     }
   };
 
-  const planKey = String(billing?.plan || "free").toLowerCase();
+  const planKey = (
+    PLAN_IDS.includes(String(billing?.plan || "free").toLowerCase() as PlanId)
+      ? String(billing?.plan || "free").toLowerCase()
+      : "free"
+  ) as PlanId;
+  const currentRank = PLAN_RANK[planKey];
+  const expiresLabel =
+    formatPlanDate(
+      billing?.active_subscription?.current_period_end ||
+        billing?.subscription_period_end,
+    ) || "";
 
   return (
     <s-page heading={t("billing.plans.pageTitle")}>
@@ -124,11 +151,16 @@ export default function Plans() {
           )}
           <s-text tone="neutral">{t("billing.plans.pageIntro")}</s-text>
           <s-text tone="neutral">{t("billing.plans.howQuota")}</s-text>
+          <s-text tone="neutral">{t("billing.plans.onePlanNote")}</s-text>
 
           <s-stack gap="base" direction="inline">
             {PLAN_IDS.map((id) => {
               const isCurrent = planKey === id;
               const paid = id !== "free";
+              const rank = PLAN_RANK[id];
+              const isUpgrade = paid && !isCurrent && rank > currentRank;
+              const isLower = !isCurrent && rank < currentRank;
+
               return (
                 <s-box
                   key={id}
@@ -152,13 +184,11 @@ export default function Plans() {
                     <s-text tone="neutral">
                       {t(`billing.plans.${id}.blurb`)}
                     </s-text>
-                    {paid && !isCurrent ? (
+                    {isUpgrade ? (
                       <s-button
                         variant="primary"
                         disabled={busy !== null}
-                        onClick={() =>
-                          void onChoosePlan(id as "starter" | "growth")
-                        }
+                        onClick={() => void openManageOnShopify(id)}
                       >
                         {busy === id
                           ? t("cta.generating")
@@ -166,7 +196,29 @@ export default function Plans() {
                             ? t("billing.chooseStarter")
                             : t("billing.chooseGrowth")}
                       </s-button>
-                    ) : !paid ? (
+                    ) : isLower ? (
+                      <s-stack gap="small">
+                        <s-text tone="neutral">
+                          {expiresLabel
+                            ? t("billing.plans.lowerPlanHintUntil", {
+                                plan: t(`billing.plans.${planKey}.name`),
+                                expires: expiresLabel,
+                              })
+                            : t("billing.plans.lowerPlanHint", {
+                                plan: t(`billing.plans.${planKey}.name`),
+                              })}
+                        </s-text>
+                        <s-button
+                          variant="secondary"
+                          disabled={busy !== null}
+                          onClick={() => void openManageOnShopify(`lower-${id}`)}
+                        >
+                          {busy === `lower-${id}`
+                            ? t("cta.generating")
+                            : t("billing.manageOnShopify")}
+                        </s-button>
+                      </s-stack>
+                    ) : !paid && !isCurrent ? (
                       <s-text tone="neutral">
                         {t("billing.plans.free.blurb")}
                       </s-text>
