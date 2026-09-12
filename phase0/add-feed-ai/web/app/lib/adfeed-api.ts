@@ -96,6 +96,8 @@ export type BillingStatus = {
   quota_used: number;
   quota_remaining: number;
   subscription_id?: string | null;
+  subscription_started_at?: string | null;
+  subscription_period_end?: string | null;
   pricing_plans_url?: string;
   managed_pricing?: boolean;
   active_subscription?: ActiveSubscription | null;

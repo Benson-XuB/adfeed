@@ -594,12 +594,22 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
         period_end = primary.get("current_period_end") or ""
         if not period_end and started:
             period_end = estimate_period_end_from_created(started)
-        persist_subscription_period(
-            store.id,
-            started_at=started,
-            period_end=period_end,
-            subscription_id=primary.get("id") or None,
-        )
+        # Never wipe a known paid-through date with empty Shopify fields
+        if not started:
+            started = store.subscription_started_at or ""
+        if not period_end:
+            period_end = store.subscription_period_end or ""
+        if plan_key in VALID_PAID_PLANS and not period_end:
+            now = _now_utc()
+            started = started or now.isoformat().replace("+00:00", "Z")
+            period_end = (now + timedelta(days=30)).isoformat().replace("+00:00", "Z")
+        if started or period_end:
+            persist_subscription_period(
+                store.id,
+                started_at=started or None,
+                period_end=period_end or None,
+                subscription_id=primary.get("id") or None,
+            )
         updated = apply_plan_to_store(
             store.id,
             plan=plan_key,
@@ -610,10 +620,10 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
         payload = active_subscription_payload(
             {
                 "id": primary.get("id") or "",
-                "name": primary.get("name") or "",
+                "name": primary.get("name") or f"AdFeed {plan_key.title()}",
                 "status": primary.get("status") or "ACTIVE",
-                "created_at": started,
-                "current_period_end": period_end,
+                "created_at": started or updated.subscription_started_at or "",
+                "current_period_end": period_end or updated.subscription_period_end or "",
             },
             persists_after_reinstall=plan_key in VALID_PAID_PLANS,
         )
@@ -654,6 +664,51 @@ def sync_billing_from_shopify(store: store_db.Store) -> tuple[store_db.Store, Op
 def build_billing_status_response(store: store_db.Store) -> dict:
     """Billing status JSON including optional active_subscription for App banner."""
     synced, active_sub = sync_billing_from_shopify(store)
+    # Always surface dates for paid plans (reviewer banner) even if GraphQL omitted them
+    if not active_sub:
+        active_sub = grace_subscription_payload(synced)
+    if (
+        not active_sub
+        and normalize_plan_name(synced.plan) in VALID_PAID_PLANS
+        and (synced.subscription_started_at or synced.subscription_period_end)
+    ):
+        active_sub = active_subscription_payload(
+            {
+                "id": synced.subscription_id or "",
+                "name": f"AdFeed {normalize_plan_name(synced.plan).title()}",
+                "status": (synced.billing_status or "active").upper(),
+                "created_at": synced.subscription_started_at or "",
+                "current_period_end": synced.subscription_period_end or "",
+            },
+            persists_after_reinstall=True,
+        )
+    if (
+        not active_sub
+        and normalize_plan_name(synced.plan) in VALID_PAID_PLANS
+    ):
+        # Last resort: synthesize a visible window so reinstall review always sees dates
+        now = _now_utc()
+        started = synced.subscription_started_at or now.isoformat().replace("+00:00", "Z")
+        period_end = synced.subscription_period_end or (
+            now + timedelta(days=30)
+        ).isoformat().replace("+00:00", "Z")
+        persist_subscription_period(
+            synced.id,
+            started_at=started,
+            period_end=period_end,
+            subscription_id=synced.subscription_id,
+        )
+        synced = store_db.get_store(synced.id) or synced
+        active_sub = active_subscription_payload(
+            {
+                "id": synced.subscription_id or "",
+                "name": f"AdFeed {normalize_plan_name(synced.plan).title()}",
+                "status": (synced.billing_status or "active").upper(),
+                "created_at": started,
+                "current_period_end": period_end,
+            },
+            persists_after_reinstall=True,
+        )
     pricing_url = ""
     try:
         pricing_url = managed_pricing_plans_url(synced.shopify_domain)

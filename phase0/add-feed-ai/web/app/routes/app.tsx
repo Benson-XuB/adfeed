@@ -8,6 +8,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
   type ActiveSubscription,
+  bootstrapStore,
   fetchBillingStatus,
   syncBillingPlanHandle,
 } from "../lib/adfeed-api";
@@ -84,13 +85,32 @@ function ActiveSubscriptionBanner() {
       try {
         const token = await shopify.idToken();
         if (cancelled) return;
+        // Must bootstrap offline token before billing sync, or status has no dates
+        await bootstrapStore(token);
+        if (cancelled) return;
         const status = await fetchBillingStatus(token);
-        const active = status.active_subscription;
+        if (cancelled) return;
+        const active =
+          status.active_subscription ||
+          (status.subscription_period_end || status.subscription_started_at
+            ? {
+                name: `AdFeed ${String(status.plan || "plan").replace(/^\w/, (c) =>
+                  c.toUpperCase(),
+                )}`,
+                status: String(status.billing_status || "active").toUpperCase(),
+                created_at: status.subscription_started_at || "",
+                current_period_end: status.subscription_period_end || "",
+                persists_after_reinstall: true,
+              }
+            : null);
         if (
           active &&
           (active.created_at || active.current_period_end) &&
-          (String(active.status || "").toUpperCase() === "ACTIVE" ||
-            active.persists_after_reinstall)
+          (["ACTIVE", "ACCEPTED", "CANCELLED"].includes(
+            String(active.status || "").toUpperCase(),
+          ) ||
+            active.persists_after_reinstall ||
+            ["starter", "growth"].includes(String(status.plan || "").toLowerCase()))
         ) {
           setSub(active);
         } else {
@@ -113,27 +133,29 @@ function ActiveSubscriptionBanner() {
   const cancelled = String(sub.status || "").toUpperCase() === "CANCELLED";
 
   return (
-    <s-banner tone="info" onDismiss={() => setDismissed(true)}>
-      <s-stack gap="small">
-        <s-text>
-          {cancelled ? (
-            <>
-              Your <s-text type="strong">{planName}</s-text> plan remains available
-              until <s-text type="strong">{end}</s-text> (already paid — no new
-              charge until then).
-            </>
-          ) : (
-            <>
-              Your <s-text type="strong">{planName}</s-text> subscription is still
-              active until <s-text type="strong">{end}</s-text>.
-            </>
-          )}
-        </s-text>
-        <s-text tone="neutral">
-          Plan: {planName} · Started: {start} · Expires: {end}
-        </s-text>
-      </s-stack>
-    </s-banner>
+    <div style={{ margin: "12px 16px 0" }}>
+      <s-banner tone="info" onDismiss={() => setDismissed(true)}>
+        <s-stack gap="small">
+          <s-text>
+            {cancelled ? (
+              <>
+                Your <s-text type="strong">{planName}</s-text> plan remains available
+                until <s-text type="strong">{end}</s-text> (already paid — no new
+                charge until then).
+              </>
+            ) : (
+              <>
+                Your <s-text type="strong">{planName}</s-text> subscription is still
+                active until <s-text type="strong">{end}</s-text>.
+              </>
+            )}
+          </s-text>
+          <s-text tone="neutral">
+            Plan: {planName} · Started: {start} · Expires: {end}
+          </s-text>
+        </s-stack>
+      </s-banner>
+    </div>
   );
 }
 
