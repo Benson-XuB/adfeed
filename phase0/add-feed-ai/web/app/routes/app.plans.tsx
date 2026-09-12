@@ -112,6 +112,14 @@ export default function Plans() {
       billing?.active_subscription?.current_period_end ||
         billing?.subscription_period_end,
     ) || "";
+  const startedLabel =
+    formatPlanDate(
+      billing?.active_subscription?.created_at ||
+        billing?.subscription_started_at,
+    ) || "";
+  const paidThrough =
+    String(billing?.active_subscription?.status || "").toUpperCase() ===
+    "CANCELLED";
 
   return (
     <s-page heading={t("billing.plans.pageTitle")}>
@@ -178,12 +186,32 @@ export default function Plans() {
                           {t("billing.plans.currentBadge")}
                         </s-badge>
                       ) : null}
+                      {isCurrent && paid && expiresLabel ? (
+                        <s-badge tone="info">
+                          {t("billing.plans.untilBadge", {
+                            expires: expiresLabel,
+                          })}
+                        </s-badge>
+                      ) : null}
                     </s-stack>
                     <s-text>{t(`billing.plans.${id}.price`)}</s-text>
                     <s-text>{t(`billing.plans.${id}.quota`)}</s-text>
                     <s-text tone="neutral">
                       {t(`billing.plans.${id}.blurb`)}
                     </s-text>
+                    {isCurrent && paid && (startedLabel || expiresLabel) ? (
+                      <s-text tone="neutral">
+                        {paidThrough && expiresLabel
+                          ? t("billing.plans.periodPaidThrough", {
+                              start: startedLabel || "—",
+                              expires: expiresLabel,
+                            })
+                          : t("billing.plans.periodDetail", {
+                              start: startedLabel || "—",
+                              expires: expiresLabel || "—",
+                            })}
+                      </s-text>
+                    ) : null}
                     {isUpgrade ? (
                       <s-button
                         variant="primary"

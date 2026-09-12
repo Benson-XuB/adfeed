@@ -470,16 +470,37 @@ export default function Home() {
     billing != null &&
     (Number(billing.quota_remaining) <= 0 || estimate?.affordable === false);
   const steps = pipelineSteps();
+  const expiresIso =
+    billing?.active_subscription?.current_period_end ||
+    billing?.subscription_period_end ||
+    "";
+  const expiresShort = expiresIso
+    ? new Date(expiresIso).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+  const headerQuota =
+    billing && expiresShort
+      ? t("billing.headerQuotaUntil", {
+          plan: t(`billing.plans.${planKey}.name`),
+          left: String(billing.quota_remaining),
+          total: String(billing.quota_total),
+          expires: expiresShort,
+        })
+      : billing
+        ? t("billing.headerQuota", {
+            plan: t(`billing.plans.${planKey}.name`),
+            left: String(billing.quota_remaining),
+            total: String(billing.quota_total),
+          })
+        : "";
 
   return (
     <s-page heading={t("welcome")}>
       {billing ? (
         <s-button slot="secondary-actions" variant="tertiary" href="/app/plans">
-          {t("billing.headerQuota", {
-            plan: t(`billing.plans.${planKey}.name`),
-            left: String(billing.quota_remaining),
-            total: String(billing.quota_total),
-          })}
+          {headerQuota}
         </s-button>
       ) : null}
       <s-button

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -6,12 +6,7 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
-import {
-  type ActiveSubscription,
-  bootstrapStore,
-  fetchBillingStatus,
-  syncBillingPlanHandle,
-} from "../lib/adfeed-api";
+import { syncBillingPlanHandle } from "../lib/adfeed-api";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -28,17 +23,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     backendUrl,
   };
 };
-
-function formatBillingDate(iso: string): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 function PlanHandleSync() {
   const shopify = useAppBridge();
@@ -70,95 +54,6 @@ function PlanHandleSync() {
   return null;
 }
 
-/**
- * Shopify App Store review: if a subscription remains active until period end
- * after uninstall/reinstall, show plan details + start + expiration.
- */
-function ActiveSubscriptionBanner() {
-  const shopify = useAppBridge();
-  const [sub, setSub] = useState<ActiveSubscription | null>(null);
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await shopify.idToken();
-        if (cancelled) return;
-        // Must bootstrap offline token before billing sync, or status has no dates
-        await bootstrapStore(token);
-        if (cancelled) return;
-        const status = await fetchBillingStatus(token);
-        if (cancelled) return;
-        const active =
-          status.active_subscription ||
-          (status.subscription_period_end || status.subscription_started_at
-            ? {
-                name: `AdFeed ${String(status.plan || "plan").replace(/^\w/, (c) =>
-                  c.toUpperCase(),
-                )}`,
-                status: String(status.billing_status || "active").toUpperCase(),
-                created_at: status.subscription_started_at || "",
-                current_period_end: status.subscription_period_end || "",
-                persists_after_reinstall: true,
-              }
-            : null);
-        if (
-          active &&
-          (active.created_at || active.current_period_end) &&
-          (["ACTIVE", "ACCEPTED", "CANCELLED"].includes(
-            String(active.status || "").toUpperCase(),
-          ) ||
-            active.persists_after_reinstall ||
-            ["starter", "growth"].includes(String(status.plan || "").toLowerCase()))
-        ) {
-          setSub(active);
-        } else {
-          setSub(null);
-        }
-      } catch (e) {
-        console.warn("active subscription banner load failed", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shopify]);
-
-  if (!sub || dismissed) return null;
-
-  const planName = sub.name || "paid plan";
-  const start = formatBillingDate(sub.created_at);
-  const end = formatBillingDate(sub.current_period_end);
-  const cancelled = String(sub.status || "").toUpperCase() === "CANCELLED";
-
-  return (
-    <div style={{ margin: "12px 16px 0" }}>
-      <s-banner tone="info" onDismiss={() => setDismissed(true)}>
-        <s-stack gap="small">
-          <s-text>
-            {cancelled ? (
-              <>
-                Your <s-text type="strong">{planName}</s-text> plan remains available
-                until <s-text type="strong">{end}</s-text> (already paid — no new
-                charge until then).
-              </>
-            ) : (
-              <>
-                Your <s-text type="strong">{planName}</s-text> subscription is still
-                active until <s-text type="strong">{end}</s-text>.
-              </>
-            )}
-          </s-text>
-          <s-text tone="neutral">
-            Plan: {planName} · Started: {start} · Expires: {end}
-          </s-text>
-        </s-stack>
-      </s-banner>
-    </div>
-  );
-}
-
 export default function App() {
   const { apiKey, backendUrl } = useLoaderData<typeof loader>();
 
@@ -179,7 +74,6 @@ export default function App() {
         <s-link href="/app">Home</s-link>
         <s-link href="/app/plans">Plans</s-link>
       </s-app-nav>
-      <ActiveSubscriptionBanner />
       <Outlet />
     </AppProvider>
   );
