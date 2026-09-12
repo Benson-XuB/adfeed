@@ -88,8 +88,9 @@ function ActiveSubscriptionBanner() {
         const active = status.active_subscription;
         if (
           active &&
-          String(active.status || "").toUpperCase() === "ACTIVE" &&
-          (active.created_at || active.current_period_end)
+          (active.created_at || active.current_period_end) &&
+          (String(active.status || "").toUpperCase() === "ACTIVE" ||
+            active.persists_after_reinstall)
         ) {
           setSub(active);
         } else {
@@ -109,13 +110,24 @@ function ActiveSubscriptionBanner() {
   const planName = sub.name || "paid plan";
   const start = formatBillingDate(sub.created_at);
   const end = formatBillingDate(sub.current_period_end);
+  const cancelled = String(sub.status || "").toUpperCase() === "CANCELLED";
 
   return (
     <s-banner tone="info" onDismiss={() => setDismissed(true)}>
       <s-stack gap="small">
         <s-text>
-          Your <s-text type="strong">{planName}</s-text> subscription is still
-          active until <s-text type="strong">{end}</s-text>.
+          {cancelled ? (
+            <>
+              Your <s-text type="strong">{planName}</s-text> plan remains available
+              until <s-text type="strong">{end}</s-text> (already paid — no new
+              charge until then).
+            </>
+          ) : (
+            <>
+              Your <s-text type="strong">{planName}</s-text> subscription is still
+              active until <s-text type="strong">{end}</s-text>.
+            </>
+          )}
         </s-text>
         <s-text tone="neutral">
           Plan: {planName} · Started: {start} · Expires: {end}

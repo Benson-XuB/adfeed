@@ -101,26 +101,32 @@ def handle_products_delete(shop_domain: str, payload: dict) -> dict:
 
 
 def handle_app_uninstalled(shop_domain: str) -> dict:
-    """Mark store inactive and best-effort cancel Shopify subscriptions.
+    """Mark store inactive; snapshot paid period; best-effort cancel.
 
-    Cancel runs while access_token is still present. Managed Pricing may keep
-    the charge until period end — reinstall UI must show the leftover banner
-    via billing/status active_subscription. Do not force plan=free here.
+    Shopify cancels the charge on uninstall (ACTIVE → CANCELLED) and
+    activeSubscriptions becomes empty, but the merchant may still use the
+    paid remainder. Snapshot currentPeriodEnd before clearing the token so
+    reinstall can restore plan + banner.
     """
     shop = _norm_shop(shop_domain)
     store = store_db.get_store_by_domain(shop) if shop else None
     if not store:
         return {"ok": False, "reason": "store_not_found"}
 
+    snapshot = None
     cancel_result: dict = {"attempted": 0, "cancelled_ids": [], "errors": []}
     if store.access_token:
         try:
-            from .shopify_billing import cancel_app_subscriptions
+            from .shopify_billing import (
+                cancel_app_subscriptions,
+                snapshot_paid_period,
+            )
 
+            snapshot = snapshot_paid_period(store)
             cancel_result = cancel_app_subscriptions(store)
         except Exception as exc:
             logger.warning(
-                "uninstall cancel_app_subscriptions failed for %s: %s",
+                "uninstall billing cleanup failed for %s: %s",
                 shop,
                 exc,
             )
@@ -136,7 +142,12 @@ def handle_app_uninstalled(shop_domain: str) -> dict:
         status="inactive",
         billing_status="cancelled",
     )
-    return {"ok": True, "store_id": store.id, "cancel": cancel_result}
+    return {
+        "ok": True,
+        "store_id": store.id,
+        "cancel": cancel_result,
+        "period_snapshot": snapshot,
+    }
 
 
 def handle_shop_redact(shop_domain: str, payload: Optional[dict] = None) -> dict:

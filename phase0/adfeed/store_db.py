@@ -244,6 +244,8 @@ def init_store_schema():
             "ALTER TABLE stores ADD COLUMN quota_used INTEGER DEFAULT 0",
             "ALTER TABLE stores ADD COLUMN subscription_id TEXT",
             "ALTER TABLE stores ADD COLUMN billing_status TEXT DEFAULT 'none'",
+            "ALTER TABLE stores ADD COLUMN subscription_started_at TEXT",
+            "ALTER TABLE stores ADD COLUMN subscription_period_end TEXT",
             "ALTER TABLE feed_files ADD COLUMN platform TEXT DEFAULT 'google'",
             "ALTER TABLE product_variants ADD COLUMN feed_image_url TEXT",
             "ALTER TABLE product_variants ADD COLUMN feed_title TEXT",
@@ -368,6 +370,8 @@ class Store:
     quota_used: int = 0
     subscription_id: Optional[str] = None
     billing_status: str = "none"
+    subscription_started_at: Optional[str] = None
+    subscription_period_end: Optional[str] = None
     status: str = "active"
     created_at: str = ""
     updated_at: str = ""
@@ -507,6 +511,12 @@ def _row_to_store(row) -> Store:
         quota_used=row["quota_used"] if "quota_used" in keys else 0,
         subscription_id=row["subscription_id"] if "subscription_id" in keys else None,
         billing_status=row["billing_status"] if "billing_status" in keys else "none",
+        subscription_started_at=(
+            row["subscription_started_at"] if "subscription_started_at" in keys else None
+        ),
+        subscription_period_end=(
+            row["subscription_period_end"] if "subscription_period_end" in keys else None
+        ),
         status=row["status"],
         created_at=row["created_at"], updated_at=row["updated_at"],
     )
@@ -580,7 +590,8 @@ def update_store(store_id: str, **kwargs) -> bool:
     allowed = {"shop_name", "access_token", "refresh_token", "token_expires_at",
                "site_url", "default_brand",
                "default_currency", "status", "plan", "quota_total", "quota_used",
-               "subscription_id", "billing_status"}
+               "subscription_id", "billing_status",
+               "subscription_started_at", "subscription_period_end"}
     sets, vals = [], []
     for k, v in kwargs.items():
         if k in allowed:
