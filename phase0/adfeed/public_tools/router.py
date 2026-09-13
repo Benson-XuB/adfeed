@@ -20,6 +20,7 @@ from adfeed.public_tools.google_issues import (
     fetch_disapproved_issues,
     list_merchant_accounts,
 )
+from adfeed.public_tools.title_checker import analyze_title
 
 router = APIRouter(prefix="/api/public", tags=["public-tools"])
 
@@ -46,6 +47,15 @@ class FeedCheckUrlRequest(BaseModel):
     @classmethod
     def strip_url(cls, v: str) -> str:
         return (v or "").strip()
+
+
+class TitleCheckRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/title-check")
+async def title_check(body: TitleCheckRequest):
+    return analyze_title(body.title.strip())
 
 
 @router.post("/feed-check")
