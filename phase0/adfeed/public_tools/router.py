@@ -52,10 +52,15 @@ class FeedCheckUrlRequest(BaseModel):
 class TitleCheckRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, v: str) -> str:
+        return (v or "").strip()
+
 
 @router.post("/title-check")
 async def title_check(body: TitleCheckRequest):
-    return analyze_title(body.title.strip())
+    return analyze_title(body.title)
 
 
 @router.post("/feed-check")

@@ -33,11 +33,18 @@ COLOR_RE = re.compile(
     r"coral|maroon|gold|silver|multicolor|multi-?color)\b",
     re.I,
 )
-# Avoid matching the possessive "s" in Women's / Men's (apostrophe is a non-word char).
+# Size: labeled tokens, multi-char apparel sizes, waist/length codes, or trailing S|M|L.
+# Do not match bare digits ("Pack of 2") or mid-title lone letters.
 SIZE_RE = re.compile(
-    r"(?<!')\b(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|"
-    r"one\s*size|os|"
-    r"\d{1,2}(?:\.\d)?)\b",
+    r"(?:"
+    r"(?:^|\s)(?:size|sz)\s*[:#-]?\s*(?:xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|os|\d{1,3})\b"
+    r"|"
+    r"\b(?:xxs|xs|xl|xxl|xxxl|2xl|3xl|4xl|one\s*size)\b"
+    r"|"
+    r"\b\d{2,3}[wl]\b"
+    r"|"
+    r"(?<![A-Za-z0-9'])\b[sml]\s*$"
+    r")",
     re.I,
 )
 
@@ -119,12 +126,7 @@ def _verdict(
     if signal_count == 0 and not PRODUCT_HINT_RE.search(title):
         return "weak"
     hard = {i["code"] for i in issues} & {"too_long", "noisy_words"}
-    if hard:
-        return "improve"
-    missing = [i for i in issues if i["code"].startswith("missing_")]
-    if len(missing) >= 3:
-        return "improve"
-    if missing:
+    if hard or any(i["code"].startswith("missing_") for i in issues):
         return "improve"
     return "ok"
 
