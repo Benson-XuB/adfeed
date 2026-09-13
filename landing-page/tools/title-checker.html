@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google Shopping Title Checker — Free Title Fix Hints | AdFeed</title>
+  <meta name="description" content="Paste a Google Shopping title. See missing signals (material, style, audience, color, size) and get a shorter, cleaner suggestion. Free. No install. No invented brand or GTIN." />
+  <meta name="keywords" content="Google Shopping title checker, product title optimizer, Shopping title length, 1688 title cleanup" />
+  <link rel="canonical" href="https://deltfu.com/tools/title-checker" />
+  <meta property="og:title" content="Google Shopping Title Checker — Free Title Fix Hints | AdFeed" />
+  <meta property="og:description" content="Paste a title → missing shopping signals → optional shorter suggestion. Never invents brand or GTIN." />
+  <meta property="og:url" content="https://deltfu.com/tools/title-checker" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Google Shopping Title Checker | AdFeed" />
+  <meta name="twitter:description" content="Free title check for Google Shopping: missing signals + cleaner suggestion." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=tc1" />
+</head>
+<body class="tools-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/tools/">Tools</a>
+        <a class="hide-sm" href="/tools/feed-checker">Feed checker</a>
+        <a class="btn btn-primary" href="/#waitlist?utm_source=tools&amp;utm_medium=title-checker">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="tools-hero wrap">
+      <p class="eyebrow">Free tool · Google Shopping titles</p>
+      <h1 class="tools-hero-title">Check Your Google Shopping Title</h1>
+      <p class="tools-deck">
+        Paste a product title. See which shopping signals are missing — then get an optional shorter suggestion.
+      </p>
+      <p class="tools-lead">
+        We flag marketplace noise and gaps like material, style, audience, color, and size.
+        Suggestions never invent brand or GTIN.
+      </p>
+
+      <div class="tools-console" id="tools-console">
+        <p class="tools-panel-label" id="title-label">Paste your Google Shopping title</p>
+        <label class="visually-hidden" for="title-input">Product title</label>
+        <textarea
+          id="title-input"
+          class="tools-textarea"
+          rows="4"
+          maxlength="500"
+          placeholder="e.g. Women's Summer Dress Casual Loose New Arrival Free Shipping Hot Sale"
+          aria-labelledby="title-label"
+        ></textarea>
+        <div class="tools-panel-row tools-panel-row--end">
+          <button type="button" class="btn btn-primary" id="check-title-btn">Check title</button>
+          <button type="button" class="btn btn-ghost" id="suggest-title-btn">Suggest cleaner title</button>
+        </div>
+        <p class="tools-note tools-note--console">
+          Rule-based check only — used for this report. We don’t store your titles.
+        </p>
+        <p class="tools-status" id="check-status" hidden></p>
+      </div>
+
+      <aside class="tools-outcome" aria-label="What you’ll get">
+        <h2 class="tools-outcome-heading">What you’ll get</h2>
+        <ul class="tools-outcome-list">
+          <li>
+            <strong>Verdict</strong>
+            <span>OK · needs work · or too weak</span>
+          </li>
+          <li>
+            <strong>Missing signals</strong>
+            <span>Material · style · audience · color · size</span>
+          </li>
+          <li>
+            <strong>Cleaner title</strong>
+            <span>Noise stripped — no invented attributes</span>
+          </li>
+        </ul>
+        <p class="tools-outcome-foot">Free · No Shopify install · No catalog stored</p>
+      </aside>
+    </section>
+
+    <section class="tools-report wrap" id="report" hidden>
+      <h2>Title report</h2>
+
+      <div class="tools-verdict" id="verdict-banner" data-verdict="" hidden>
+        <p class="tools-verdict-label" id="verdict-label"></p>
+        <p class="tools-verdict-detail" id="verdict-detail"></p>
+      </div>
+
+      <h3 class="tools-report-section" id="issues-heading" hidden>Issues to fix</h3>
+      <ul class="tools-issue-list" id="issue-list"></ul>
+
+      <div class="tools-suggest" id="suggest-box" hidden>
+        <div class="tools-suggest-head">
+          <h3 class="tools-suggest-title">Suggested title</h3>
+          <button type="button" class="btn btn-ghost tools-copy-btn" id="copy-suggest-btn">Copy</button>
+        </div>
+        <p class="tools-suggest-text" id="suggest-text"></p>
+        <p class="tools-note" id="suggest-disclaimer"></p>
+      </div>
+
+      <div class="tools-help card-block" id="report-cta">
+        <h3>Want cleaner titles across your catalog?</h3>
+        <p class="tools-help-lead">
+          AdFeed cleans supplier-imported product data and generates a Google Shopping feed —
+          without inventing barcodes or brands.
+        </p>
+        <p class="tools-actions">
+          <a class="btn btn-primary" href="/#waitlist?utm_source=tools&amp;utm_medium=title-checker">Get early access</a>
+          <a class="btn btn-ghost" href="/tools/feed-checker">Check a full feed →</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="tools-cta wrap" id="waitlist">
+      <h2>Get early access to AdFeed</h2>
+      <p>Join the waitlist. After App Store approval you’ll install AdFeed on Shopify and fix the catalog for real.</p>
+      <form class="waitlist" id="waitlist-form" data-source="title-checker" data-submit-label="Get early access" novalidate>
+        <div class="waitlist-row">
+          <label class="visually-hidden" for="waitlist-email">Email</label>
+          <input type="email" id="waitlist-email" name="email" placeholder="Your email" required maxlength="254" />
+          <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
+        </div>
+        <p class="waitlist-note" id="waitlist-note">Product updates only. No spam.</p>
+        <p class="waitlist-msg" id="waitlist-msg" hidden></p>
+        <div class="waitlist-success" id="waitlist-success" hidden>
+          <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
+          <p class="waitlist-success-body" id="waitlist-success-body"></p>
+        </div>
+      </form>
+      <p class="tools-note"><a href="/tools/feed-checker">Or check a public feed URL →</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p>© AdFeed AI</p>
+      <nav>
+        <a href="/privacy.html">Privacy</a>
+        · <a href="/tools/feed-checker">Feed checker</a>
+        · <a href="/tools/">All tools</a>
+      </nav>
+    </div>
+  </footer>
+  <script src="/waitlist.js" defer></script>
+  <script src="/tools/title-checker.js?v=tc1" defer></script>
+</body>
+</html>
