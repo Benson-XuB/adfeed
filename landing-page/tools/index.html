@@ -13,41 +13,94 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=tc1" />
+  <link rel="stylesheet" href="/styles.css?v=tc2" />
 </head>
 <body class="tools-page">
   <header class="site-nav">
     <div class="wrap">
       <a class="logo" href="/">AdFeed <span>AI</span></a>
-      <nav class="nav-links">
-        <a class="btn btn-primary" href="/#waitlist">Get early access</a>
+      <nav class="nav-links" aria-label="Primary">
+        <a class="btn btn-primary" href="/#waitlist?utm_source=tools&amp;utm_medium=hub">Get early access</a>
       </nav>
     </div>
   </header>
-  <main class="wrap tools-hero">
-    <p class="eyebrow">Free tools · 1688 → Shopping</p>
-    <h1>Diagnose before you generate</h1>
-    <p class="tools-lead">
-      Built for catalogs sourced from 1688. Check titles, feed data, or Merchant Center disapprovals—then turn products into Google-ready Shopping feeds with AdFeed.
-    </p>
-    <div class="tools-index-grid">
-      <a class="tools-index-card" href="/tools/title-checker">
-        <h2>Google Shopping Title Checker</h2>
-        <p>Paste one title. Spot missing signals and marketplace noise, then get a shorter suggestion—no invented brand or GTIN.</p>
-      </a>
-      <a class="tools-index-card" href="/tools/feed-checker">
-        <h2>Google Shopping Feed Checker</h2>
-        <p>Paste a feed URL or upload XML. Spot supplier-title noise, missing brand, color/size, and identifier gaps—no fake GTINs.</p>
-      </a>
-      <a class="tools-index-card" href="/tools/google-issues">
-        <h2>Merchant Center Disapproval Checker</h2>
-        <p>Disapproved in Google Shopping? Connect read-only and see if it looks like an account issue or a feed issue.</p>
-      </a>
-      <a class="tools-index-card" href="/tools/google-ads-monitor">
-        <h2>Google Ads Shopping Monitor</h2>
-        <p>Read-only ads performance: impressions, CPC, ROAS, budget pressure. Sample data now; live Ads API when your developer token is ready.</p>
-      </a>
-    </div>
+  <main>
+    <section class="wrap tools-hero">
+      <p class="eyebrow">Free tools · 1688 → Shopping</p>
+      <h1>Diagnose before you generate</h1>
+      <p class="tools-lead">
+        Built for catalogs sourced from 1688. Check titles, feed data, or Merchant Center disapprovals—then turn products into Google-ready Shopping feeds with AdFeed.
+      </p>
+      <ol class="tools-index-grid">
+        <li>
+          <article class="tools-index-card">
+            <h2>Google Shopping Title Checker</h2>
+            <p class="tools-index-pain">Supplier titles are long, noisy, and hard to read on a Shopping card.</p>
+            <p class="tools-index-outcome">Paste one title → see missing signals and a shorter suggestion—no invented brand or GTIN.</p>
+            <a class="tools-index-link" href="/tools/title-checker">Check a title →</a>
+          </article>
+        </li>
+        <li>
+          <article class="tools-index-card">
+            <h2>Google Shopping Feed Checker</h2>
+            <p class="tools-index-pain">A public feed URL can look “valid” while brand, color/size, and identifiers are still broken.</p>
+            <p class="tools-index-outcome">Paste a feed URL or upload XML → spot noise, gaps, and soft GTIN/price issues—no fake barcodes.</p>
+            <a class="tools-index-link" href="/tools/feed-checker">Check a feed →</a>
+          </article>
+        </li>
+        <li>
+          <article class="tools-index-card">
+            <h2>Merchant Center Disapproval Checker</h2>
+            <p class="tools-index-pain">Products are disapproved and it’s unclear whether the account or the feed is the problem.</p>
+            <p class="tools-index-outcome">Connect read-only → see if it looks like an account issue or a feed issue.</p>
+            <a class="tools-index-link" href="/tools/google-issues">Diagnose disapprovals →</a>
+          </article>
+        </li>
+        <li>
+          <article class="tools-index-card">
+            <h2>Google Ads Shopping Monitor</h2>
+            <p class="tools-index-pain">Shopping ads are live, but impressions, CPC, and budget pressure are hard to scan quickly.</p>
+            <p class="tools-index-outcome">Read-only performance view: impressions, CPC, ROAS, and budget pressure—demo or connect Ads.</p>
+            <a class="tools-index-link" href="/tools/google-ads-monitor">Monitor Shopping ads →</a>
+          </article>
+        </li>
+      </ol>
+    </section>
+
+    <section class="tools-cta wrap" id="waitlist">
+      <h2>Ready for Google-ready feeds?</h2>
+      <p>Diagnose first with the free tools above. Then join the waitlist—AdFeed cleans supplier catalogs for Shopping without inventing barcodes or brands.</p>
+      <form class="waitlist" id="waitlist-form" data-source="tools-hub" data-submit-label="Get early access" novalidate>
+        <div class="waitlist-row">
+          <label class="visually-hidden" for="waitlist-email">Email</label>
+          <input type="email" id="waitlist-email" name="email" placeholder="Your email" required maxlength="254" />
+          <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
+        </div>
+        <p class="waitlist-note" id="waitlist-note">Product updates only. No spam.</p>
+        <p class="waitlist-msg" id="waitlist-msg" hidden></p>
+        <div class="waitlist-success" id="waitlist-success" hidden>
+          <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
+          <p class="waitlist-success-body" id="waitlist-success-body"></p>
+        </div>
+      </form>
+      <p class="tools-note">
+        Or start with a
+        <a href="/tools/title-checker">title check</a>
+        or
+        <a href="/tools/feed-checker">feed check</a>.
+      </p>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p>© AdFeed AI</p>
+      <nav>
+        <a href="/privacy.html">Privacy</a>
+        · <a href="/#waitlist?utm_source=tools&amp;utm_medium=hub">Early access</a>
+      </nav>
+    </div>
+  </footer>
+  <script src="/waitlist.js" defer></script>
 </body>
 </html>

@@ -2263,15 +2263,23 @@ p {
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   margin-top: 2rem;
+  list-style: none;
+  padding: 0;
+  counter-reset: tools-hub;
+}
+
+.tools-index-grid > li {
+  margin: 0;
 }
 
 .tools-index-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   padding: 1.35rem 1.4rem;
   background: var(--white);
   border: 1px solid var(--line);
   color: inherit;
-  text-decoration: none;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
@@ -2282,7 +2290,38 @@ p {
 
 .tools-index-card h2 {
   font-size: 1.35rem;
-  margin-bottom: 0.4rem;
+  margin: 0 0 0.55rem;
+  counter-increment: tools-hub;
+}
+
+.tools-index-card h2::before {
+  content: counter(tools-hub) ". ";
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.tools-index-pain {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.tools-index-outcome {
+  margin: 0 0 1rem;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  flex: 1;
+}
+
+.tools-index-link {
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.tools-index-link:hover {
+  text-decoration: underline;
 }
 
 #merchant-box label {
