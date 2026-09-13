@@ -142,28 +142,44 @@
     });
   }
 
+  function formatCount(n) {
+    return Number(n || 0).toLocaleString("en-US");
+  }
+
   function renderReport(data) {
     report.hidden = false;
     const summary = data.summary || {};
     const buckets = data.buckets || [];
-    const itemCount = data.item_count || 0;
+    const itemCount = data.items_checked != null ? data.items_checked : data.item_count || 0;
+    const capped = !!(data.items_capped != null ? data.items_capped : data.truncated);
+    const issueTotal =
+      data.issue_total != null
+        ? data.issue_total
+        : summary.issue_total != null
+          ? summary.issue_total
+          : buckets.reduce((sum, b) => sum + (b.count || 0), 0);
 
-    meta.textContent = data.truncated
-      ? `Checked ${itemCount} products (truncated to limit).`
-      : `Checked ${itemCount} products.`;
+    meta.textContent = capped
+      ? `Sample capped at ${formatCount(itemCount)} products for this check.`
+      : "";
+    meta.hidden = !meta.textContent;
 
     if (summaryEl) {
       summaryEl.hidden = false;
       const types = summary.issue_types || buckets.length || 0;
       const affected = summary.affected_products;
       const ok = summary.ok_products;
-      const breakdown = (summary.issue_breakdown || [])
+      const breakdown = (summary.issue_breakdown || data.buckets_summary || [])
         .map(
           (row) =>
             `<li><span class="tools-summary-n">${escapeHtml(String(row.count))}</span> ${escapeHtml(row.label || row.code)}</li>`,
         )
         .join("");
       summaryEl.innerHTML = `
+        <div class="tools-report-counts" aria-label="Check summary counts">
+          <p class="tools-report-count-line"><strong>${escapeHtml(formatCount(itemCount))}</strong> products checked${capped ? " <span class=\"tools-report-cap\">(capped)</span>" : ""}</p>
+          <p class="tools-report-count-line"><strong>${escapeHtml(formatCount(issueTotal))}</strong> potential issues found</p>
+        </div>
         <p class="tools-assessment">${escapeHtml(summary.assessment || "")}</p>
         <div class="tools-summary-grid">
           <div>
@@ -185,6 +201,7 @@
       block.className = "tools-bucket";
       const n = b.count || 0;
       const samples = (b.samples || [])
+        .slice(0, 3)
         .map((s) => `<li><code>${escapeHtml(s.id || "")}</code> — ${escapeHtml(s.title || "")}</li>`)
         .join("");
       const num = String(idx + 1).padStart(2, "0");

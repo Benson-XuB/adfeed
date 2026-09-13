@@ -19,6 +19,11 @@ TITLE_NOISE_RE = re.compile(
     re.I,
 )
 DIRTY_BRAND_RE = re.compile(r"\b(eprolo|cjdropshipping|alibaba|1688|factory)\b", re.I)
+# Google Shopping price: amount + ISO currency, e.g. "19.99 USD"
+PRICE_RE = re.compile(r"^\d+(?:\.\d{1,2})?\s+[A-Z]{3}$")
+VALID_AVAILABILITY = frozenset(
+    {"in_stock", "out_of_stock", "preorder", "backorder"}
+)
 
 # Map issue codes → overview categories (only rules we actually run).
 CHECK_CATEGORY = {
@@ -29,7 +34,9 @@ CHECK_CATEGORY = {
     "missing_image": "images",
     "missing_color": "variants",
     "missing_size": "variants",
-    "missing_identifier": "identifiers",
+    "missing_gtin_and_no_identifier_exists": "identifiers",
+    "price_format": "pricing",
+    "availability_odd": "availability",
 }
 
 CHECK_LABELS = {
@@ -38,6 +45,8 @@ CHECK_LABELS = {
     "images": "Main image",
     "variants": "Color / size (apparel)",
     "identifiers": "Product identifiers",
+    "pricing": "Price",
+    "availability": "Availability",
 }
 
 
@@ -110,7 +119,14 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
     item_count = 0
     truncated = False
     affected_ids: set[str] = set()
-    scanned_categories: set[str] = {"titles", "brands", "images", "identifiers"}
+    scanned_categories: set[str] = {
+        "titles",
+        "brands",
+        "images",
+        "identifiers",
+        "pricing",
+        "availability",
+    }
 
     for item in _iter_items(root):
         if item_count >= max_items:
@@ -126,6 +142,8 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
         gtin = _child_text(item, "gtin")
         mpn = _child_text(item, "mpn")
         identifier_exists = _child_text(item, "identifier_exists").lower()
+        price = _child_text(item, "price")
+        availability = _child_text(item, "availability").lower()
         product_type = _child_text(item, "product_type", "google_product_category")
 
         sample = {"id": offer_id or "(no id)", "title": (title or "")[:120]}
@@ -215,14 +233,39 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
         if not has_id and not marked_no:
             _bucket(
                 buckets,
-                "missing_identifier",
+                "missing_gtin_and_no_identifier_exists",
                 label="Missing product identifiers",
                 advice=(
-                    "Use a compliant path without fake barcodes: set identifier_exists=no "
-                    "when you have no GTIN, or provide a real GTIN/MPN you own. "
-                    "Do not create fake GTINs."
+                    "Use a compliant identifier path: set identifier_exists=no when you have "
+                    "no GTIN, or provide a real GTIN/MPN you own. Do not create fake GTINs."
                 ),
                 sample=sample,
+            )
+            hit = True
+
+        if not price or not PRICE_RE.match(price):
+            _bucket(
+                buckets,
+                "price_format",
+                label="Price format",
+                advice=(
+                    "Set price as amount plus currency (for example 19.99 USD). "
+                    "Missing or odd price strings can block Shopping ads."
+                ),
+                sample={**sample, "price": price or "(empty)"},
+            )
+            hit = True
+
+        if not availability or availability not in VALID_AVAILABILITY:
+            _bucket(
+                buckets,
+                "availability_odd",
+                label="Availability",
+                advice=(
+                    "Set availability to a known Shopping value: in_stock, out_of_stock, "
+                    "preorder, or backorder. Empty or unknown values are unreliable."
+                ),
+                sample={**sample, "availability": availability or "(empty)"},
             )
             hit = True
 
@@ -231,8 +274,13 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
 
     bucket_list = sorted(buckets.values(), key=lambda b: (-b["count"], b["code"]))
     issue_types = len(bucket_list)
+    issue_total = sum(int(b["count"]) for b in bucket_list)
     affected = len(affected_ids)
     ok_count = max(0, item_count - affected)
+    buckets_summary = [
+        {"code": b["code"], "label": b["label"], "count": b["count"]}
+        for b in bucket_list
+    ]
 
     failed_cats = {
         CHECK_CATEGORY[b["code"]]
@@ -241,7 +289,15 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
     }
     checks_passed = [
         {"code": code, "label": CHECK_LABELS[code]}
-        for code in ("titles", "brands", "images", "variants", "identifiers")
+        for code in (
+            "titles",
+            "brands",
+            "images",
+            "variants",
+            "identifiers",
+            "pricing",
+            "availability",
+        )
         if code in scanned_categories and code not in failed_cats
     ]
     issue_breakdown = []
@@ -259,12 +315,17 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
     return {
         "ok": True,
         "item_count": item_count,
+        "items_checked": item_count,
         "truncated": truncated,
+        "items_capped": truncated,
+        "issue_total": issue_total,
+        "buckets_summary": buckets_summary,
         "summary": {
             "assessment": _assessment(
                 item_count=item_count, issue_types=issue_types, affected=affected
             ),
             "issue_types": issue_types,
+            "issue_total": issue_total,
             "affected_products": affected,
             "ok_products": ok_count,
             "issue_breakdown": issue_breakdown,

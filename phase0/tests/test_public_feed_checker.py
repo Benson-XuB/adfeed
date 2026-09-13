@@ -49,16 +49,23 @@ def test_feed_checker_flags_missing_image_and_identifier_advice():
           <g:brand>Acme</g:brand>
           <g:color>Black</g:color>
           <g:size>M</g:size>
+          <g:price>19.99 USD</g:price>
+          <g:availability>in_stock</g:availability>
         </item>
       </channel>
     </rss>"""
     report = analyze_feed_bytes(xml, max_items=10)
     codes = {b["code"] for b in report["buckets"]}
     assert "missing_image" in codes
-    assert "missing_identifier" in codes
-    advice = next(b["advice"] for b in report["buckets"] if b["code"] == "missing_identifier")
+    assert "missing_gtin_and_no_identifier_exists" in codes
+    advice = next(
+        b["advice"]
+        for b in report["buckets"]
+        if b["code"] == "missing_gtin_and_no_identifier_exists"
+    )
     assert "identifier_exists=no" in advice.lower() or "compliant" in advice.lower()
-    assert "do not create fake" in advice.lower()
+    assert "do not create fake" in advice.lower() or "never" in advice.lower()
+    assert "generate" not in advice.lower()
     assert "make up" not in advice.lower()
 
 
@@ -66,6 +73,7 @@ def test_feed_checker_summary_ok_products():
     items = "".join(
         f"<item><g:id>{i}</g:id><g:title>Clean Mug {i}</g:title>"
         f"<g:brand>Acme</g:brand><g:image_link>https://x/{i}.jpg</g:image_link>"
+        f"<g:price>9.99 USD</g:price><g:availability>in_stock</g:availability>"
         f"<g:identifier_exists>no</g:identifier_exists></item>"
         for i in range(3)
     )
@@ -74,6 +82,7 @@ def test_feed_checker_summary_ok_products():
         "<item><g:id>bad</g:id>"
         "<g:title>Hot Sale Wholesale Factory Soft Soft Soft Soft Soft Soft Soft Soft Soft Soft Soft Soft Soft Dress New Arrival</g:title>"
         "<g:brand>Acme</g:brand><g:image_link>https://x/bad.jpg</g:image_link>"
+        "<g:price>12.00 USD</g:price><g:availability>in_stock</g:availability>"
         "<g:identifier_exists>no</g:identifier_exists></item>"
     )
     xml = f'<?xml version="1.0"?><rss xmlns:g="http://base.google.com/ns/1.0"><channel>{items}</channel></rss>'.encode()
@@ -93,10 +102,95 @@ def test_feed_checker_summary_ok_products():
 def test_feed_checker_respects_max_items():
     items = "".join(
         f"<item><g:id>{i}</g:id><g:title>Item {i}</g:title>"
-        f"<g:brand>B</g:brand><g:image_link>https://x/{i}.jpg</g:image_link></item>"
+        f"<g:brand>B</g:brand><g:image_link>https://x/{i}.jpg</g:image_link>"
+        f"<g:price>1.00 USD</g:price><g:availability>in_stock</g:availability>"
+        f"<g:identifier_exists>no</g:identifier_exists></item>"
         for i in range(8)
     )
     xml = f'<?xml version="1.0"?><rss xmlns:g="http://base.google.com/ns/1.0"><channel>{items}</channel></rss>'.encode()
     report = analyze_feed_bytes(xml, max_items=3)
     assert report["item_count"] == 3
     assert report["truncated"] is True
+    assert report["items_checked"] == 3
+    assert report["items_capped"] is True
+
+
+def test_feed_checker_exposes_rich_summary_counts():
+    items = "".join(
+        f"<item><g:id>{i}</g:id><g:title>Clean Mug {i}</g:title>"
+        f"<g:brand>Acme</g:brand><g:image_link>https://x/{i}.jpg</g:image_link>"
+        f"<g:price>9.99 USD</g:price><g:availability>in_stock</g:availability>"
+        f"<g:identifier_exists>no</g:identifier_exists></item>"
+        for i in range(2)
+    )
+    items += (
+        "<item><g:id>gap</g:id><g:title>Clean Mug Gap</g:title>"
+        "<g:brand>Acme</g:brand><g:image_link>https://x/gap.jpg</g:image_link>"
+        "<g:price></g:price><g:availability></g:availability>"
+        "<g:identifier_exists>no</g:identifier_exists></item>"
+    )
+    xml = f'<?xml version="1.0"?><rss xmlns:g="http://base.google.com/ns/1.0"><channel>{items}</channel></rss>'.encode()
+    report = analyze_feed_bytes(xml, max_items=20)
+    assert report["items_checked"] == 3
+    assert report["items_capped"] is False
+    assert report["truncated"] is False
+    assert report["issue_total"] == sum(b["count"] for b in report["buckets"])
+    assert report["issue_total"] >= 2  # price_format + availability_odd at least
+    assert isinstance(report["buckets_summary"], list)
+    assert {row["code"] for row in report["buckets_summary"]} == {
+        b["code"] for b in report["buckets"]
+    }
+
+
+def test_feed_checker_flags_price_and_availability_soft_checks():
+    xml = b"""<?xml version="1.0"?>
+    <rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+      <channel>
+        <item>
+          <g:id>p1</g:id>
+          <g:title>Clean Mug</g:title>
+          <g:brand>Acme</g:brand>
+          <g:image_link>https://example.com/a.jpg</g:image_link>
+          <g:price>19.99</g:price>
+          <g:availability>unknown</g:availability>
+          <g:identifier_exists>no</g:identifier_exists>
+        </item>
+        <item>
+          <g:id>p2</g:id>
+          <g:title>Clean Mug Two</g:title>
+          <g:brand>Acme</g:brand>
+          <g:image_link>https://example.com/b.jpg</g:image_link>
+          <g:identifier_exists>no</g:identifier_exists>
+        </item>
+      </channel>
+    </rss>"""
+    report = analyze_feed_bytes(xml, max_items=10)
+    codes = {b["code"] for b in report["buckets"]}
+    assert "price_format" in codes
+    assert "availability_odd" in codes
+    price_b = next(b for b in report["buckets"] if b["code"] == "price_format")
+    avail_b = next(b for b in report["buckets"] if b["code"] == "availability_odd")
+    assert price_b["count"] >= 2
+    assert avail_b["count"] >= 2
+    assert "generate" not in (price_b["advice"] + avail_b["advice"]).lower()
+
+
+def test_feed_checker_compliant_identifier_exists_skips_gtin_soft_check():
+    xml = b"""<?xml version="1.0"?>
+    <rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+      <channel>
+        <item>
+          <g:id>ok</g:id>
+          <g:title>Clean Mug</g:title>
+          <g:brand>Acme</g:brand>
+          <g:image_link>https://example.com/a.jpg</g:image_link>
+          <g:price>19.99 USD</g:price>
+          <g:availability>in_stock</g:availability>
+          <g:identifier_exists>no</g:identifier_exists>
+        </item>
+      </channel>
+    </rss>"""
+    report = analyze_feed_bytes(xml, max_items=10)
+    codes = {b["code"] for b in report["buckets"]}
+    assert "missing_gtin_and_no_identifier_exists" not in codes
+    assert report["issue_total"] == 0

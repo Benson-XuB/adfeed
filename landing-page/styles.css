@@ -1902,6 +1902,33 @@ p {
   border-radius: var(--radius);
 }
 
+.tools-report-counts {
+  margin: 0 0 1rem;
+}
+
+.tools-report-count-line {
+  margin: 0.15rem 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.tools-report-count-line strong {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+
+.tools-report-cap {
+  font-family: var(--font-body);
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .tools-assessment {
   margin: 0 0 0.85rem;
   font-size: 1.08rem;
