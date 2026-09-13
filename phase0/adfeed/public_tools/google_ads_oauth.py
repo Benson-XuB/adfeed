@@ -1,9 +1,8 @@
 """OAuth for marketing-site Google Ads monitor (separate from MC Content API)."""
 
-from __future__ import annotations
-
 import os
 import time
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -42,11 +41,29 @@ def google_ads_oauth_configured() -> bool:
 
 
 def google_ads_api_configured() -> bool:
-    """Live Ads API needs developer token in addition to OAuth client."""
-    return bool(
-        google_ads_oauth_configured()
-        and os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip()
-    )
+    """Live Ads API: OAuth client is enough (Cloud project holds access level).
+
+    Google sunset developer tokens for Ads API access (2026-09-09). The header
+    is optional; access is granted on the Cloud project (Test / Explorer / …).
+    """
+    return google_ads_oauth_configured()
+
+
+def ads_api_headers(access_token: str) -> dict[str, str]:
+    """Auth headers for Google Ads REST; developer-token only if still configured."""
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    token = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip()
+    if token:
+        headers["developer-token"] = token
+    login_cid = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "").strip()
+    if login_cid:
+        digits = re.sub(r"\D", "", login_cid)
+        if digits:
+            headers["login-customer-id"] = digits
+    return headers
 
 
 def mint_state() -> str:

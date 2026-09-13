@@ -40,16 +40,23 @@ def _session(request: Request) -> dict | None:
 @router.get("/status")
 async def ads_status(request: Request):
     sess = _session(request)
+    live = aoauth.google_ads_api_configured()
     return {
         "oauth_configured": aoauth.google_ads_oauth_configured(),
-        "ads_api_configured": aoauth.google_ads_api_configured(),
+        "ads_api_configured": live,
         "connected": bool(sess and sess.get("access_token")),
-        "mode": "live" if aoauth.google_ads_api_configured() else "demo",
+        "mode": "live" if live else "demo",
         "redirect_uri": aoauth.ads_redirect_uri(),
         "setup_hint": (
-            "Set GOOGLE_ADS_DEVELOPER_TOKEN after Google approves Ads API access. "
-            "Add redirect URI in Cloud Console: "
+            "OAuth is ready. Cloud project access level (Test/Explorer) controls "
+            "which accounts you can query. Connect with a Test Ads account while "
+            "on Test access. Redirect URI: "
             + aoauth.ads_redirect_uri()
+            if live
+            else (
+                "Set GOOGLE_OAUTH_CLIENT_ID/SECRET and add redirect URI in Cloud "
+                "Console: " + aoauth.ads_redirect_uri()
+            )
         ),
     }
 
@@ -123,8 +130,8 @@ async def ads_customers(request: Request):
             "mode": "demo",
             "customers": [],
             "notice": (
-                "Ads API developer token not set yet — use demo report. "
-                "After you have a token, reconnect Google and pick a customer."
+                "Connect Google Ads first, then pick a customer. "
+                "With Cloud Test access, use a Google Ads test account only."
             ),
         }
     sess = _session(request)

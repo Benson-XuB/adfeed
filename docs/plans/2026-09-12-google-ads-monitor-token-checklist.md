@@ -1,33 +1,38 @@
-# Google Ads API — what to do after this ship
+# Google Ads API — after developer-token sunset (2026-09-09)
 
-The marketing tool is live in **demo mode** without a developer token.
+Access levels live on the **Google Cloud project** (Test / Explorer / Basic).
+Developer tokens are optional/ignored for Ads API access management.
 
-## Cloud Console
+## Cloud Console (`adfeed-ai-dev`)
 
-1. OAuth Web client (can reuse existing client id/secret)
-2. Add authorized redirect URI:
+1. Enable **Google Ads API**
+2. Overview → apply for **Explorer** when you need production accounts (Test is enough for test accounts)
+3. OAuth Web client redirect URI:
    `https://deltfu.com/api/public/google-ads/oauth/callback`
-3. Enable **Google Ads API** on the GCP project
+4. Reuse `GOOGLE_OAUTH_CLIENT_ID` / `SECRET` (same as MC tool is fine)
 
-## Ads API Center
-
-1. Apply for a **Developer Token** (Basic access is enough to start)
-2. When approved, put on the server `/opt/adfeed/phase0/.env`:
+## Server `.env`
 
 ```bash
 GOOGLE_ADS_OAUTH_REDIRECT_URI=https://deltfu.com/api/public/google-ads/oauth/callback
-GOOGLE_ADS_DEVELOPER_TOKEN=...your token...
-# optional if using MCC:
+# optional leftover; not required for live mode anymore:
+# GOOGLE_ADS_DEVELOPER_TOKEN=
 # GOOGLE_ADS_LOGIN_CUSTOMER_ID=1234567890
 ```
 
-3. Ensure `GOOGLE_OAUTH_CLIENT_ID` / `SECRET` are already present (same as MC tool is fine)
-4. `sudo systemctl restart adfeed-api`
+`sudo systemctl restart adfeed-api` after env changes.
+
+## Test with a Test Ads account (while Cloud access = Test)
+
+1. Create a Google Ads **test manager** + test client account
+2. Open https://deltfu.com/tools/google-ads-monitor
+3. **Connect Google Ads** (sign in with the test account Google user)
+4. Pick customer → **Load live report**
 
 ## Verify
 
-- `/api/public/google-ads/status` → `ads_api_configured: true`
-- Connect on `/tools/google-ads-monitor` → pick customer → Load live report
+- `/api/public/google-ads/status` → `ads_api_configured: true`, `mode: live`
+- Demo still works via **Show sample** / `force_demo=1`
 
 ## Does not touch
 

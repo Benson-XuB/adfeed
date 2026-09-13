@@ -36,7 +36,7 @@
       if (notice) {
         notice.textContent = s.ads_api_configured
           ? (s.connected ? "Google Ads connected." : "Connect Google Ads (read-only) to load a live account.")
-          : (s.setup_hint || "Developer token not set yet — panel runs on sample data until you add GOOGLE_ADS_DEVELOPER_TOKEN.");
+          : (s.setup_hint || "Connect Google Ads to load a live (or Test) account; Show sample works anytime.");
       }
       if (connect) {
         connect.hidden = !s.oauth_configured;

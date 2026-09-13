@@ -65,8 +65,8 @@ def demo_report(
         "ok": True,
         "mode": "demo",
         "notice": (
-            "Showing illustrative sample data. Add GOOGLE_ADS_DEVELOPER_TOKEN "
-            "(and complete Ads API access) to load a live account."
+            "Showing illustrative sample data. Connect Google Ads (OAuth) with a "
+            "Test or production account after Cloud project Ads API access is ready."
         ),
         "cut": cut,
         "daily_budget": daily_budget,
@@ -84,8 +84,7 @@ def fetch_daily_rows(
     date_to: str,
 ) -> list[dict[str, Any]]:
     """GAQL daily metrics via Google Ads REST search."""
-    if not os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip():
-        raise RuntimeError("GOOGLE_ADS_DEVELOPER_TOKEN not configured")
+    from adfeed.public_tools.google_ads_oauth import ads_api_headers
 
     cid = _cid(customer_id)
     query = f"""
@@ -104,14 +103,7 @@ def fetch_daily_rows(
         f"https://googleads.googleapis.com/{ADS_API_VERSION}/"
         f"customers/{cid}/googleAds:search"
     )
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "developer-token": os.environ["GOOGLE_ADS_DEVELOPER_TOKEN"].strip(),
-        "Content-Type": "application/json",
-    }
-    login_cid = os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "").strip()
-    if login_cid:
-        headers["login-customer-id"] = _cid(login_cid)
+    headers = ads_api_headers(access_token)
 
     rows: list[dict[str, Any]] = []
     page_token = ""
@@ -147,13 +139,10 @@ def fetch_daily_rows(
 
 
 def list_accessible_customers(*, access_token: str) -> list[dict[str, str]]:
-    if not os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip():
-        raise RuntimeError("GOOGLE_ADS_DEVELOPER_TOKEN not configured")
+    from adfeed.public_tools.google_ads_oauth import ads_api_headers
+
     url = f"https://googleads.googleapis.com/{ADS_API_VERSION}/customers:listAccessibleCustomers"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "developer-token": os.environ["GOOGLE_ADS_DEVELOPER_TOKEN"].strip(),
-    }
+    headers = ads_api_headers(access_token)
     with httpx.Client(timeout=30.0) as client:
         resp = client.get(url, headers=headers)
     if resp.status_code != 200:
