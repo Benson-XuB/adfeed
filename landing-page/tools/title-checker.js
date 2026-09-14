@@ -17,6 +17,8 @@
   const verdictDetail = document.getElementById("verdict-detail");
   const issuesHeading = document.getElementById("issues-heading");
   const issueList = document.getElementById("issue-list");
+  const tipsHeading = document.getElementById("tips-heading");
+  const tipList = document.getElementById("tip-list");
   const suggestBox = document.getElementById("suggest-box");
   const suggestText = document.getElementById("suggest-text");
   const suggestDisclaimer = document.getElementById("suggest-disclaimer");
@@ -30,15 +32,17 @@
   const VERDICT_COPY = {
     ok: {
       label: "Looks solid",
-      detail: "This title already carries the main shopping signals we check for.",
+      detail:
+        "No noise or length problems. Soft apparel tips below are optional — we never invent attributes.",
     },
     improve: {
       label: "Can improve",
-      detail: "Missing signals or marketplace noise — tighten before it hits Shopping cards.",
+      detail:
+        "Marketplace noise or length — tighten what is already in the title. We will not invent material, size, or audience.",
     },
     weak: {
       label: "Too weak",
-      detail: "Not enough product signal to judge well. Start with audience + product type.",
+      detail: "Not enough product signal to judge well. Start with product type and known attributes.",
     },
   };
 
@@ -99,29 +103,11 @@
     if (verdictDetail) verdictDetail.textContent = copy.detail;
 
     const issues = data.issues || [];
-    const missing = [];
-    const other = [];
-    issues.forEach((issue) => {
-      const m = missingLabel(issue.code);
-      if (m) missing.push(m);
-      else other.push(issue);
-    });
+    const tips = data.tips || [];
 
     if (issueList) {
       issueList.innerHTML = "";
-      if (missing.length) {
-        const li = document.createElement("li");
-        li.className = "tools-issue tools-issue--missing";
-        li.innerHTML =
-          "<strong>Missing:</strong> " + escapeHtml(missing.join(" / "));
-        const tip = document.createElement("p");
-        tip.className = "tools-issue-advice";
-        tip.textContent =
-          "Add only attributes you already know — do not invent material, brand, or GTIN.";
-        li.appendChild(tip);
-        issueList.appendChild(li);
-      }
-      other.forEach((issue) => {
+      issues.forEach((issue) => {
         const li = document.createElement("li");
         li.className = "tools-issue";
         li.innerHTML =
@@ -136,14 +122,38 @@
       });
       if (!issues.length) {
         issueList.innerHTML =
-          '<li class="tools-ok">No issues flagged for this title.</li>';
+          '<li class="tools-ok">No hard issues (noise / length) for this title.</li>';
       }
     }
     if (issuesHeading) issuesHeading.hidden = false;
 
+    if (tipList) {
+      tipList.innerHTML = "";
+      if (tips.length) {
+        const names = tips
+          .map((t) => missingLabel(t.code) || t.label || t.code)
+          .filter(Boolean);
+        const li = document.createElement("li");
+        li.className = "tools-issue tools-issue--missing";
+        li.innerHTML =
+          "<strong>Optional when known:</strong> " +
+          escapeHtml(names.join(" / "));
+        const tip = document.createElement("p");
+        tip.className = "tools-issue-advice";
+        tip.textContent =
+          "Apparel-only tips. Add only attributes you already know — do not invent material, brand, or GTIN.";
+        li.appendChild(tip);
+        tipList.appendChild(li);
+      }
+    }
+    if (tipsHeading) tipsHeading.hidden = !tips.length;
+
     const suggested = (data.suggested_title || "").trim();
+    const input = (data.input || "").trim();
+    const changed =
+      Boolean(suggested) && suggested.toLowerCase() !== input.toLowerCase();
     if (suggestBox && suggestText) {
-      if (suggested) {
+      if (changed) {
         suggestBox.hidden = false;
         suggestText.textContent = suggested;
         if (suggestDisclaimer) {
@@ -176,9 +186,9 @@
         data.titles_checked +
         " titles checked · " +
         data.titles_with_issues +
-        " with issues · " +
+        " with hard issues · " +
         data.title_issue_total +
-        " title issue flags" +
+        " hard issue flags" +
         (data.truncated ? " (sample capped)" : "");
     }
     if (issuesHeading) issuesHeading.hidden = false;
@@ -202,13 +212,35 @@
       });
       if (!(data.buckets || []).length) {
         issueList.innerHTML =
-          '<li class="tools-ok">No title issues flagged in this sample.</li>';
+          '<li class="tools-ok">No hard title issues (noise / length / empty) in this sample.</li>';
       }
     }
+    const tipBuckets = data.tip_buckets || [];
+    if (tipsHeading) tipsHeading.hidden = !tipBuckets.length;
+    if (tipList) {
+      tipList.innerHTML = "";
+      tipBuckets.forEach((b) => {
+        const li = document.createElement("li");
+        li.className = "tools-issue tools-issue--missing";
+        li.innerHTML =
+          "<strong>" +
+          escapeHtml(b.label || b.code) +
+          "</strong> · " +
+          escapeHtml(String(b.count));
+        if (b.advice) {
+          const tip = document.createElement("p");
+          tip.className = "tools-issue-advice";
+          tip.textContent = b.advice;
+          li.appendChild(tip);
+        }
+        tipList.appendChild(li);
+      });
+    }
     if (feedSamplesWrap && feedSamples) {
-      feedSamplesWrap.hidden = false;
+      const samples = data.samples || [];
+      feedSamplesWrap.hidden = !samples.length;
       feedSamples.innerHTML = "";
-      (data.samples || []).forEach((s) => {
+      samples.forEach((s) => {
         const li = document.createElement("li");
         li.className = "tools-issue";
         li.innerHTML =

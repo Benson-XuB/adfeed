@@ -56,6 +56,18 @@ PRODUCT_HINT_RE = re.compile(
     re.I,
 )
 
+# Soft “missing attribute” tips only for apparel where those fields matter.
+# Do NOT apply to gift cards, snowboards, bags-as-luggage, housewares, etc.
+APPAREL_SOFT_RE = re.compile(
+    r"\b(dress|skirt|shirt|tee|t-?shirt|top|blouse|jacket|coat|pants|"
+    r"jeans|shorts|sweater|hoodie|swimsuit|romper|jumpsuit|cardigan|"
+    r"vest|leggings?|socks?)\b",
+    re.I,
+)
+
+HARD_ISSUE_CODES = frozenset({"too_long", "noisy_words"})
+SOFT_ATTR_KEYS = ("audience", "material", "style", "color", "size")
+
 ISSUE_META: dict[str, tuple[str, str]] = {
     "too_long": (
         "Title may be too long",
@@ -90,9 +102,9 @@ ISSUE_META: dict[str, tuple[str, str]] = {
 }
 
 
-def _issue(code: str) -> dict[str, str]:
+def _issue(code: str, *, severity: str = "hard") -> dict[str, str]:
     label, advice = ISSUE_META[code]
-    return {"code": code, "label": label, "advice": advice}
+    return {"code": code, "label": label, "advice": advice, "severity": severity}
 
 
 def _strip_noise(title: str) -> str:
@@ -125,8 +137,9 @@ def _verdict(
     signal_count = sum(1 for v in present.values() if v)
     if signal_count == 0 and not PRODUCT_HINT_RE.search(title):
         return "weak"
-    hard = {i["code"] for i in issues} & {"too_long", "noisy_words"}
-    if hard or any(i["code"].startswith("missing_") for i in issues):
+    # Soft “missing_*” tips never force improve — we refuse to invent attributes.
+    hard = {i["code"] for i in issues} & HARD_ISSUE_CODES
+    if hard:
         return "improve"
     return "ok"
 
@@ -134,6 +147,7 @@ def _verdict(
 def analyze_title(raw: str) -> dict[str, Any]:
     title = (raw or "").strip()
     issues: list[dict[str, str]] = []
+    tips: list[dict[str, str]] = []
 
     if TITLE_NOISE_RE.search(title):
         issues.append(_issue("noisy_words"))
@@ -141,9 +155,11 @@ def analyze_title(raw: str) -> dict[str, Any]:
         issues.append(_issue("too_long"))
 
     present = _detect_present(title)
-    for key in ("audience", "material", "style", "color", "size"):
-        if not present[key]:
-            issues.append(_issue(f"missing_{key}"))
+    # Apparel-only soft tips: “when known” — never invent, never count as hard issues.
+    if APPAREL_SOFT_RE.search(title):
+        for key in SOFT_ATTR_KEYS:
+            if not present[key]:
+                tips.append(_issue(f"missing_{key}", severity="soft"))
 
     suggested = _strip_noise(title) or title
     # Soft re-trim if still over soft limit after noise strip (keep word order).
@@ -159,14 +175,19 @@ def analyze_title(raw: str) -> dict[str, Any]:
             suggested = " ".join(trimmed)
 
     verdict = _verdict(title=title, issues=issues, present=present)
+    # Do not echo an identical “suggestion” as if we fixed something.
+    suggestion_changed = suggested.strip().lower() != title.strip().lower()
 
     return {
         "ok": True,
         "input": title,
         "verdict": verdict,
         "issues": issues,
+        "tips": tips,
+        # Back-compat: soft tips used to live in issues; keep present for UI/debug.
         "present": present,
         "suggested_title": suggested,
+        "suggestion_changed": suggestion_changed,
         "disclaimer": DISCLAIMER,
     }
 
@@ -317,6 +338,7 @@ def analyze_feed_titles_bytes(
         raise ValueError(f"Invalid XML: {exc}") from exc
 
     buckets: dict[str, dict[str, Any]] = {}
+    tip_buckets: dict[str, dict[str, Any]] = {}
     samples: list[dict[str, Any]] = []
     checked = 0
     truncated = False
@@ -346,7 +368,6 @@ def analyze_feed_titles_bytes(
             report = analyze_title(title)
             for issue in report["issues"]:
                 code = issue["code"]
-                # Collapse per-item missing_* into feed buckets
                 _title_bucket(
                     buckets,
                     code,
@@ -355,22 +376,41 @@ def analyze_feed_titles_bytes(
                     sample=sample,
                 )
                 hit = True
+            for tip in report.get("tips") or []:
+                _title_bucket(
+                    tip_buckets,
+                    tip["code"],
+                    label=tip["label"],
+                    advice=tip["advice"],
+                    sample=sample,
+                )
 
         if hit:
             with_issues += 1
             if len(samples) < 8 and report:
+                sug = report["suggested_title"]
                 samples.append(
                     {
                         **sample,
                         "verdict": report["verdict"],
-                        "suggested_title": report["suggested_title"],
+                        "suggested_title": sug
+                        if report.get("suggestion_changed")
+                        else "",
                         "issue_codes": [i["code"] for i in report["issues"]],
                     }
                 )
             elif len(samples) < 8:
-                samples.append({**sample, "verdict": "weak", "suggested_title": "", "issue_codes": ["missing_title"]})
+                samples.append(
+                    {
+                        **sample,
+                        "verdict": "weak",
+                        "suggested_title": "",
+                        "issue_codes": ["missing_title"],
+                    }
+                )
 
     bucket_list = sorted(buckets.values(), key=lambda b: (-b["count"], b["code"]))
+    tip_list = sorted(tip_buckets.values(), key=lambda b: (-b["count"], b["code"]))
     title_issue_total = sum(b["count"] for b in bucket_list)
     return {
         "ok": True,
@@ -380,10 +420,13 @@ def analyze_feed_titles_bytes(
         "titles_with_issues": with_issues,
         "title_issue_total": title_issue_total,
         "buckets": bucket_list,
+        "tip_buckets": tip_list,
         "samples": samples,
         "disclaimer": (
-            "Title-only scan of your feed. For brand, GTIN, price, and images use the "
-            "Feed Checker. AI rewrite is available for a single pasted title, not bulk XML."
+            "Title-only scan. Hard issues = noise / length / empty title. "
+            "Apparel tips (audience, material, …) are optional when those attributes "
+            "are already known — we never invent them. For brand, GTIN, price, and images "
+            "use the Feed Checker."
         ),
         "feed_checker_path": "/tools/feed-checker",
     }

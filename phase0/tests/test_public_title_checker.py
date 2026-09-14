@@ -28,8 +28,27 @@ def test_pack_quantity_not_treated_as_size():
     r = analyze_title("Pack of 2 Cotton Socks Black")
     assert r["ok"] is True
     assert r["present"]["size"] is False
-    codes = {i["code"] for i in r["issues"]}
-    assert "missing_size" in codes
+    tip_codes = {i["code"] for i in r["tips"]}
+    assert "missing_size" in tip_codes
+    # Soft tip must not force improve (we refuse to invent a size).
+    assert r["verdict"] == "ok"
+    assert "missing_size" not in {i["code"] for i in r["issues"]}
+
+
+def test_non_apparel_clean_title_not_flagged_for_missing_attrs():
+    r = analyze_title("kakaku Business Card Case for Professionals, Multicolor")
+    assert r["verdict"] == "ok"
+    assert r["issues"] == []
+    assert r["tips"] == []
+    assert r["suggestion_changed"] is False
+
+
+def test_apparel_soft_tips_do_not_force_improve():
+    r = analyze_title("Women's Cotton Dress Blue")
+    assert r["verdict"] == "ok"
+    tip_codes = {t["code"] for t in r["tips"]}
+    assert "missing_style" in tip_codes or "missing_size" in tip_codes
+    assert all(i["code"] in {"too_long", "noisy_words"} for i in r["issues"])
 
 
 def test_filter_ai_title_rejects_invented_tokens():
@@ -85,17 +104,21 @@ def test_analyze_feed_titles_bytes_counts_title_issues_only():
         <g:id>2</g:id>
         <g:title>Women's Linen Midi Dress Blue M</g:title>
       </item>
+      <item>
+        <g:id>3</g:id>
+        <g:title>kakaku Business Card Case for Professionals, Multicolor</g:title>
+      </item>
     </channel></rss>
     """
     r = analyze_feed_titles_bytes(xml, max_items=50)
     assert r["ok"] is True
-    assert r["titles_checked"] == 2
-    assert r["title_issue_total"] >= 1
+    assert r["titles_checked"] == 3
+    assert r["titles_with_issues"] == 1  # only noisy dress
     codes = {b["code"] for b in r["buckets"]}
-    # Title-only: must not invent brand/image feed buckets
     assert "missing_brand" not in codes
     assert "missing_image" not in codes
-    assert "noisy_words" in codes or "noisy_or_long_title" in codes or any(
-        c.startswith("missing_") for c in codes
-    )
+    assert "noisy_words" in codes
+    assert "missing_audience" not in codes  # soft tips are not hard buckets
+    tip_codes = {b["code"] for b in r.get("tip_buckets") or []}
+    assert "missing_audience" in tip_codes or "missing_material" in tip_codes
     assert len(r.get("samples") or []) >= 1
