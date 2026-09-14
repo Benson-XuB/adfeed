@@ -21,7 +21,12 @@ from adfeed.public_tools.google_issues import (
     list_merchant_accounts,
 )
 from adfeed.public_tools.shopify_store_check import fetch_shop_products
-from adfeed.public_tools.title_checker import analyze_title, suggest_title_ai
+from adfeed.public_tools.title_checker import (
+    analyze_feed_titles_bytes,
+    analyze_feed_titles_url,
+    analyze_title,
+    suggest_title_ai,
+)
 
 router = APIRouter(prefix="/api/public", tags=["public-tools"])
 
@@ -95,6 +100,16 @@ class ShopifyCheckRequest(BaseModel):
         return (v or "").strip()
 
 
+class TitleFeedUrlRequest(BaseModel):
+    url: str = Field(..., min_length=8, max_length=2048)
+    max_items: int = Field(500, ge=1, le=500)
+
+    @field_validator("url")
+    @classmethod
+    def strip_url(cls, v: str) -> str:
+        return (v or "").strip()
+
+
 @router.post("/title-check")
 async def title_check(body: TitleCheckRequest):
     return analyze_title(body.title)
@@ -108,6 +123,30 @@ async def title_check_ai(request: Request, body: TitleCheckRequest):
             detail="Too many AI title requests. Try the rule-based suggestion, or wait an hour.",
         )
     return suggest_title_ai(body.title)
+
+
+@router.post("/title-check/feed")
+async def title_check_feed_url(body: TitleFeedUrlRequest):
+    try:
+        return analyze_feed_titles_url(body.url, max_items=body.max_items)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Feed download failed: {exc}") from exc
+
+
+@router.post("/title-check/feed/upload")
+async def title_check_feed_upload(
+    file: UploadFile = File(...),
+    max_items: int = Form(500),
+):
+    raw = await file.read()
+    if len(raw) > MAX_DOWNLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large")
+    try:
+        return analyze_feed_titles_bytes(raw, max_items=max(1, min(max_items, 500)))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/shopify-check")

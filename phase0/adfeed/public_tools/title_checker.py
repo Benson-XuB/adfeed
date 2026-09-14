@@ -275,3 +275,122 @@ def suggest_title_ai(raw: str) -> dict[str, Any]:
         base["suggested_title_ai"] = None
     return base
 
+
+def _title_bucket(
+    buckets: dict[str, dict[str, Any]],
+    code: str,
+    *,
+    label: str,
+    advice: str,
+    sample: dict[str, str] | None = None,
+) -> None:
+    b = buckets.setdefault(
+        code,
+        {"code": code, "label": label, "advice": advice, "count": 0, "samples": []},
+    )
+    b["count"] += 1
+    if sample and len(b["samples"]) < 3:
+        b["samples"].append(sample)
+
+
+def analyze_feed_titles_bytes(
+    data: bytes,
+    *,
+    max_items: int = 500,
+) -> dict[str, Any]:
+    """Parse Shopping feed XML and run title-only diagnostics (no brand/GTIN/image)."""
+    import xml.etree.ElementTree as ET
+
+    from adfeed.public_tools.feed_checker import (
+        MAX_DOWNLOAD_BYTES,
+        _child_text,
+        _iter_items,
+    )
+
+    if not data:
+        raise ValueError("Empty feed")
+    if len(data) > MAX_DOWNLOAD_BYTES:
+        raise ValueError("Feed file is too large")
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid XML: {exc}") from exc
+
+    buckets: dict[str, dict[str, Any]] = {}
+    samples: list[dict[str, Any]] = []
+    checked = 0
+    truncated = False
+    with_issues = 0
+
+    for item in _iter_items(root):
+        if checked >= max_items:
+            truncated = True
+            break
+        checked += 1
+        offer_id = _child_text(item, "id")
+        title = _child_text(item, "title")
+        sample = {"id": offer_id or "(no id)", "title": (title or "")[:120]}
+        hit = False
+
+        if not title:
+            _title_bucket(
+                buckets,
+                "missing_title",
+                label="Missing title",
+                advice="Every item needs a clear shopping title.",
+                sample=sample,
+            )
+            hit = True
+            report = None
+        else:
+            report = analyze_title(title)
+            for issue in report["issues"]:
+                code = issue["code"]
+                # Collapse per-item missing_* into feed buckets
+                _title_bucket(
+                    buckets,
+                    code,
+                    label=issue["label"],
+                    advice=issue["advice"],
+                    sample=sample,
+                )
+                hit = True
+
+        if hit:
+            with_issues += 1
+            if len(samples) < 8 and report:
+                samples.append(
+                    {
+                        **sample,
+                        "verdict": report["verdict"],
+                        "suggested_title": report["suggested_title"],
+                        "issue_codes": [i["code"] for i in report["issues"]],
+                    }
+                )
+            elif len(samples) < 8:
+                samples.append({**sample, "verdict": "weak", "suggested_title": "", "issue_codes": ["missing_title"]})
+
+    bucket_list = sorted(buckets.values(), key=lambda b: (-b["count"], b["code"]))
+    title_issue_total = sum(b["count"] for b in bucket_list)
+    return {
+        "ok": True,
+        "mode": "feed_titles",
+        "titles_checked": checked,
+        "truncated": truncated,
+        "titles_with_issues": with_issues,
+        "title_issue_total": title_issue_total,
+        "buckets": bucket_list,
+        "samples": samples,
+        "disclaimer": (
+            "Title-only scan of your feed. For brand, GTIN, price, and images use the "
+            "Feed Checker. AI rewrite is available for a single pasted title, not bulk XML."
+        ),
+        "feed_checker_path": "/tools/feed-checker",
+    }
+
+
+def analyze_feed_titles_url(url: str, *, max_items: int = 500) -> dict[str, Any]:
+    from adfeed.public_tools.feed_checker import fetch_feed_bytes
+
+    return analyze_feed_titles_bytes(fetch_feed_bytes(url), max_items=max_items)
+

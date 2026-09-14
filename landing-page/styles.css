@@ -2070,18 +2070,38 @@ p {
   border-color: var(--accent);
 }
 
-.tools-input {
-  display: block;
-  width: 100%;
-  margin: 0 0 0.85rem;
-  padding: 0.75rem 0.9rem;
+.tools-mode-seg {
+  display: inline-flex;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  padding: 0.25rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  font: inherit;
-  line-height: 1.45;
-  color: var(--ink);
   background: var(--white);
 }
+
+.tools-mode-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted, #555);
+  font: inherit;
+  font-weight: 600;
+  padding: 0.45rem 0.85rem;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+}
+
+.tools-mode-btn.is-on {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.tools-summary {
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
 
 .tools-input:focus-visible {
   outline: 2px solid var(--accent);

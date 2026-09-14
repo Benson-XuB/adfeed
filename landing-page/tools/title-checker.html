@@ -4,20 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Google Shopping Title Checker — Free Title Fix Hints | AdFeed</title>
-  <meta name="description" content="Paste a Google Shopping title. See missing signals (material, style, audience, color, size) and get a shorter, cleaner suggestion. Free. No install. No invented brand or GTIN." />
+  <meta name="description" content="Paste a Google Shopping title or upload feed XML. See missing signals and cleaner suggestions. Free. No invented brand or GTIN." />
   <meta name="keywords" content="Google Shopping title checker, product title optimizer, Shopping title length, 1688 title cleanup" />
   <link rel="canonical" href="https://deltfu.com/tools/title-checker" />
   <meta property="og:title" content="Google Shopping Title Checker — Free Title Fix Hints | AdFeed" />
-  <meta property="og:description" content="Paste a title → missing shopping signals → optional shorter suggestion. Never invents brand or GTIN." />
+  <meta property="og:description" content="Paste a title or scan feed titles → missing shopping signals → optional shorter suggestion." />
   <meta property="og:url" content="https://deltfu.com/tools/title-checker" />
   <meta property="og:type" content="website" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Google Shopping Title Checker | AdFeed" />
-  <meta name="twitter:description" content="Free title check for Google Shopping: missing signals + cleaner suggestion." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=tc1" />
+  <link rel="stylesheet" href="/styles.css?v=tc3" />
 </head>
 <body class="tools-page">
   <header class="site-nav">
@@ -36,14 +33,15 @@
       <p class="eyebrow">Free tool · Google Shopping titles</p>
       <h1 class="tools-hero-title">Check Your Google Shopping Title</h1>
       <p class="tools-deck">
-        Paste a product title. See which shopping signals are missing — then get an optional shorter suggestion.
-      </p>
-      <p class="tools-lead">
-        We flag marketplace noise and gaps like material, style, audience, color, and size.
-        Suggestions never invent brand or GTIN.
+        Paste one title — or scan titles from a feed URL / XML. Title-only; full catalog checks stay on Feed Checker.
       </p>
 
-      <div class="tools-console" id="tools-console">
+      <div class="tools-mode-seg" role="tablist" aria-label="Check mode">
+        <button type="button" class="tools-mode-btn is-on" id="mode-one" data-mode="one" role="tab" aria-selected="true">One title</button>
+        <button type="button" class="tools-mode-btn" id="mode-feed" data-mode="feed" role="tab" aria-selected="false">Feed URL / XML</button>
+      </div>
+
+      <div class="tools-console" id="panel-one">
         <p class="tools-panel-label" id="title-label">Paste your Google Shopping title</p>
         <label class="visually-hidden" for="title-input">Product title</label>
         <textarea
@@ -60,33 +58,40 @@
           <button type="button" class="btn btn-ghost" id="ai-title-btn">Improve with AI</button>
         </div>
         <p class="tools-note tools-note--console">
-          Rules check is free and local to the request. AI only reorders/drops words already in your title — never invents brand or GTIN.
+          AI only reorders/drops words already in your title — never invents brand or GTIN.
         </p>
-        <p class="tools-status" id="check-status" hidden></p>
       </div>
+
+      <div class="tools-console" id="panel-feed" hidden>
+        <p class="tools-panel-label">Public feed URL</p>
+        <input id="feed-url" class="tools-input" type="url" placeholder="https://example.com/google-shopping.xml" />
+        <p class="tools-panel-label">Or upload XML</p>
+        <input id="feed-file" type="file" accept=".xml,application/xml,text/xml" />
+        <div class="tools-panel-row tools-panel-row--end" style="margin-top:0.85rem">
+          <button type="button" class="btn btn-primary" id="check-feed-titles-btn">Check titles in feed</button>
+        </div>
+        <p class="tools-note tools-note--console">
+          Title issues only (noise, length, missing signals). For brand / GTIN / price / images use
+          <a href="/tools/feed-checker">Feed Checker</a>. No bulk AI on XML.
+        </p>
+      </div>
+
+      <p class="tools-status" id="check-status" hidden></p>
 
       <aside class="tools-outcome" aria-label="What you’ll get">
         <h2 class="tools-outcome-heading">What you’ll get</h2>
         <ul class="tools-outcome-list">
-          <li>
-            <strong>Verdict</strong>
-            <span>OK · needs work · or too weak</span>
-          </li>
-          <li>
-            <strong>Missing signals</strong>
-            <span>Material · style · audience · color · size</span>
-          </li>
-          <li>
-            <strong>Cleaner title</strong>
-            <span>Noise stripped — no invented attributes</span>
-          </li>
+          <li><strong>One title</strong><span>Verdict · missing signals · cleaner suggestion</span></li>
+          <li><strong>Feed titles</strong><span>N checked · title issue counts · sample rows</span></li>
+          <li><strong>Guardrails</strong><span>No invented brand or GTIN</span></li>
         </ul>
         <p class="tools-outcome-foot">Free · No Shopify install · No catalog stored</p>
       </aside>
     </section>
 
     <section class="tools-report wrap" id="report" hidden>
-      <h2>Title report</h2>
+      <h2 id="report-heading">Title report</h2>
+      <p class="tools-summary" id="feed-summary" hidden></p>
 
       <div class="tools-verdict" id="verdict-banner" data-verdict="" hidden>
         <p class="tools-verdict-label" id="verdict-label"></p>
@@ -105,6 +110,15 @@
         <p class="tools-note" id="suggest-disclaimer"></p>
       </div>
 
+      <div id="feed-samples-wrap" hidden>
+        <h3 class="tools-report-section">Sample titles</h3>
+        <ul class="tools-issue-list" id="feed-samples"></ul>
+        <p class="tools-note" id="feed-disclaimer"></p>
+        <p class="tools-actions">
+          <a class="btn btn-ghost" href="/tools/feed-checker">Full feed check (brand, GTIN, price…) →</a>
+        </p>
+      </div>
+
       <div class="tools-help card-block" id="report-cta">
         <h3>Want cleaner titles across your catalog?</h3>
         <p class="tools-help-lead">
@@ -116,25 +130,6 @@
           <a class="btn btn-ghost" href="/tools/feed-checker">Check a full feed →</a>
         </p>
       </div>
-    </section>
-
-    <section class="tools-cta wrap" id="waitlist">
-      <h2>Get early access to AdFeed</h2>
-      <p>Join the waitlist. After App Store approval you’ll install AdFeed on Shopify and fix the catalog for real.</p>
-      <form class="waitlist" id="waitlist-form" data-source="title-checker" data-submit-label="Get early access" novalidate>
-        <div class="waitlist-row">
-          <label class="visually-hidden" for="waitlist-email">Email</label>
-          <input type="email" id="waitlist-email" name="email" placeholder="Your email" required maxlength="254" />
-          <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
-        </div>
-        <p class="waitlist-note" id="waitlist-note">Product updates only. No spam.</p>
-        <p class="waitlist-msg" id="waitlist-msg" hidden></p>
-        <div class="waitlist-success" id="waitlist-success" hidden>
-          <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
-          <p class="waitlist-success-body" id="waitlist-success-body"></p>
-        </div>
-      </form>
-      <p class="tools-note"><a href="/tools/feed-checker">Or check a public feed URL →</a></p>
     </section>
   </main>
 
@@ -149,6 +144,6 @@
     </div>
   </footer>
   <script src="/waitlist.js" defer></script>
-  <script src="/tools/title-checker.js?v=tc2" defer></script>
+  <script src="/tools/title-checker.js?v=tc3" defer></script>
 </body>
 </html>

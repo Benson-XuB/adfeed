@@ -68,3 +68,34 @@ def test_suggest_title_ai_uses_llm_when_available(monkeypatch):
     assert r["source"] == "ai"
     assert r["suggested_title_ai"] == "Women's Summer Dress Casual Loose"
     assert "Free Shipping" not in r["suggested_title_ai"]
+
+
+def test_analyze_feed_titles_bytes_counts_title_issues_only():
+    from adfeed.public_tools.title_checker import analyze_feed_titles_bytes
+
+    xml = b"""<?xml version="1.0"?>
+    <rss xmlns:g="http://base.google.com/ns/1.0"><channel>
+      <item>
+        <g:id>1</g:id>
+        <g:title>Dress Free Shipping Hot Sale</g:title>
+        <g:brand></g:brand>
+        <g:image_link></g:image_link>
+      </item>
+      <item>
+        <g:id>2</g:id>
+        <g:title>Women's Linen Midi Dress Blue M</g:title>
+      </item>
+    </channel></rss>
+    """
+    r = analyze_feed_titles_bytes(xml, max_items=50)
+    assert r["ok"] is True
+    assert r["titles_checked"] == 2
+    assert r["title_issue_total"] >= 1
+    codes = {b["code"] for b in r["buckets"]}
+    # Title-only: must not invent brand/image feed buckets
+    assert "missing_brand" not in codes
+    assert "missing_image" not in codes
+    assert "noisy_words" in codes or "noisy_or_long_title" in codes or any(
+        c.startswith("missing_") for c in codes
+    )
+    assert len(r.get("samples") or []) >= 1

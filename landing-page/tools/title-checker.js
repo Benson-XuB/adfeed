@@ -5,6 +5,13 @@
   const checkBtn = document.getElementById("check-title-btn");
   const suggestBtn = document.getElementById("suggest-title-btn");
   const aiBtn = document.getElementById("ai-title-btn");
+  const checkFeedBtn = document.getElementById("check-feed-titles-btn");
+  const feedUrl = document.getElementById("feed-url");
+  const feedFile = document.getElementById("feed-file");
+  const panelOne = document.getElementById("panel-one");
+  const panelFeed = document.getElementById("panel-feed");
+  const modeOne = document.getElementById("mode-one");
+  const modeFeed = document.getElementById("mode-feed");
   const verdictBanner = document.getElementById("verdict-banner");
   const verdictLabel = document.getElementById("verdict-label");
   const verdictDetail = document.getElementById("verdict-detail");
@@ -14,6 +21,11 @@
   const suggestText = document.getElementById("suggest-text");
   const suggestDisclaimer = document.getElementById("suggest-disclaimer");
   const copyBtn = document.getElementById("copy-suggest-btn");
+  const feedSummary = document.getElementById("feed-summary");
+  const feedSamplesWrap = document.getElementById("feed-samples-wrap");
+  const feedSamples = document.getElementById("feed-samples");
+  const feedDisclaimer = document.getElementById("feed-disclaimer");
+  const reportHeading = document.getElementById("report-heading");
 
   const VERDICT_COPY = {
     ok: {
@@ -56,16 +68,33 @@
     return map[code] || null;
   }
 
-  function renderReport(data, { focusSuggest } = {}) {
+  function setMode(mode) {
+    const isFeed = mode === "feed";
+    if (panelOne) panelOne.hidden = isFeed;
+    if (panelFeed) panelFeed.hidden = !isFeed;
+    if (modeOne) {
+      modeOne.classList.toggle("is-on", !isFeed);
+      modeOne.setAttribute("aria-selected", String(!isFeed));
+    }
+    if (modeFeed) {
+      modeFeed.classList.toggle("is-on", isFeed);
+      modeFeed.setAttribute("aria-selected", String(isFeed));
+    }
+    setStatus("");
+  }
+
+  function renderOneTitle(data, { focusSuggest } = {}) {
     if (!report) return;
     report.hidden = false;
+    if (reportHeading) reportHeading.textContent = "Title report";
+    if (feedSummary) feedSummary.hidden = true;
+    if (feedSamplesWrap) feedSamplesWrap.hidden = true;
+    if (verdictBanner) verdictBanner.hidden = false;
+    if (suggestBox) suggestBox.hidden = false;
 
     const verdict = data.verdict || "improve";
     const copy = VERDICT_COPY[verdict] || VERDICT_COPY.improve;
-    if (verdictBanner) {
-      verdictBanner.hidden = false;
-      verdictBanner.setAttribute("data-verdict", verdict);
-    }
+    if (verdictBanner) verdictBanner.setAttribute("data-verdict", verdict);
     if (verdictLabel) verdictLabel.textContent = copy.label;
     if (verdictDetail) verdictDetail.textContent = copy.detail;
 
@@ -83,18 +112,20 @@
       if (missing.length) {
         const li = document.createElement("li");
         li.className = "tools-issue tools-issue--missing";
-        li.innerHTML = `<strong>Missing:</strong> ${escapeHtml(missing.join(" / "))}`;
+        li.innerHTML =
+          "<strong>Missing:</strong> " + escapeHtml(missing.join(" / "));
         const tip = document.createElement("p");
         tip.className = "tools-issue-advice";
         tip.textContent =
-          "Add only attributes you already know from the product — do not invent material, brand, or GTIN.";
+          "Add only attributes you already know — do not invent material, brand, or GTIN.";
         li.appendChild(tip);
         issueList.appendChild(li);
       }
       other.forEach((issue) => {
         const li = document.createElement("li");
         li.className = "tools-issue";
-        li.innerHTML = `<strong>${escapeHtml(issue.label || issue.code)}</strong>`;
+        li.innerHTML =
+          "<strong>" + escapeHtml(issue.label || issue.code) + "</strong>";
         if (issue.advice) {
           const tip = document.createElement("p");
           tip.className = "tools-issue-advice";
@@ -103,14 +134,12 @@
         }
         issueList.appendChild(li);
       });
+      if (!issues.length) {
+        issueList.innerHTML =
+          '<li class="tools-ok">No issues flagged for this title.</li>';
+      }
     }
-
-    if (issuesHeading) {
-      issuesHeading.hidden = !issues.length;
-    }
-    if (!issues.length && issueList) {
-      issueList.innerHTML = '<li class="tools-ok">No issues flagged for this title.</li>';
-    }
+    if (issuesHeading) issuesHeading.hidden = false;
 
     const suggested = (data.suggested_title || "").trim();
     if (suggestBox && suggestText) {
@@ -118,9 +147,11 @@
         suggestBox.hidden = false;
         suggestText.textContent = suggested;
         if (suggestDisclaimer) {
-          const src = data.source === "ai" ? " (AI, filtered to your words)" : "";
+          const src =
+            data.source === "ai" ? " (AI, filtered to your words)" : "";
           suggestDisclaimer.textContent =
-            (data.disclaimer || "Suggestion only — do not invent brand or GTIN.") + src;
+            (data.disclaimer ||
+              "Suggestion only — do not invent brand or GTIN.") + src;
         }
       } else {
         suggestBox.hidden = true;
@@ -129,24 +160,85 @@
 
     if (focusSuggest && suggestBox && !suggestBox.hidden) {
       suggestBox.scrollIntoView({ behavior: "smooth", block: "center" });
-      suggestBox.classList.add("is-highlight");
-      window.setTimeout(() => suggestBox.classList.remove("is-highlight"), 1200);
     } else {
       report.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
-  async function runCheck({ focusSuggest, useAi } = {}) {
+  function renderFeedTitles(data) {
+    report.hidden = false;
+    if (reportHeading) reportHeading.textContent = "Feed titles report";
+    if (verdictBanner) verdictBanner.hidden = true;
+    if (suggestBox) suggestBox.hidden = true;
+    if (feedSummary) {
+      feedSummary.hidden = false;
+      feedSummary.textContent =
+        data.titles_checked +
+        " titles checked · " +
+        data.titles_with_issues +
+        " with issues · " +
+        data.title_issue_total +
+        " title issue flags" +
+        (data.truncated ? " (sample capped)" : "");
+    }
+    if (issuesHeading) issuesHeading.hidden = false;
+    if (issueList) {
+      issueList.innerHTML = "";
+      (data.buckets || []).forEach((b) => {
+        const li = document.createElement("li");
+        li.className = "tools-issue";
+        li.innerHTML =
+          "<strong>" +
+          escapeHtml(b.label || b.code) +
+          "</strong> · " +
+          escapeHtml(String(b.count));
+        if (b.advice) {
+          const tip = document.createElement("p");
+          tip.className = "tools-issue-advice";
+          tip.textContent = b.advice;
+          li.appendChild(tip);
+        }
+        issueList.appendChild(li);
+      });
+      if (!(data.buckets || []).length) {
+        issueList.innerHTML =
+          '<li class="tools-ok">No title issues flagged in this sample.</li>';
+      }
+    }
+    if (feedSamplesWrap && feedSamples) {
+      feedSamplesWrap.hidden = false;
+      feedSamples.innerHTML = "";
+      (data.samples || []).forEach((s) => {
+        const li = document.createElement("li");
+        li.className = "tools-issue";
+        li.innerHTML =
+          "<strong>" +
+          escapeHtml(s.id || "") +
+          "</strong> · " +
+          escapeHtml(s.verdict || "") +
+          "<p class=\"tools-issue-advice\">" +
+          escapeHtml(s.title || "") +
+          (s.suggested_title
+            ? "<br><em>Suggest:</em> " + escapeHtml(s.suggested_title)
+            : "") +
+          "</p>";
+        feedSamples.appendChild(li);
+      });
+    }
+    if (feedDisclaimer) {
+      feedDisclaimer.textContent = data.disclaimer || "";
+    }
+    report.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function runOne({ focusSuggest, useAi } = {}) {
     const title = (titleInput && titleInput.value) || "";
     if (!title.trim()) {
       setStatus("Paste a product title first.", true);
-      if (titleInput) titleInput.focus();
       return;
     }
     setStatus(useAi ? "Improving with AI…" : "Checking…");
-    if (checkBtn) checkBtn.disabled = true;
-    if (suggestBtn) suggestBtn.disabled = true;
-    if (aiBtn) aiBtn.disabled = true;
+    [checkBtn, suggestBtn, aiBtn].forEach((b) => b && (b.disabled = true));
     try {
       const endpoint = useAi
         ? "/api/public/title-check/ai"
@@ -158,67 +250,89 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const detail =
-          typeof data.detail === "string"
-            ? data.detail
-            : Array.isArray(data.detail)
-              ? data.detail.map((d) => d.msg || d).join("; ")
-              : "Check failed";
-        throw new Error(detail);
+        throw new Error(
+          typeof data.detail === "string" ? data.detail : "Check failed"
+        );
       }
       setStatus(
         useAi && data.source === "rules"
           ? "AI unavailable — showing rule-based suggestion."
           : ""
       );
-      renderReport(data, { focusSuggest: focusSuggest || useAi });
+      renderOneTitle(data, { focusSuggest: focusSuggest || useAi });
     } catch (err) {
       setStatus(err.message || "Check failed", true);
     } finally {
-      if (checkBtn) checkBtn.disabled = false;
-      if (suggestBtn) suggestBtn.disabled = false;
-      if (aiBtn) aiBtn.disabled = false;
+      [checkBtn, suggestBtn, aiBtn].forEach((b) => b && (b.disabled = false));
     }
   }
 
-  if (checkBtn) {
-    checkBtn.addEventListener("click", () =>
-      runCheck({ focusSuggest: false, useAi: false })
-    );
-  }
-  if (suggestBtn) {
-    suggestBtn.addEventListener("click", () =>
-      runCheck({ focusSuggest: true, useAi: false })
-    );
-  }
-  if (aiBtn) {
-    aiBtn.addEventListener("click", () =>
-      runCheck({ focusSuggest: true, useAi: true })
-    );
-  }
-  if (titleInput) {
-    titleInput.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        e.preventDefault();
-        runCheck({ focusSuggest: false });
+  async function runFeedTitles() {
+    const url = (feedUrl && feedUrl.value) || "";
+    const file = feedFile && feedFile.files && feedFile.files[0];
+    if (!url.trim() && !file) {
+      setStatus("Paste a feed URL or choose an XML file.", true);
+      return;
+    }
+    setStatus("Scanning titles…");
+    if (checkFeedBtn) checkFeedBtn.disabled = true;
+    try {
+      let res;
+      if (file) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("max_items", "500");
+        res = await fetch("/api/public/title-check/feed/upload", {
+          method: "POST",
+          body: fd,
+        });
+      } else {
+        res = await fetch("/api/public/title-check/feed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url.trim(), max_items: 500 }),
+        });
       }
-    });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data.detail === "string" ? data.detail : "Check failed"
+        );
+      }
+      setStatus("");
+      renderFeedTitles(data);
+    } catch (err) {
+      setStatus(err.message || "Check failed", true);
+    } finally {
+      if (checkFeedBtn) checkFeedBtn.disabled = false;
+    }
   }
 
+  if (modeOne) modeOne.addEventListener("click", () => setMode("one"));
+  if (modeFeed) modeFeed.addEventListener("click", () => setMode("feed"));
+  if (checkBtn)
+    checkBtn.addEventListener("click", () =>
+      runOne({ focusSuggest: false, useAi: false })
+    );
+  if (suggestBtn)
+    suggestBtn.addEventListener("click", () =>
+      runOne({ focusSuggest: true, useAi: false })
+    );
+  if (aiBtn)
+    aiBtn.addEventListener("click", () =>
+      runOne({ focusSuggest: true, useAi: true })
+    );
+  if (checkFeedBtn) checkFeedBtn.addEventListener("click", runFeedTitles);
   if (copyBtn) {
     copyBtn.addEventListener("click", async () => {
-      const text = (suggestText && suggestText.textContent) || "";
-      if (!text) return;
-      const original = copyBtn.textContent;
+      const t = (suggestText && suggestText.textContent) || "";
+      if (!t) return;
       try {
-        await navigator.clipboard.writeText(text);
-        copyBtn.textContent = "Copied";
-      } catch (_) {
-        copyBtn.textContent = "Copy failed";
+        await navigator.clipboard.writeText(t);
+        setStatus("Copied suggested title.");
+      } catch {
+        setStatus("Could not copy — select the text manually.", true);
       }
-      window.setTimeout(() => {
-        copyBtn.textContent = original || "Copy";
-      }, 1500);
     });
   }
 })();

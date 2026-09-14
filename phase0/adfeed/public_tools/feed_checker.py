@@ -346,12 +346,8 @@ def analyze_feed_bytes(data: bytes, *, max_items: int = DEFAULT_MAX_ITEMS) -> di
     }
 
 
-def analyze_feed_url(
-    url: str,
-    *,
-    max_items: int = DEFAULT_MAX_ITEMS,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
+def fetch_feed_bytes(url: str, *, timeout: float = 30.0) -> bytes:
+    """Download feed body for shared tools (title-only / full feed)."""
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise ValueError("Feed URL must be http(s)")
@@ -366,4 +362,13 @@ def analyze_feed_url(
                 if total > MAX_DOWNLOAD_BYTES:
                     raise ValueError("Feed download exceeds size limit")
                 chunks.append(chunk)
-    return analyze_feed_bytes(b"".join(chunks), max_items=max_items)
+    return b"".join(chunks)
+
+
+def analyze_feed_url(
+    url: str,
+    *,
+    max_items: int = DEFAULT_MAX_ITEMS,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    return analyze_feed_bytes(fetch_feed_bytes(url, timeout=timeout), max_items=max_items)
