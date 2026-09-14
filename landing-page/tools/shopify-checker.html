@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shopify → Google Shopping Store Checker | AdFeed</title>
+  <meta name="description" content="Paste a *.myshopify.com store URL. Spot weak titles, supplier vendors, missing images, and color/size gaps before Google Shopping. Free. Public catalog only." />
+  <link rel="canonical" href="https://deltfu.com/tools/shopify-checker" />
+  <link rel="stylesheet" href="/styles.css?v=sc1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+</head>
+<body class="tools-page">
+  <header class="site-nav">
+    <div class="wrap">
+      <a class="logo" href="/">AdFeed <span>AI</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/tools/">Tools</a>
+        <a class="hide-sm" href="/tools/feed-checker">Feed checker</a>
+        <a class="btn btn-primary" href="/#waitlist?utm_source=tools&amp;utm_medium=shopify-checker">Get early access</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="tools-hero wrap">
+      <p class="eyebrow">Free tool · Shopify public catalog</p>
+      <h1 class="tools-hero-title">Shopify → Google Shopping Checker</h1>
+      <p class="tools-deck">
+        Paste your <code>*.myshopify.com</code> URL. We scan the public catalog for title, brand/vendor, image, and variant gaps.
+      </p>
+      <p class="tools-lead">
+        Uses public <code>products.json</code> only — not Admin API. Cannot see GTIN or Merchant Center disapprovals.
+      </p>
+
+      <div class="tools-console">
+        <label class="tools-panel-label" for="shop-input">Shopify store URL</label>
+        <input id="shop-input" class="tools-input" type="text" placeholder="your-store.myshopify.com" maxlength="256" />
+        <div class="tools-panel-row tools-panel-row--end">
+          <button type="button" class="btn btn-primary" id="check-shop-btn">Check my store</button>
+        </div>
+        <p class="tools-status" id="check-status" hidden></p>
+      </div>
+    </section>
+
+    <section class="tools-report wrap" id="report" hidden>
+      <h2>Store report</h2>
+      <p class="tools-summary" id="summary-line"></p>
+      <p class="tools-note" id="disclaimer"></p>
+      <ul class="tools-issue-list" id="bucket-list"></ul>
+      <div class="tools-help card-block">
+        <h3>Want a Google-ready feed from this catalog?</h3>
+        <p class="tools-help-lead">AdFeed cleans supplier imports for Shopping — without inventing barcodes or brands.</p>
+        <a class="btn btn-primary" href="/#waitlist?utm_source=tools&amp;utm_medium=shopify-checker">Get early access</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p>© AdFeed AI</p>
+      <nav><a href="/tools/">All tools</a> · <a href="/privacy.html">Privacy</a></nav>
+    </div>
+  </footer>
+  <script src="/tools/shopify-checker.js?v=sc1" defer></script>
+</body>
+</html>

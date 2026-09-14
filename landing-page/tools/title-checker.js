@@ -4,6 +4,7 @@
   const titleInput = document.getElementById("title-input");
   const checkBtn = document.getElementById("check-title-btn");
   const suggestBtn = document.getElementById("suggest-title-btn");
+  const aiBtn = document.getElementById("ai-title-btn");
   const verdictBanner = document.getElementById("verdict-banner");
   const verdictLabel = document.getElementById("verdict-label");
   const verdictDetail = document.getElementById("verdict-detail");
@@ -117,8 +118,9 @@
         suggestBox.hidden = false;
         suggestText.textContent = suggested;
         if (suggestDisclaimer) {
+          const src = data.source === "ai" ? " (AI, filtered to your words)" : "";
           suggestDisclaimer.textContent =
-            data.disclaimer || "Suggestion only — do not invent brand or GTIN.";
+            (data.disclaimer || "Suggestion only — do not invent brand or GTIN.") + src;
         }
       } else {
         suggestBox.hidden = true;
@@ -134,18 +136,22 @@
     }
   }
 
-  async function runCheck({ focusSuggest } = {}) {
+  async function runCheck({ focusSuggest, useAi } = {}) {
     const title = (titleInput && titleInput.value) || "";
     if (!title.trim()) {
       setStatus("Paste a product title first.", true);
       if (titleInput) titleInput.focus();
       return;
     }
-    setStatus("Checking…");
+    setStatus(useAi ? "Improving with AI…" : "Checking…");
     if (checkBtn) checkBtn.disabled = true;
     if (suggestBtn) suggestBtn.disabled = true;
+    if (aiBtn) aiBtn.disabled = true;
     try {
-      const res = await fetch("/api/public/title-check", {
+      const endpoint = useAi
+        ? "/api/public/title-check/ai"
+        : "/api/public/title-check";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: title.trim() }),
@@ -160,21 +166,35 @@
               : "Check failed";
         throw new Error(detail);
       }
-      setStatus("");
-      renderReport(data, { focusSuggest });
+      setStatus(
+        useAi && data.source === "rules"
+          ? "AI unavailable — showing rule-based suggestion."
+          : ""
+      );
+      renderReport(data, { focusSuggest: focusSuggest || useAi });
     } catch (err) {
       setStatus(err.message || "Check failed", true);
     } finally {
       if (checkBtn) checkBtn.disabled = false;
       if (suggestBtn) suggestBtn.disabled = false;
+      if (aiBtn) aiBtn.disabled = false;
     }
   }
 
   if (checkBtn) {
-    checkBtn.addEventListener("click", () => runCheck({ focusSuggest: false }));
+    checkBtn.addEventListener("click", () =>
+      runCheck({ focusSuggest: false, useAi: false })
+    );
   }
   if (suggestBtn) {
-    suggestBtn.addEventListener("click", () => runCheck({ focusSuggest: true }));
+    suggestBtn.addEventListener("click", () =>
+      runCheck({ focusSuggest: true, useAi: false })
+    );
+  }
+  if (aiBtn) {
+    aiBtn.addEventListener("click", () =>
+      runCheck({ focusSuggest: true, useAi: true })
+    );
   }
   if (titleInput) {
     titleInput.addEventListener("keydown", (e) => {

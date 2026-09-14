@@ -169,3 +169,109 @@ def analyze_title(raw: str) -> dict[str, Any]:
         "suggested_title": suggested,
         "disclaimer": DISCLAIMER,
     }
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9']+", text or "")
+
+
+def filter_ai_title(source: str, candidate: str) -> str:
+    """Keep only tokens that already appear in the source title (no invented words)."""
+    allowed = {t.lower() for t in _tokenize(source)}
+    if not allowed:
+        return _strip_noise(source) or (source or "").strip()
+    kept: list[str] = []
+    for tok in _tokenize(candidate):
+        if tok.lower() in allowed:
+            kept.append(tok)
+    out = " ".join(kept).strip()
+    # Restore a common possessive form if source used Women's / Men's
+    if re.search(r"\bwomen's\b", source, re.I) and out.lower().startswith("womens "):
+        out = "Women's " + out[7:]
+    elif re.search(r"\bmen's\b", source, re.I) and out.lower().startswith("mens "):
+        out = "Men's " + out[5:]
+    if not out:
+        return _strip_noise(source) or source.strip()
+    if len(out) > TITLE_SOFT_LIMIT:
+        words = out.split()
+        trimmed: list[str] = []
+        for w in words:
+            cand = " ".join(trimmed + [w])
+            if trimmed and len(cand) > TITLE_SOFT_LIMIT:
+                break
+            trimmed.append(w)
+        out = " ".join(trimmed) if trimmed else out[:TITLE_SOFT_LIMIT].rstrip()
+    return out
+
+
+def _llm_available() -> bool:
+    try:
+        from adfeed.config import DASHSCOPE_API_KEY
+
+        return bool(DASHSCOPE_API_KEY) and DASHSCOPE_API_KEY != "sk-your-api-key-here"
+    except Exception:
+        return False
+
+
+def _llm_suggest_title(title: str) -> str:
+    from openai import OpenAI
+
+    from adfeed.config import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, LLM_MODEL
+
+    client = OpenAI(api_key=DASHSCOPE_API_KEY, base_url=DASHSCOPE_BASE_URL)
+    prompt = (
+        "Rewrite this Google Shopping product title to be shorter and clearer "
+        f"(aim under {TITLE_SOFT_LIMIT} characters).\n"
+        "RULES:\n"
+        "- Use ONLY words already present in the input (you may drop promo noise).\n"
+        "- Do NOT invent brand, GTIN, material, color, size, or audience.\n"
+        "- Prefer: audience + product + key attributes that already appear.\n"
+        "- Output ONLY the title text, no quotes or explanation.\n\n"
+        f"Input: {title}\n"
+    )
+    resp = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": "You rewrite shopping titles. Never invent product attributes.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+        max_tokens=80,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    raw = raw.strip('"').strip("'").split("\n")[0].strip()
+    return raw
+
+
+def suggest_title_ai(raw: str) -> dict[str, Any]:
+    """Rules first; optional LLM polish filtered to source tokens only."""
+    base = analyze_title(raw)
+    title = base["input"]
+    if not title:
+        base["source"] = "rules"
+        base["suggested_title_ai"] = None
+        return base
+
+    if not _llm_available():
+        base["source"] = "rules"
+        base["suggested_title_ai"] = None
+        return base
+
+    try:
+        ai_raw = _llm_suggest_title(title)
+        filtered = filter_ai_title(title, ai_raw)
+        if not filtered or filtered.lower() == title.lower():
+            # Still useful if it matches rules suggestion
+            filtered = filter_ai_title(title, ai_raw) or base["suggested_title"]
+        base["suggested_title"] = filtered or base["suggested_title"]
+        base["suggested_title_ai"] = filtered
+        base["source"] = "ai"
+        base["disclaimer"] = DISCLAIMER + " AI suggestion filtered to words from your title."
+    except Exception:
+        base["source"] = "rules"
+        base["suggested_title_ai"] = None
+    return base
+

@@ -57,9 +57,10 @@
         <div class="tools-panel-row tools-panel-row--end">
           <button type="button" class="btn btn-primary" id="check-title-btn">Check title</button>
           <button type="button" class="btn btn-ghost" id="suggest-title-btn">Suggest cleaner title</button>
+          <button type="button" class="btn btn-ghost" id="ai-title-btn">Improve with AI</button>
         </div>
         <p class="tools-note tools-note--console">
-          Rule-based check only — used for this report. We don’t store your titles.
+          Rules check is free and local to the request. AI only reorders/drops words already in your title — never invents brand or GTIN.
         </p>
         <p class="tools-status" id="check-status" hidden></p>
       </div>
@@ -148,6 +149,6 @@
     </div>
   </footer>
   <script src="/waitlist.js" defer></script>
-  <script src="/tools/title-checker.js?v=tc1" defer></script>
+  <script src="/tools/title-checker.js?v=tc2" defer></script>
 </body>
 </html>

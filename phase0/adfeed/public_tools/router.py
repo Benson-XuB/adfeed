@@ -20,9 +20,37 @@ from adfeed.public_tools.google_issues import (
     fetch_disapproved_issues,
     list_merchant_accounts,
 )
-from adfeed.public_tools.title_checker import analyze_title
+from adfeed.public_tools.shopify_store_check import fetch_shop_products
+from adfeed.public_tools.title_checker import analyze_title, suggest_title_ai
 
 router = APIRouter(prefix="/api/public", tags=["public-tools"])
+
+# Simple in-process rate limit for AI title (per client host).
+_AI_HITS: dict[str, list[float]] = {}
+_AI_MAX_PER_HOUR = 20
+
+
+def _client_host(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _allow_ai(host: str) -> bool:
+    import time
+
+    now = time.time()
+    window = 3600.0
+    hits = [t for t in _AI_HITS.get(host, []) if now - t < window]
+    if len(hits) >= _AI_MAX_PER_HOUR:
+        _AI_HITS[host] = hits
+        return False
+    hits.append(now)
+    _AI_HITS[host] = hits
+    return True
 
 
 def _set_session_cookie(resp: Response, token_payload: dict) -> None:
@@ -58,9 +86,38 @@ class TitleCheckRequest(BaseModel):
         return (v or "").strip()
 
 
+class ShopifyCheckRequest(BaseModel):
+    shop: str = Field(..., min_length=4, max_length=256)
+
+    @field_validator("shop", mode="before")
+    @classmethod
+    def strip_shop(cls, v: str) -> str:
+        return (v or "").strip()
+
+
 @router.post("/title-check")
 async def title_check(body: TitleCheckRequest):
     return analyze_title(body.title)
+
+
+@router.post("/title-check/ai")
+async def title_check_ai(request: Request, body: TitleCheckRequest):
+    if not _allow_ai(_client_host(request)):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many AI title requests. Try the rule-based suggestion, or wait an hour.",
+        )
+    return suggest_title_ai(body.title)
+
+
+@router.post("/shopify-check")
+async def shopify_check(body: ShopifyCheckRequest):
+    try:
+        return fetch_shop_products(body.shop)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Shopify check failed: {exc}") from exc
 
 
 @router.post("/feed-check")
