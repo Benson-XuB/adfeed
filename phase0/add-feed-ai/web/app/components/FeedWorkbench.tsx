@@ -11,7 +11,8 @@ import {
   fetchFeedPreview,
 } from "../lib/adfeed-api";
 import { ProductFeedDrawer } from "./ProductFeedDrawer";
-import { GooglePushPanel } from "./GooglePushPanel";
+// “Push to Google” (GooglePushPanel) was always-on from 1cad8fb (2026-09-07).
+// Keep UI off for now — XML/URL feed card below stays the only export path.
 import { localizeComplianceCheck } from "../lib/compliance-label";
 import styles from "./FeedWorkbench.module.css";
 
@@ -805,12 +806,6 @@ export function FeedWorkbench(props: Props) {
         ) : null}
 
         <div className={`${styles.sideCard} ${styles.sideCardLive}`}>
-          <GooglePushPanel
-            country={country}
-            feedReady={Boolean(feed?.url)}
-            withToken={withToken}
-            onMessage={onMessage}
-          />
           {feed?.url ? (
             <div className={styles.feedCard}>
               <a
