@@ -10,7 +10,9 @@
   const logoutBtn = document.getElementById("logout-btn");
   const report = document.getElementById("gi-report");
   const dx = document.getElementById("gi-dx");
-  const waitlistSection = document.getElementById("waitlist");
+  const INSTALL =
+    "https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&utm_medium=google-issues";
+  const installSection = document.getElementById("install");
   const params = new URLSearchParams(location.search);
 
   function setStatus(el, text, isError) {
@@ -212,12 +214,24 @@
       return '<a class="btn btn-primary" href="https://merchants.google.com/" target="_blank" rel="noopener">Open Merchant Center</a>';
     }
     if (type === "FEED") {
-      return '<a class="btn btn-primary" href="#waitlist">Get early access</a><a class="btn btn-ghost" href="/tools/feed-checker">Check a feed URL</a>';
+      return (
+        '<a class="btn btn-primary" href="' +
+        INSTALL +
+        '">Install on Shopify</a><a class="btn btn-ghost" href="/tools/feed-checker">Check a feed URL</a>'
+      );
     }
     if (type === "MIXED") {
-      return '<a class="btn btn-primary" href="https://merchants.google.com/" target="_blank" rel="noopener">Fix account first</a><a class="btn btn-ghost" href="#waitlist">Then get AdFeed for feed</a>';
+      return (
+        '<a class="btn btn-primary" href="https://merchants.google.com/" target="_blank" rel="noopener">Fix account first</a><a class="btn btn-ghost" href="' +
+        INSTALL +
+        '">Then install AdFeed for feed</a>'
+      );
     }
-    return '<a class="btn btn-ghost" href="/tools/feed-checker">Check a feed URL</a><a class="btn btn-primary" href="#waitlist">Get early access</a>';
+    return (
+      '<a class="btn btn-ghost" href="/tools/feed-checker">Check a feed URL</a><a class="btn btn-primary" href="' +
+      INSTALL +
+      '">Install on Shopify</a>'
+    );
   }
 
   function adfeedHtml(type, data) {
@@ -225,7 +239,7 @@
       return `
         <p>AdFeed <strong>cannot</strong> clear account suspensions — only Merchant Center can.</p>
         <p class="gi-adfeed-soft">After your account is clear, if products are still rejected, AdFeed can help clean the feed.</p>
-        <a class="gi-soft-link" href="#waitlist">Get early access →</a>
+        <a class="gi-soft-link" href="${INSTALL}">Install on Shopify →</a>
       `;
     }
     if (type === "FEED") {
@@ -234,7 +248,7 @@
         <p><strong>AdFeed can help</strong> with the feed side:</p>
         <ul class="gi-adfeed-list">${helps.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
         <div class="gi-cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-primary" href="${INSTALL}">Install on Shopify</a>
         </div>
       `;
     }
@@ -243,11 +257,11 @@
         <p><strong>Order matters:</strong> account first (Merchant Center), then feed (AdFeed).</p>
         <p class="gi-adfeed-soft">AdFeed never invents GTINs and cannot clear account policy blocks.</p>
         <div class="gi-cta-row">
-          <a class="btn btn-ghost" href="#waitlist">Get early access for feed cleanup</a>
+          <a class="btn btn-ghost" href="${INSTALL}">Install AdFeed for feed cleanup</a>
         </div>
       `;
     }
-    return `<p>Optional: join the waitlist if you want a cleaner Shopping feed later.</p>`;
+    return `<p>Optional: <a href="${INSTALL}">install AdFeed</a> if you want a cleaner Shopping feed later.</p>`;
   }
 
   function render(data) {
@@ -275,17 +289,14 @@
     document.getElementById("gi-primary-cta").innerHTML = actionCta(type);
     document.getElementById("gi-adfeed-body").innerHTML = adfeedHtml(type, data);
 
-    const waitlistDefault = document.getElementById("waitlist-default");
-    const waitlistFeed = document.getElementById("waitlist-feed");
-    const mode = type === "FEED" || type === "MIXED" ? "feed" : type === "ACCOUNT" ? "account" : "default";
-    waitlistSection.hidden = false;
-    waitlistSection.dataset.mode = mode;
-    if (mode === "feed") {
-      waitlistDefault.hidden = true;
-      waitlistFeed.hidden = false;
-    } else {
-      waitlistDefault.hidden = false;
-      waitlistFeed.hidden = true;
+    if (installSection) {
+      installSection.hidden = false;
+      installSection.dataset.mode =
+        type === "FEED" || type === "MIXED"
+          ? "feed"
+          : type === "ACCOUNT"
+            ? "account"
+            : "default";
     }
 
     report.scrollIntoView({ behavior: "smooth", block: "start" });

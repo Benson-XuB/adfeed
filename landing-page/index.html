@@ -24,7 +24,7 @@
         <a class="hide-sm" href="#how">How it works</a>
         <a class="hide-sm" href="#pricing">Pricing</a>
         <a class="hide-sm" href="/guides/">Guides</a>
-        <a class="btn btn-primary" href="#waitlist">Get early access</a>
+        <a class="btn btn-primary" href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=nav">Install on Shopify</a>
       </nav>
     </div>
   </header>
@@ -47,40 +47,19 @@
           <span class="trust-pill">Shopify-synced URL</span>
         </div>
 
-        <form
-          class="waitlist waitlist--hero reveal reveal-d3"
-          id="waitlist-form"
-          data-source="landing-hero"
-          data-submit-label="Get early access"
-          data-success-demo="#how"
-          novalidate
-        >
-          <div id="waitlist" class="waitlist-anchor" tabindex="-1"></div>
-          <div class="waitlist-row">
-            <label class="visually-hidden" for="waitlist-email">Email address</label>
-            <input
-              type="email"
-              id="waitlist-email"
-              name="email"
-              placeholder="Your email address"
-              autocomplete="email"
-              maxlength="254"
-              required
-            />
-            <button type="submit" class="btn btn-primary" id="waitlist-btn">Get early access</button>
-          </div>
-          <p class="waitlist-note" id="waitlist-note">
-            Early beta access + <strong>40 bonus product-market generations</strong> at launch. No spam—product updates only.
-          </p>
-          <div class="waitlist-success" id="waitlist-success" hidden>
-            <p class="waitlist-success-title" id="waitlist-success-title">You’re on the waitlist!</p>
-            <p class="waitlist-success-body" id="waitlist-success-body">
-              We’ll email you as soon as beta spots open.
-            </p>
-            <a class="btn btn-ghost" id="waitlist-demo-link" href="#how">See how it works →</a>
-          </div>
-          <p class="waitlist-msg" id="waitlist-msg" role="status" aria-live="polite" hidden></p>
-        </form>
+        <div id="install" class="waitlist-anchor" tabindex="-1"></div>
+        <div id="waitlist" class="waitlist-anchor" tabindex="-1" hidden aria-hidden="true"></div>
+        <div class="cta-row waitlist--hero reveal reveal-d3">
+          <a
+            class="btn btn-primary"
+            href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=landing-hero"
+            >Install on Shopify</a
+          >
+          <a class="btn btn-ghost" href="/tools/">Try free tools first</a>
+        </div>
+        <p class="waitlist-note reveal reveal-d3">
+          Live on the Shopify App Store · Free plan available
+        </p>
         <p class="hero-secondary reveal reveal-d3">
           Diagnose first with <a href="/tools/">free tools</a>
           · <a href="/tools/feed-checker">Check my feed</a>
@@ -165,7 +144,7 @@
           </div>
         </div>
         <div class="cta-row">
-          <a class="btn btn-primary btn-on-dark" href="#waitlist">Get early access</a>
+          <a class="btn btn-primary btn-on-dark" href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=landing-trust">Install on Shopify</a>
           <a class="btn btn-ghost btn-on-dark" href="#how">See how it works</a>
         </div>
       </div>
@@ -223,7 +202,7 @@
         </div>
 
         <div class="cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-primary" href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=landing-how">Install on Shopify</a>
           <a class="btn btn-ghost" href="/tools/">Try free tools first</a>
         </div>
       </div>
@@ -273,7 +252,7 @@
           Example: one SKU for US + UK = 2. Feed readiness is our job; Merchant Center approval is Google’s decision.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get early access · Free plan available</a>
+          <a class="btn btn-primary" href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=landing-pricing">Install on Shopify · Free plan available</a>
           <a class="btn btn-ghost" href="/support.html">Support &amp; FAQ</a>
         </div>
       </div>
@@ -305,7 +284,7 @@
           </details>
         </div>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#waitlist">Get early access</a>
+          <a class="btn btn-primary" href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=landing-faq">Install on Shopify</a>
           <a class="btn btn-ghost" href="/setup.html">Read setup guide</a>
         </div>
       </div>
@@ -321,7 +300,7 @@
           <a href="/guides/">Guides</a>
           <a href="#how">How it works</a>
           <a href="#pricing">Pricing</a>
-          <a href="#waitlist">Early access</a>
+          <a href="https://apps.shopify.com/adfeed-ai-1?utm_source=deltfu&amp;utm_medium=landing-footer">Install</a>
           <a href="/setup.html">Setup guide</a>
           <a href="#faq">FAQ</a>
           <a href="/privacy.html">Privacy</a>
@@ -334,9 +313,12 @@
     </div>
   </footer>
 
-  <script src="/waitlist.js" defer></script>
   <script>
     document.getElementById("y").textContent = String(new Date().getFullYear());
+    if (location.hash === "#waitlist") {
+      history.replaceState(null, "", "#install");
+      document.getElementById("install")?.scrollIntoView();
+    }
   </script>
 </body>
 </html>
